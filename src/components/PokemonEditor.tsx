@@ -18,7 +18,7 @@ import {
   type StatKey,
 } from '../lib/model';
 import { abilitiesOf } from '../lib/abilities';
-import { baseForMega, megaFor } from '../lib/showdown';
+import { baseForMega, megaFor, withItem } from '../lib/showdown';
 import { smogonUrl } from '../lib/smogon';
 import PresetBar from './PresetBar';
 import TypeBadges from './TypeBadges';
@@ -86,18 +86,7 @@ export default function PokemonEditor({ set, onChange, meta, format }: Props) {
   };
 
   /** Mirror Showdown: holding a Mega Stone switches to (or from) the Mega form. */
-  const setItem = (item: string) => {
-    const canon = gen.items.get(toID(item))?.name ?? item;
-    let next = set.species;
-    const current = baseForMega(set.species);
-    const base = current?.base ?? set.species;
-    const mega = megaFor(base, canon);
-    if (mega && gen.species.get(toID(mega))) next = mega;
-    else if (current) next = current.base;
-    if (next === set.species) return patch({ item });
-    const abs = abilitiesOf(next);
-    patch({ item, species: next, ability: mega ? abs[0] ?? set.ability : abs.includes(set.ability) ? set.ability : abs[0] ?? '' });
-  };
+  const setItem = (item: string) => onChange(withItem(set, item));
 
   /** Holding a Mega Stone lets the user choose whether the Pokemon has Mega Evolved yet. */
   const megaState = (() => {

@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "scrape": "node scripts/scrape.mjs"
+    "scrape": "node scripts/scrape.mjs",
+    "scrape:smogon": "node scripts/smogon.mjs"
   },
   "dependencies": {
     "@smogon/calc": "^0.12.0",

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { MEGA_STONES } from '@smogon/calc';
 import FieldPanel from './components/FieldPanel';
+import LookUp, { type LookUpKind } from './components/LookUp';
 import MetaList from './components/MetaList';
 import PokemonEditor from './components/PokemonEditor';
 import Results from './components/Results';
@@ -9,6 +10,8 @@ import TeamSide, { focusSlot, onFieldCount, type Team } from './components/TeamS
 import { normalizeField, type FieldState } from './lib/calc';
 import { canRefreshFromOpgg, loadMeta, refreshFromOpgg, setFromMeta, type MetaEntry, type BattleFormat, type Meta } from './lib/data';
 import { gen, zeroBoosts, type PokemonSet } from './lib/model';
+import { abilitiesOf } from './lib/abilities';
+import { withItem } from './lib/showdown';
 import shaymin from '../shaymin-land.svg';
 import victini from '../victini.svg';
 
@@ -48,6 +51,7 @@ export default function App() {
   const [refreshing, setRefreshing] = useState('');
   const [flashLabel, setFlashLabel] = useState('');
   const [listOpen, setListOpen] = useState(false);
+  const [lookupOpen, setLookupOpen] = useState(false);
   // null until probed. false = a hosted copy (e.g. GitHub Pages) with no scraper: the button reloads the published data.
   const [canScrape, setCanScrape] = useState<boolean | null>(null);
   useEffect(() => {
@@ -122,6 +126,29 @@ export default function App() {
       const next: [Team, Team] = [old[0], old[1]];
       next[side] = { ...t, sets: [...t.sets, setFromMeta(entry, format)], active: t.sets.length };
       return next;
+    });
+
+  /** Apply a move / item / ability picked in the Look up panel to a side's selected Pokémon. */
+  const useReference = (side: 0 | 1, kind: LookUpKind, name: string) =>
+    setTeams((old) => {
+      const t = old[side];
+      const p = t.sets[t.active];
+      if (!p) return old;
+      let next: PokemonSet = p;
+      if (kind === 'items') next = withItem(p, name);
+      else if (kind === 'abilities') {
+        if (!abilitiesOf(p.species).includes(name)) return old;
+        next = { ...p, ability: name };
+      } else {
+        const slot = p.moves.indexOf('');
+        if (slot < 0 || p.moves.includes(name)) return old;
+        const moves = [...p.moves];
+        moves[slot] = name;
+        next = { ...p, moves, critMoves: (p.critMoves ?? []).map((c, i) => (i === slot ? false : c)) };
+      }
+      const copy: [Team, Team] = [old[0], old[1]];
+      copy[side] = { ...t, sets: t.sets.map((s, i) => (i === t.active ? next : s)) };
+      return copy;
     });
 
   const changeFormat =(f: BattleFormat) => {
@@ -229,6 +256,9 @@ export default function App() {
         <button onClick={() => setListOpen(true)} disabled={!meta} title="See the most used Pokémon (op.gg's tier ranking) and add them to a team">
           Most used
         </button>
+        <button onClick={() => setLookupOpen(true)} title="Search moves, items and abilities (Smogon descriptions) and give one to a Pokémon">
+          Look up
+        </button>
         <span className="meta-note">
           {error ? (
             <span className="err">{error}</span>
@@ -306,6 +336,14 @@ export default function App() {
           {b ? <PokemonEditor set={b} onChange={setActive(1)} meta={meta} format={format} /> : null}
         </div>
       </main>
+
+      {lookupOpen && (
+        <LookUp
+          actives={[teams[0].sets[teams[0].active], teams[1].sets[teams[1].active]]}
+          onUse={useReference}
+          onClose={() => setLookupOpen(false)}
+        />
+      )}
 
       {listOpen && meta && (
         <MetaList

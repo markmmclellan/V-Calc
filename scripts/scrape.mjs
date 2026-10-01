@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { rscPayload, grabObject } from './rsc.mjs';
+import { scrapeSmogon } from './smogon.mjs';
 
 const BASE = 'https://op.gg/pokemon-champions';
 const UA = 'Mozilla/5.0 (compatible; ChampionsCalculator/0.1; personal use)';
@@ -137,7 +138,17 @@ export async function scrape({ keys, onProgress = () => {} } = {}) {
   const tmp = OUT + '.tmp';
   fs.writeFileSync(tmp, JSON.stringify(out));
   fs.renameSync(tmp, OUT);
-  return { count: Object.keys(pokemon).length, updatedAt: out.updatedAt };
+
+  // Smogon's move/item/ability reference. A failure here must not lose the op.gg data that was just saved.
+  let smogon = null;
+  let smogonError = null;
+  try {
+    smogon = await scrapeSmogon({ onProgress: (d, t) => onProgress(keys.length + d, keys.length + t) });
+  } catch (e) {
+    smogonError = e instanceof Error ? e.message : String(e);
+    console.warn(`  ! Smogon reference not updated: ${smogonError}`);
+  }
+  return { count: Object.keys(pokemon).length, updatedAt: out.updatedAt, smogon, smogonError };
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
@@ -145,7 +156,10 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     keys: process.argv.slice(2),
     onProgress: (d, t) => d % 25 === 0 && console.log(`  ${d}/${t}`),
   })
-    .then((r) => console.log(`Wrote ${r.count} pokemon -> ${path.relative(process.cwd(), OUT)}`))
+    .then((r) => {
+      console.log(`Wrote ${r.count} pokemon -> ${path.relative(process.cwd(), OUT)}`);
+      if (r.smogon) console.log(`Wrote ${r.smogon.moves} moves, ${r.smogon.items} items, ${r.smogon.abilities} abilities from Smogon${r.smogon.failedDetails ? ` (${r.smogon.failedDetails} kept a short description)` : ''}`);
+    })
     .catch((e) => {
       console.error(e);
       process.exit(1);

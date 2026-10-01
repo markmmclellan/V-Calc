@@ -199,3 +199,20 @@ export function shareToPokepaste(sets: PokemonSet[], title = 'V-Calc team'): voi
   form.submit();
   form.remove();
 }
+
+/**
+ * Give a Pokemon an item. Mirrors Showdown: holding a Mega Stone switches it to (or from) the Mega form, and the
+ * ability follows the form change.
+ */
+export function withItem(set: PokemonSet, item: string): PokemonSet {
+  const canon = gen.items.get(toID(item))?.name ?? item;
+  const current = baseForMega(set.species);
+  const base = current?.base ?? set.species;
+  const mega = megaFor(base, canon);
+  let next = set.species;
+  if (mega && gen.species.get(toID(mega))) next = mega;
+  else if (current) next = current.base;
+  if (next === set.species) return { ...set, item };
+  const abs = abilitiesOf(next);
+  return { ...set, item, species: next, ability: mega ? abs[0] ?? set.ability : abs.includes(set.ability) ? set.ability : abs[0] ?? '' };
+}

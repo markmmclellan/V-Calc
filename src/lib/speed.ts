@@ -2,7 +2,11 @@ import { toID } from '@smogon/calc';
 import type { FieldState, SideState } from './calc';
 import { calcStats, gen, STAT_KEYS, type PokemonSet, type StatKey } from './model';
 
-/** @smogon/calc only records positive priority, so negative brackets are filled in here. */
+/**
+ * @smogon/calc only records positive priority, so negative brackets are filled in here. Checked against Smogon's
+ * Champions dex: these are exactly its negative-priority moves, plus a few (Vital Throw, Revenge...) that aren't in
+ * Champions. Magic Room and Wonder Room are normal priority; only Trick Room is -7.
+ */
 const NEGATIVE_PRIORITY: Record<string, number> = {
   'Vital Throw': -1,
   'Focus Punch': -3,
@@ -18,8 +22,6 @@ const NEGATIVE_PRIORITY: Record<string, number> = {
   Whirlwind: -6,
   Teleport: -6,
   'Trick Room': -7,
-  'Magic Room': -7,
-  'Wonder Room': -7,
 };
 
 export interface SpeedInfo {

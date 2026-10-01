@@ -98,7 +98,7 @@ async function scrapeOne(key) {
 export async function scrape({ keys, onProgress = () => {} } = {}) {
   if (!keys?.length) {
     const tier = await get(`${BASE}/tier`);
-    keys = [...new Set([...tier.matchAll(/href="\/pokemon-champions\/pokedex\/([a-z0-9-]+)"/g)].map((m) => m[1]))];
+    keys = [...new Set([...tier.matchAll(/href="\/pokemon-champions\/pokedex\/([^"#?\/]+)"/g)].map((m) => m[1]))];
   }
   onProgress(0, keys.length);
 

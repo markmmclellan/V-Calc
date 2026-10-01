@@ -31,6 +31,8 @@ npm run dev        # http://localhost:5173
   save and load onto either side. Press **1–6** to select your Pokémon and **Shift+1–6** for the opponent's.
   **Drag a Pokémon's slot onto another to reorder** the team (the numbers update, and your selection follows). The
   "Add from op.gg meta" box supports **↑ / ↓** to move through the suggestions, **Enter** to add and **Esc** to clear.
+- **Most used**: the header's **Most used** button opens op.gg's tier ranking (Singles or Doubles) with a filter box
+  (name or type) and **+ You** / **+ Opp** buttons that add a Pokémon, built from its top usage, straight to a team.
 - **op.gg usage panel** for the active Pokémon (moves, items, abilities, natures, spreads), for Singles or Doubles.
   Pick which move slot a clicked move fills.
 - **Presets**: save custom builds per Pokémon (shared across its Mega and other forms), with rename, update, delete,

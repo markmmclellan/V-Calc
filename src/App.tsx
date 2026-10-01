@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { MEGA_STONES } from '@smogon/calc';
 import FieldPanel from './components/FieldPanel';
+import MetaList from './components/MetaList';
 import PokemonEditor from './components/PokemonEditor';
 import Results from './components/Results';
 import TurnOrder from './components/TurnOrder';
 import TeamSide, { focusSlot, onFieldCount, type Team } from './components/TeamSide';
 import { normalizeField, type FieldState } from './lib/calc';
-import { canRefreshFromOpgg, loadMeta, refreshFromOpgg, setFromMeta, type BattleFormat, type Meta } from './lib/data';
+import { canRefreshFromOpgg, loadMeta, refreshFromOpgg, setFromMeta, type MetaEntry, type BattleFormat, type Meta } from './lib/data';
 import { gen, zeroBoosts, type PokemonSet } from './lib/model';
 import shaymin from '../shaymin-land.svg';
 import victini from '../victini.svg';
@@ -46,6 +47,7 @@ export default function App() {
   const [error, setError] = useState('');
   const [refreshing, setRefreshing] = useState('');
   const [flashLabel, setFlashLabel] = useState('');
+  const [listOpen, setListOpen] = useState(false);
   // null until probed. false = a hosted copy (e.g. GitHub Pages) with no scraper: the button reloads the published data.
   const [canScrape, setCanScrape] = useState<boolean | null>(null);
   useEffect(() => {
@@ -112,6 +114,16 @@ export default function App() {
     }
   };
 
+  /** Add a Pokémon from the "Most used" list to a team (selected on arrival, like the search box). */
+  const addFromList = (side: 0 | 1, entry: MetaEntry) =>
+    setTeams((old) => {
+      const t = old[side];
+      if (t.sets.length >= 6) return old;
+      const next: [Team, Team] = [old[0], old[1]];
+      next[side] = { ...t, sets: [...t.sets, setFromMeta(entry, format)], active: t.sets.length };
+      return next;
+    });
+
   const changeFormat =(f: BattleFormat) => {
     setFormat(f);
     setField((old) => ({ ...old, gameType: f === 'single' ? 'Singles' : 'Doubles' }));
@@ -130,6 +142,7 @@ export default function App() {
       const m = /^Digit([1-6])$/.exec(e.code);
       if (!m) return;
       const t = e.target as HTMLElement | null;
+      if (t?.closest('[role="dialog"]')) return; // a panel is open
       if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
       const side = e.shiftKey ? 1 : 0;
       const index = +m[1] - 1;
@@ -213,6 +226,9 @@ export default function App() {
         >
           Reset battle
         </button>
+        <button onClick={() => setListOpen(true)} disabled={!meta} title="See the most used Pokémon (op.gg's tier ranking) and add them to a team">
+          Most used
+        </button>
         <span className="meta-note">
           {error ? (
             <span className="err">{error}</span>
@@ -290,6 +306,16 @@ export default function App() {
           {b ? <PokemonEditor set={b} onChange={setActive(1)} meta={meta} format={format} /> : null}
         </div>
       </main>
+
+      {listOpen && meta && (
+        <MetaList
+          meta={meta}
+          format={format}
+          teamSizes={[teams[0].sets.length, teams[1].sets.length]}
+          onAdd={addFromList}
+          onClose={() => setListOpen(false)}
+        />
+      )}
 
       <footer className="app-footer">© 2026 Mark McLellan</footer>
 

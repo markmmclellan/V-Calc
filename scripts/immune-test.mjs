@@ -1,0 +1,17 @@
+import { calcMove, blankField } from '../src/lib/calc.ts';
+import { zeroBoosts, zeroSP } from '../src/lib/model.ts';
+const mk = (species, ability, item = '') => ({ species, item, ability, nature: 'Serious', sp: { ...zeroSP(), atk: 32, spa: 32 }, moves: [], status: '', boosts: zeroBoosts(), hpPercent: 100, abilityOn: false, critMoves: [] });
+const t = (a, d, m, f = blankField()) => { const r = calcMove(a, d, m, false, f); console.log(m.padEnd(13), '->', (d.species + (d.item ? ' @ ' + d.item : '')).padEnd(26), r.ok ? r.maxPct + '%' : 'compact', '|', r.desc.slice(0, 50)); };
+const g = mk('Garchomp', 'Rough Skin');
+t(g, mk('Charizard', 'Blaze'), 'Earthquake');
+t(g, mk('Incineroar', 'Intimidate', 'Air Balloon'), 'Earthquake');
+t(g, mk('Incineroar', 'Intimidate', 'Air Balloon'), 'Dragon Claw');
+t(g, mk('Rotom-Wash', 'Levitate'), 'Earthquake');
+t(mk('Salamence', 'Intimidate'), mk('Kommo-o', 'Soundproof'), 'Hyper Voice');
+t(mk('Gengar', 'Cursed Body'), mk('Chesnaught', 'Bulletproof'), 'Shadow Ball');
+t(g, mk('Shedinja', 'Wonder Guard'), 'Dragon Claw');
+t(g, mk('Farigiraf', 'Armor Tail'), 'Extreme Speed');
+const pt = blankField(); pt.terrain = 'Psychic';
+t(g, mk('Incineroar', 'Intimidate'), 'Extreme Speed', pt);
+const gv = blankField(); gv.isGravity = true;
+t(g, mk('Incineroar', 'Intimidate', 'Air Balloon'), 'Earthquake', gv);

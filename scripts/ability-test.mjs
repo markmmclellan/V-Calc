@@ -1,0 +1,14 @@
+import { calcMove, blankField } from '../src/lib/calc.ts';
+import { zeroBoosts, zeroSP } from '../src/lib/model.ts';
+const mk = (species, ability, abilityOn = false, item = '') => ({ species, item, ability, nature: 'Serious', sp: { ...zeroSP(), atk: 32, spa: 32 }, moves: [], status: '', boosts: zeroBoosts(), hpPercent: 100, abilityOn, critMoves: [] });
+const t = (label, a, d, m) => { const r = calcMove(a, d, m, false, blankField()); console.log(label.padEnd(34), r.minPct + '-' + r.maxPct + '%'); };
+const g = mk('Garchomp', 'Rough Skin');
+t('vs Incineroar (Intimidate off)', g, mk('Incineroar', 'Intimidate', false), 'Dragon Claw');
+t('vs Incineroar (Intimidate ON)', g, mk('Incineroar', 'Intimidate', true), 'Dragon Claw');
+t('Arcanine Flash Fire off, Flamethrower', mk('Arcanine', 'Flash Fire', false), mk('Ferrothorn', 'Iron Barbs'), 'Flamethrower');
+t('Arcanine Flash Fire ON,  Flamethrower', mk('Arcanine', 'Flash Fire', true), mk('Ferrothorn', 'Iron Barbs'), 'Flamethrower');
+t('Roaring Moon Proto off (sun)', mk('Roaring Moon', 'Protosynthesis', false), mk('Ferrothorn', 'Iron Barbs'), 'Dragon Claw');
+t('Roaring Moon Proto ON', mk('Roaring Moon', 'Protosynthesis', true), mk('Ferrothorn', 'Iron Barbs'), 'Dragon Claw');
+t('Roaring Moon Proto + Booster Energy', mk('Roaring Moon', 'Protosynthesis', true, 'Booster Energy'), mk('Ferrothorn', 'Iron Barbs'), 'Dragon Claw');
+const k = (n) => ({ ...mk('Kingambit', 'Supreme Overlord'), alliesFainted: n });
+for (const n of [0, 1, 3, 5]) t(`Kingambit Sucker Punch, ${n} fainted`, k(n), mk('Incineroar', 'Intimidate'), 'Iron Head');

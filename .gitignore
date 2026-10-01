@@ -1,0 +1,15 @@
+node_modules
+dist
+
+# editor / tool folders
+.qodo
+.vscode
+.idea
+
+# local junk
+*.log
+*.tsbuildinfo
+.DS_Store
+Thumbs.db
+.env
+.env.*

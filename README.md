@@ -29,6 +29,8 @@ npm run dev        # http://localhost:5173
   Trick Room, plus priority moves.
 - **Teams**: up to 6 per side, **Import paste**, **Copy paste**, **Share to Pokepaste**, and named **Teams** you can
   save and load onto either side. Press **1–6** to select your Pokémon and **Shift+1–6** for the opponent's.
+  **Drag a Pokémon's slot onto another to reorder** the team (the numbers update, and your selection follows). The
+  "Add from op.gg meta" box supports **↑ / ↓** to move through the suggestions, **Enter** to add and **Esc** to clear.
 - **op.gg usage panel** for the active Pokémon (moves, items, abilities, natures, spreads), for Singles or Doubles.
   Pick which move slot a clicked move fills.
 - **Presets**: save custom builds per Pokémon (shared across its Mega and other forms), with rename, update, delete,

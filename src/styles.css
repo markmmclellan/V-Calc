@@ -304,3 +304,13 @@ label.inline select { padding: 1px 4px; }
 .type-pop-row.immune .mult { color: var(--muted); }
 .type-pop-row .list { display: flex; flex-wrap: wrap; gap: 3px; }
 .type-pop-note { margin-top: 4px; font-size: 10px; color: var(--muted); }
+
+/* drag to reorder team slots */
+.slot { cursor: grab; }
+.slot:active { cursor: grabbing; }
+.slot.drag-src { opacity: 0.4; }
+.slot.drop-left { box-shadow: -4px 0 0 0 var(--accent); }
+.slot.drop-right { box-shadow: 4px 0 0 0 var(--accent); }
+
+/* keyboard-highlighted suggestion */
+.suggest li.hi { background: var(--line); }

@@ -15,6 +15,7 @@ export default function Sprite({ species, size = 40 }: { species: string; size?:
       width={size}
       height={size}
       alt=""
+      draggable={false}
       loading="lazy"
       onError={() => setFailed({ species, count: tried + 1 })}
     />

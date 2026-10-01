@@ -27,6 +27,24 @@ export function togglePartner(t: Team, index: number): Team {
   return { ...t, partner: t.partner === index ? undefined : index };
 }
 
+/**
+ * Move the Pokémon at `from` so it ends up at position `to` (the others shift to make room). The selected Pokémon
+ * and the partner follow their Pokémon, so reordering never changes who is selected.
+ */
+export function moveSlot(t: Team, from: number, to: number): Team {
+  const n = t.sets.length;
+  if (from === to || from < 0 || to < 0 || from >= n || to >= n) return t;
+  const sets = [...t.sets];
+  const [moved] = sets.splice(from, 1);
+  sets.splice(to, 0, moved);
+  const remap = (i: number) => {
+    if (i === from) return to;
+    if (from < to) return i > from && i <= to ? i - 1 : i;
+    return i >= to && i < from ? i + 1 : i;
+  };
+  return { ...t, sets, active: remap(t.active), partner: t.partner === undefined ? undefined : remap(t.partner) };
+}
+
 /** How many Pokémon a side has on the field: 2 only in Doubles with a partner picked. */
 export function onFieldCount(t: Team, doubles: boolean): 1 | 2 {
   const p = t.partner;
@@ -48,6 +66,13 @@ export default function TeamSide({ title, team, onChange, meta, format, side }: 
   const [text, setText] = useState('');
   const [warnings, setWarnings] = useState<string[]>([]);
   const [search, setSearch] = useState('');
+  const [hi, setHi] = useState(0); // highlighted suggestion (arrow keys / mouse)
+  const [dragFrom, setDragFrom] = useState<number | null>(null);
+  const [dragOver, setDragOver] = useState<number | null>(null);
+  const endDrag = () => {
+    setDragFrom(null);
+    setDragOver(null);
+  };
   const [copyState, setCopyState] = useState<'idle' | 'ok' | 'fail'>('idle');
   const copyTimer = useRef<number>(undefined);
   useEffect(() => () => window.clearTimeout(copyTimer.current), []);
@@ -176,13 +201,43 @@ export default function TeamSide({ title, team, onChange, meta, format, side }: 
         </div>
       )}
 
-      <div className="slots">
+      <div
+        className="slots"
+        onDragLeave={(e) => {
+          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragOver(null);
+        }}
+      >
         {team.sets.map((s, i) => (
           <div
             key={i}
-            className={'slot' + (i === team.active ? ' active' : '') + (doubles && i === team.partner ? ' partner' : '')}
+            className={
+              'slot' +
+              (i === team.active ? ' active' : '') +
+              (doubles && i === team.partner ? ' partner' : '') +
+              (dragFrom === i ? ' drag-src' : '') +
+              (dragFrom !== null && dragOver === i && dragFrom !== i ? (dragFrom < i ? ' drop-right' : ' drop-left') : '')
+            }
             onClick={() => onChange(focusSlot(team, i))}
-            title={`${s.species} (press ${side === 1 ? 'Shift+' : ''}${i + 1})`}
+            title={`${s.species} (press ${side === 1 ? 'Shift+' : ''}${i + 1}) · drag to reorder`}
+            draggable
+            onDragStart={(e) => {
+              setDragFrom(i);
+              e.dataTransfer.effectAllowed = 'move';
+              e.dataTransfer.setData('text/plain', String(i)); // Firefox won't start a drag without data
+            }}
+            onDragOver={(e) => {
+              if (dragFrom === null) return; // not one of this team's slots (e.g. dragged from the other side)
+              e.preventDefault();
+              e.dataTransfer.dropEffect = 'move';
+              if (dragOver !== i) setDragOver(i);
+            }}
+            onDrop={(e) => {
+              if (dragFrom === null) return;
+              e.preventDefault();
+              onChange(moveSlot(team, dragFrom, i));
+              endDrag();
+            }}
+            onDragEnd={endDrag}
           >
             <Sprite species={s.species} size={36} />
             <span className="slot-num">{i + 1}</span>
@@ -228,13 +283,43 @@ export default function TeamSide({ title, team, onChange, meta, format, side }: 
           placeholder={meta ? 'Add from op.gg meta (type a name)…' : 'Loading meta…'}
           value={search}
           disabled={!meta || team.sets.length >= 6}
-          onChange={(e) => setSearch(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && addFromMeta(0)}
+          role="combobox"
+          aria-expanded={matches.length > 0}
+          aria-controls={`suggest-${side}`}
+          aria-activedescendant={matches.length ? `suggest-${side}-${hi}` : undefined}
+          aria-autocomplete="list"
+          onChange={(e) => {
+            setSearch(e.target.value);
+            setHi(0);
+          }}
+          onKeyDown={(e) => {
+            if (!matches.length) return;
+            if (e.key === 'ArrowDown') {
+              e.preventDefault();
+              setHi((h) => (h + 1) % matches.length);
+            } else if (e.key === 'ArrowUp') {
+              e.preventDefault();
+              setHi((h) => (h - 1 + matches.length) % matches.length);
+            } else if (e.key === 'Enter') {
+              e.preventDefault();
+              addFromMeta(Math.min(hi, matches.length - 1));
+            } else if (e.key === 'Escape') {
+              setSearch('');
+            }
+          }}
         />
         {matches.length > 0 && (
-          <ul className="suggest">
+          <ul className="suggest" id={`suggest-${side}`} role="listbox">
             {matches.map((m, i) => (
-              <li key={m.key} onClick={() => addFromMeta(i)}>
+              <li
+                key={m.key}
+                id={`suggest-${side}-${i}`}
+                role="option"
+                aria-selected={i === hi}
+                className={i === hi ? 'hi' : ''}
+                onMouseMove={() => i !== hi && setHi(i)} // real movement only: a resting pointer must not steal the highlight
+                onClick={() => addFromMeta(i)}
+              >
                 <Sprite species={m.species} size={28} />
                 <span>{m.displayName}</span>
                 <span className="rank">#{m.rank[format] ?? '–'}</span>

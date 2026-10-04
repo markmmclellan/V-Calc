@@ -30,15 +30,15 @@ void data;
 const garchomp = mk('Garchomp-Mega-Z', ['Draco Meteor', 'Earthquake'], { sp: { spa: 32, hp: 2, spe: 32 }, nature: 'Modest' });
 const incin = mk('Incineroar', ['Flare Blitz', 'Fake Out', 'Knock Off'], { ability: 'Intimidate', sp: { hp: 32, atk: 32 } });
 const gyara = mk('Gyarados', ['Waterfall', 'Protect'], { ability: 'Intimidate', sp: { atk: 32, hp: 2 } });
-const statusOnly = mk('Blissey', ['Protect', 'Toxic'], { sp: { hp: 32 } });
+const statusOnly = mk('Clefable', ['Protect', 'Toxic'], { sp: { hp: 32 } });
 const groundOnly = mk('Garchomp', ['Earthquake'], { sp: { atk: 32 } });
 const flyer = mk('Charizard', ['Air Slash'], { sp: { spa: 32 } });
 
 const frail = mk('Pikachu', ['Protect', 'Thunder Wave']);
 let a = analyze([frail], [garchomp], 'single');
 check('a frail Pokémon with only status moves loses to a strong attacker', a.cells[0][0].score === -1 && a.cells[0][0].mine.move === '', `score ${a.cells[0][0].score}`);
-a = analyze([statusOnly], [incin], 'single');
-check('two Pokémon that cannot KO each other within 10 hits is a stalemate (0), not a loss', a.cells[0][0].score === 0, `Blissey vs Incineroar: ${a.cells[0][0].score}, their best ${a.cells[0][0].theirs.move} ${Math.round(a.cells[0][0].theirs.pct)}%`);
+a = analyze([statusOnly], [mk('Garchomp', ['Dragon Claw'], { sp: { atk: 32 } })], 'single');
+check('two Pokémon that cannot hurt each other is a stalemate (0), not a loss', a.cells[0][0].score === 0 && a.cells[0][0].mine.move === '' && a.cells[0][0].theirs.move === '', `Clefable (status only) vs Dragon Claw: ${a.cells[0][0].score}`);
 a = analyze([groundOnly], [flyer], 'single');
 check('Ground-only attacker cannot hurt a Flying type (immune is not a move)', a.cells[0][0].mine.move === '' && a.cells[0][0].score < 0, `${a.cells[0][0].mine.move || '(no move)'} score ${a.cells[0][0].score.toFixed(2)}`);
 

@@ -8,6 +8,8 @@ export interface ExtraResidual {
   bindingBand?: boolean;
   ingrain?: boolean;
   aquaRing?: boolean;
+  /** The defender is an intact Mimikyu: the first hit is blocked and costs it 1/8 max HP. */
+  disguise?: boolean;
 }
 
 export function getKOChance(

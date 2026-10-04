@@ -4,6 +4,7 @@ import BringPanel from './components/BringPanel';
 import FieldPanel from './components/FieldPanel';
 import LookUp, { type LookUpKind } from './components/LookUp';
 import MetaList from './components/MetaList';
+import RecommendPanel from './components/RecommendPanel';
 import PokemonEditor from './components/PokemonEditor';
 import Results from './components/Results';
 import TurnOrder from './components/TurnOrder';
@@ -54,6 +55,7 @@ export default function App() {
   const [listOpen, setListOpen] = useState(false);
   const [lookupOpen, setLookupOpen] = useState(false);
   const [bringOpen, setBringOpen] = useState(false);
+  const [recOpen, setRecOpen] = useState(false);
   // null until probed. false = a hosted copy (e.g. GitHub Pages) with no scraper: the button reloads the published data.
   const [canScrape, setCanScrape] = useState<boolean | null>(null);
   useEffect(() => {
@@ -280,6 +282,13 @@ export default function App() {
         >
           What to bring
         </button>
+        <button
+          onClick={() => setRecOpen(true)}
+          disabled={!yours.length || !theirs.length}
+          title="Recommend a move for the current matchup, using the HP, boosts, status and field you've set"
+        >
+          Best move
+        </button>
         <span className="meta-note">
           {error ? (
             <span className="err">{error}</span>
@@ -357,6 +366,10 @@ export default function App() {
           {b ? <PokemonEditor set={b} onChange={setActive(1)} meta={meta} format={format} /> : null}
         </div>
       </main>
+
+      {recOpen && (
+        <RecommendPanel mine={yours} theirs={theirs} field={calcField} doubles={doubles} onClose={() => setRecOpen(false)} />
+      )}
 
       {bringOpen && (
         <BringPanel

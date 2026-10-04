@@ -43,6 +43,37 @@ getKO = getKO.replace('function getKOChance(gen, attacker, defender, move, field
 getKO = getKO.replace('getEndOfTurn(gen, attacker, defender, move, field);', 'getEndOfTurn(gen, attacker, defender, move, field, extra);');
 eot = eot.replace('function getEndOfTurn(gen, attacker, defender, move, field) {', 'function getEndOfTurn(gen, attacker, defender, move, field, extra) {');
 
+// Mimikyu's Disguise: the first hit deals nothing and costs it 1/8 max HP, so one extra hit is needed. Modeled as
+// 1/8 chip damage up front (like a hazard) plus one more hit in every "nHKO" label. Each replacement must match.
+function must(text, from, to) {
+  if (!text.includes(from)) throw new Error(`getKOChance changed upstream; update the Disguise patch for: ${from.slice(0, 70)}`);
+  return text.replace(from, to);
+}
+getKO = must(
+  getKO,
+  'if (damage[0] >= defender.maxHP() && move.timesUsed === 1 && move.timesUsedWithMetronome === 1) {',
+  'if (damage[0] >= defender.maxHP() && move.timesUsed === 1 && move.timesUsedWithMetronome === 1 && !(extra && extra.disguise)) {',
+);
+getKO = must(
+  getKO,
+  'var hazards = getHazards(gen, defender, field.defenderSide, field);',
+  `var hazards = getHazards(gen, defender, field.defenderSide, field);
+    var hitShift = extra && extra.disguise ? 1 : 0;
+    if (hitShift) {
+        hazards.damage += Math.floor(defender.maxHP() / 8);
+        hazards.texts.push('Disguise (blocks the first hit)');
+    }`,
+);
+getKO = must(
+  getKO,
+  `var KOTurnText = n === 1 ? 'OHKO'
+            : (multipleTurns ? "KO in ".concat(n, " turns") : "".concat(n, "HKO"));`,
+  `var shown = n + hitShift;
+        var KOTurnText = shown === 1 ? 'OHKO'
+            : (multipleTurns ? "KO in ".concat(shown, " turns") : "".concat(shown, "HKO"));`,
+);
+getKO = must(getKO, 'text += "OHKO".concat(hazardsText);', 'text += KOTurnText.concat(hazardsText);');
+
 const hook = `    if (extra) {
         var xMaxHP = defender.maxHP();
         if (extra.curse && !defender.hasAbility('Magic Guard')) {

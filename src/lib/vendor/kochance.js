@@ -415,10 +415,15 @@ function getKOChance(gen, attacker, defender, move, field, damageObj, err, extra
         move.timesUsed = 1;
     if (move.timesUsedWithMetronome === undefined)
         move.timesUsedWithMetronome = 1;
-    if (damage[0] >= defender.maxHP() && move.timesUsed === 1 && move.timesUsedWithMetronome === 1) {
+    if (damage[0] >= defender.maxHP() && move.timesUsed === 1 && move.timesUsedWithMetronome === 1 && !(extra && extra.disguise)) {
         return { chance: 1, n: 1, text: 'guaranteed OHKO' };
     }
     var hazards = getHazards(gen, defender, field.defenderSide, field);
+    var hitShift = extra && extra.disguise ? 1 : 0;
+    if (hitShift) {
+        hazards.damage += Math.floor(defender.maxHP() / 8);
+        hazards.texts.push('Disguise (blocks the first hit)');
+    }
     var eot = getEndOfTurn(gen, attacker, defender, move, field, extra);
     var toxicCounter = defender.hasStatus('tox') && !defender.hasAbility('Magic Guard', 'Poison Heal')
         ? defender.toxicCounter : 0;
@@ -435,8 +440,9 @@ function getKOChance(gen, attacker, defender, move, field, damageObj, err, extra
     }
     function KOChance(chanceWithoutEot, chanceWithEot, n, multipleTurns) {
         if (multipleTurns === void 0) { multipleTurns = false; }
-        var KOTurnText = n === 1 ? 'OHKO'
-            : (multipleTurns ? "KO in ".concat(n, " turns") : "".concat(n, "HKO"));
+        var shown = n + hitShift;
+        var KOTurnText = shown === 1 ? 'OHKO'
+            : (multipleTurns ? "KO in ".concat(shown, " turns") : "".concat(shown, "HKO"));
         var text = qualifier;
         var chance = undefined;
         if (chanceWithoutEot === undefined || chanceWithEot === undefined) {
@@ -449,7 +455,7 @@ function getKOChance(gen, attacker, defender, move, field, damageObj, err, extra
         else if (chanceWithoutEot === 1) {
             chance = chanceWithoutEot;
             text = 'guaranteed ';
-            text += "OHKO".concat(hazardsText);
+            text += KOTurnText.concat(hazardsText);
         }
         else if (chanceWithoutEot > 0) {
             chance = chanceWithEot;

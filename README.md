@@ -44,6 +44,15 @@ npm run dev        # http://localhost:5173
   **Move to front** reorders your team to match and selects the leads. It assumes full HP and no field effects and doesn't
   model switching, Protect or status moves, so treat it as a starting point. Logic lives in `src/lib/bring.ts`
   (`npx tsx scripts/bring-test.mjs` checks it).
+- **Best move** (mid-battle): set each Pokémon's HP, boosts and status in its editor and the field in the Field panel, then
+  press **Best move**. In **Singles** it simulates the 1v1 for up to 5 turns, assuming the opponent uses whichever of
+  their damaging moves is worst for you, and ranks your moves by your chance to win, with the chance to KO right now, by
+  turn 2 and by turn 3. It accounts for accuracy, current HP, boosts, speed and priority, Disguise, recharge and
+  two-turn moves, and stat drops from moves like Draco Meteor. In **Doubles** it ranks combined plans for your two active
+  Pokémon this turn by KO chance and damage (focus fire, spread-move reduction and friendly fire from Earthquake-style
+  moves included), and shows what each opposing Pokémon can do to yours. Status moves, Fake Out and similar situational
+  moves are listed but not scored; switching, Protect, Focus Sash and residual damage are not modeled. Logic lives in
+  `src/lib/recommend.ts` (`npx tsx scripts/recommend-test.mjs` checks it).
 - **Look up**: the header's **Look up** button opens a searchable reference of every Champions move, item and ability with
   Smogon's descriptions. Search by name *or by what it does* ("lowers speed", "1.5x", "flinch"), filter moves by type and
   category, and press **Use: You / Use: Opp** to give one to that side's selected Pokémon (a Mega Stone switches it to
@@ -134,12 +143,14 @@ public/data/champions.json  scraped data
 
 `@smogon/calc` keeps its end-of-turn math private, so it can't be extended from outside. `src/lib/vendor/kochance.js`
 is a generated copy of that code (MIT licensed) with hooks for effects the library lacks (Ingrain, Aqua Ring, Curse,
-binding) and a fix so Gravity and Iron Ball ground Pokémon for Spikes. **After upgrading `@smogon/calc`, run
+binding, Mimikyu's Disguise) and a fix so Gravity and Iron Ball ground Pokémon for Spikes. **After upgrading `@smogon/calc`, run
 `node scripts/gen-kochance.mjs`** to regenerate it, then re-run the checks in `scripts/`.
 
 ## Known limits
 
 - Quick Claw, Custap Berry and abilities that react mid-turn are not modeled in turn order.
+- Mimikyu's Disguise is handled (an intact Mimikyu takes one extra hit and loses 1/8 HP; pick Mimikyu-Busted to see the
+  broken form). Other "survive the first hit" effects (Sturdy, Focus Sash) are not modeled in the KO text.
 - The negative-priority moves in `src/lib/speed.ts` (Trick Room, Dragon Tail, Counter and similar) are entered by hand
   because the calc's move data only lists positive priority. `scripts/reference-test.mjs` checks them against Smogon's data.
 - Mega usage on op.gg is recorded on the base Pokémon's page, so a Mega's usage numbers are approximate.

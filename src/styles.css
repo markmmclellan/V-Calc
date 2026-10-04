@@ -408,3 +408,36 @@ td.v-loses, .bg-verdict.v-loses { background: color-mix(in srgb, var(--bad) 38%,
 
 .bg-tag.mega { background: color-mix(in srgb, var(--warn) 28%, transparent); color: var(--warn); }
 .bg-tag.nomega { background: var(--line); color: var(--muted); }
+
+/* "Best move" panel */
+.modal.recommend { width: min(980px, 100%); }
+.rec-body { overflow-y: auto; padding: 0 12px 12px; display: flex; flex-direction: column; gap: 10px; }
+.rec-body h3 { margin: 4px 0; }
+.rec-state { padding: 8px 10px; border-radius: 8px; background: var(--panel-2); }
+.rec-state h3 { margin-top: 0; }
+.rec-sides { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.rec-sides h4 { margin: 0 0 2px; }
+.rec-mon { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.rec-field { margin: 6px 0 0; }
+.rec-top { padding: 10px 12px; border-radius: 10px; background: color-mix(in srgb, var(--good) 14%, var(--panel-2)); border: 1px solid color-mix(in srgb, var(--good) 45%, transparent); }
+.rec-none { background: var(--panel-2); border-color: var(--line); }
+.rec-pick { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.rec-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 700; }
+.rec-move { font-size: 20px; }
+.rec-win { color: var(--good); font-weight: 700; }
+.rec-why { margin: 4px 0 0; }
+.rec-actions, .rec-outcomes, .rec-replies { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
+.rec-actions li { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.rec-outcomes { font-size: 12px; color: var(--muted); }
+.rec-ff { color: var(--warn); font-size: 12px; }
+.rec-plans { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; }
+.rec-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.rec-table th { text-align: left; padding: 2px 6px; color: var(--muted); font-weight: 600; border-bottom: 1px solid var(--line); }
+.rec-table td { padding: 3px 6px; border-bottom: 1px solid var(--panel-2); vertical-align: middle; }
+.rec-table tr.best td { background: color-mix(in srgb, var(--good) 12%, transparent); }
+.rec-table .mv { font-weight: 700; white-space: nowrap; }
+.rec-table .star { color: var(--warn); }
+.winbar { display: flex; height: 5px; width: 80px; border-radius: 3px; overflow: hidden; background: var(--line); margin-bottom: 2px; }
+.winbar .w { background: var(--good); }
+.winbar .l { background: var(--bad); margin-left: auto; }
+.rec-skipped { margin: 0; }

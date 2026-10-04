@@ -81,6 +81,19 @@ export interface MoveResult {
   defenderHP: number;
   ko: string;
   desc: string;
+  /** Every possible damage roll of one use of the move (16 equally likely values), for exact KO probabilities. */
+  rolls: number[];
+  /** The target's current HP (what `rolls` is compared against). */
+  curHP: number;
+}
+
+/** The 16 damage rolls of a result. Multi-hit moves return one array per hit; their totals are spread evenly. */
+function rollsFrom(damage: unknown, min: number, max: number): number[] {
+  if (typeof damage === 'number') return [damage];
+  const arr = damage as unknown[];
+  if (arr.length >= 16 && typeof arr[0] === 'number') return arr as number[];
+  if (arr.length && typeof arr[0] === 'number') return [(arr as number[]).reduce((a, b) => a + b, 0)];
+  return Array.from({ length: 16 }, (_, i) => Math.round(min + ((max - min) * i) / 15));
 }
 
 /** Build a calc Pokemon. In the Champions ruleset the calc's `evs` are Stat Points (+1 final stat each). */
@@ -204,6 +217,22 @@ function immunityReason(defender: Pokemon, move: Move, field: FieldState): strin
   return 'No damage';
 }
 
+/** Abilities that make an attacker's moves ignore the defender's ability in Champions (negating Disguise). */
+const IGNORES_ABILITIES = ['Mold Breaker'];
+
+/**
+ * Mimikyu's Disguise: the first damaging hit it takes deals nothing and costs it 1/8 of its max HP (Smogon's
+ * Champions dex). The damage library has no concept of this, so callers add one hit to the count. It doesn't apply
+ * once Busted (the Mimikyu-Busted form), when the attacker has Mold Breaker, or to multi-hit moves (only the first
+ * hit would be blocked, which isn't modeled).
+ */
+export function disguiseIntact(attacker: PokemonSet, defender: PokemonSet, moveName: string): boolean {
+  if (defender.species !== 'Mimikyu' || defender.ability !== 'Disguise') return false;
+  if (IGNORES_ABILITIES.includes(attacker.ability)) return false;
+  const data = gen.moves.get(toID(moveName)) as { multihit?: number | number[] } | undefined;
+  return !!data && !data.multihit;
+}
+
 export function calcMove(
   attacker: PokemonSet,
   defender: PokemonSet,
@@ -224,6 +253,8 @@ export function calcMove(
     defenderHP: 0,
     ko: '',
     desc: '',
+    rolls: [],
+    curHP: 0,
   };
   try {
     const attackerSide = reversed ? field.defenderSide : field.attackerSide;
@@ -245,7 +276,14 @@ export function calcMove(
     }
     // Re-run the KO text through our copy of the library's logic so it also counts the effects it lacks.
     const ds = defenderSide;
-    const extra = { curse: ds.isCurse, bound: ds.isBound, bindingBand: ds.hasBindingBand, ingrain: ds.isIngrain, aquaRing: ds.isAquaRing };
+    const extra = {
+      curse: ds.isCurse,
+      bound: ds.isBound,
+      bindingBand: ds.hasBindingBand,
+      ingrain: ds.isIngrain,
+      aquaRing: ds.isAquaRing,
+      disguise: disguiseIntact(attacker, defender, moveName),
+    };
     let ko = '';
     let libKo = '';
     try {
@@ -268,6 +306,8 @@ export function calcMove(
       defenderHP: hp,
       ko,
       desc: fullDesc,
+      rolls: rollsFrom(result.damage, min, max),
+      curHP: d.curHP(),
     };
   } catch (e) {
     return { ...empty, desc: e instanceof Error ? e.message : String(e) };

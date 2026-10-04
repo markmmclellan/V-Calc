@@ -1,4 +1,4 @@
-import { blankField, calcMove, type FieldState } from './calc';
+import { blankField, calcMove, disguiseIntact, type FieldState } from './calc';
 import type { PokemonSet } from './model';
 import { effectiveSpeed, movePriority } from './speed';
 import { megaVariants } from './showdown';
@@ -13,8 +13,9 @@ export const BRING_COUNT: Record<Format, number> = { single: 3, double: 4 };
 export interface Strike {
   move: string; // '' when it has no damaging move that works
   pct: number; // average roll, as a % of the target's max HP
-  turns: number; // hits needed to KO from full HP (Infinity = can't)
+  turns: number; // hits needed to KO from full HP (Infinity = can't); includes the hit Disguise absorbs
   priority: number;
+  disguise?: boolean; // the target is an intact Mimikyu: its first hit is blocked and it loses 1/8 max HP
 }
 
 export type Verdict = 'strong' | 'favored' | 'even' | 'unfavored' | 'loses';
@@ -81,8 +82,10 @@ function bestStrike(att: PokemonSet, def: PokemonSet, field: FieldState, reverse
     if (!r.ok) continue; // status move, or it does nothing (immune, blocked)
     const pct = (r.minPct + r.maxPct) / 2;
     if (pct > best.pct) {
-      const turns = Math.ceil(100 / pct - 1e-9);
-      best = { move: m, pct, turns: turns > MAX_TURNS ? Infinity : turns, priority: movePriority(att, m, field)?.priority ?? 0 };
+      // Mimikyu's Disguise soaks up the first hit and chips it for 1/8, so it needs one more hit than the damage suggests
+      const disguise = disguiseIntact(att, def, m);
+      const turns = disguise ? 1 + Math.ceil((100 - 12.5) / pct - 1e-9) : Math.ceil(100 / pct - 1e-9);
+      best = { move: m, pct, turns: turns > MAX_TURNS ? Infinity : turns, priority: movePriority(att, m, field)?.priority ?? 0, disguise };
     }
   }
   return best;

@@ -34,6 +34,14 @@ npm run dev        # http://localhost:5173
   "Add from op.gg meta" box supports **↑ / ↓** to move through the suggestions, **Enter** to add and **Esc** to clear.
 - **Most used**: the header's **Most used** button opens op.gg's tier ranking (Singles or Doubles) with a filter box
   (name or type) and **+ You** / **+ Opp** buttons that add a Pokémon, built from its top usage, straight to a team.
+- **What to bring** (team preview): put the opponent's six into the Opponent team (the **Most used** list's **+ Opp**
+  button is the quick way) and your six on your side, then press **What to bring**. It judges every pair 1v1 with the
+  damage calculator (each side's best move, hits to KO, who moves first) and shows a 6×6 grid, then recommends the best
+  **3 (Singles) or 4 (Doubles)**, a lead (or a lead pair in Doubles, with small bonuses for Fake Out, Intimidate, Tailwind,
+  Trick Room, redirection and Helping Hand), why each was picked, and which of their Pokémon your group still can't answer.
+  **Move to front** reorders your team to match and selects the leads. It assumes full HP and no field effects and doesn't
+  model switching, Protect or status moves, so treat it as a starting point. Logic lives in `src/lib/bring.ts`
+  (`npx tsx scripts/bring-test.mjs` checks it).
 - **Look up**: the header's **Look up** button opens a searchable reference of every Champions move, item and ability with
   Smogon's descriptions. Search by name *or by what it does* ("lowers speed", "1.5x", "flinch"), filter moves by type and
   category, and press **Use: You / Use: Opp** to give one to that side's selected Pokémon (a Mega Stone switches it to

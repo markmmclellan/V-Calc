@@ -350,3 +350,41 @@ label.inline select { padding: 1px 4px; }
 .lookup-rows .lu-empty { display: block; padding: 12px; text-align: center; background: transparent; }
 .cat { font-size: 10px; font-weight: 700; text-transform: uppercase; padding: 0 6px; border-radius: 8px; background: var(--line); color: var(--muted); }
 .cat-physical { color: #f0a47a; } .cat-special { color: #8fb4ff; }
+
+/* "What to bring" panel */
+.modal.bring { width: min(1040px, 100%); }
+.bring-body { overflow-y: auto; padding: 0 12px 12px; }
+.bring-note { margin: 0 0 8px; padding: 6px 10px; border-radius: 8px; background: color-mix(in srgb, var(--warn) 14%, transparent); color: var(--warn); font-size: 12px; }
+.bring-grid-wrap { overflow-x: auto; }
+.bring-grid { width: 100%; border-collapse: separate; border-spacing: 3px; table-layout: fixed; }
+.bring-grid thead th { vertical-align: bottom; font-size: 11px; font-weight: 600; color: var(--muted); padding: 2px 0; }
+.bring-grid thead th:first-child, .bring-grid tbody th { width: 178px; }
+.bring-grid th .bg-name { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bring-grid tbody th { text-align: left; font-size: 12px; font-weight: 600; padding: 2px 6px; border-radius: 6px; background: var(--panel-2); }
+.bring-grid tbody th .sprite, .bring-grid tbody th .sprite-ph { vertical-align: middle; margin-right: 4px; }
+.bring-grid tbody th .bg-name { display: inline-block; max-width: 112px; vertical-align: middle; }
+.bring-grid tr.picked th { box-shadow: inset 3px 0 0 var(--accent); }
+.bg-tag { display: inline-block; margin-left: 4px; padding: 0 6px; border-radius: 8px; font-size: 9px; font-weight: 800; letter-spacing: 0.05em; background: color-mix(in srgb, var(--accent) 22%, transparent); color: var(--accent); vertical-align: middle; }
+.bg-tag.lead { background: var(--accent); color: #07101f; }
+.bg-threat { display: block; margin: 1px auto 0; width: fit-content; padding: 0 6px; border-radius: 8px; font-size: 9px; font-weight: 800; text-transform: uppercase; background: color-mix(in srgb, var(--bad) 22%, transparent); color: var(--bad); }
+.bring-grid td { padding: 3px 4px; border-radius: 6px; text-align: center; background: var(--panel-2); cursor: help; }
+.bc-top { font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.bc-sep { color: var(--muted); font-weight: 400; }
+.bc-bot { font-size: 10px; color: var(--muted); white-space: nowrap; }
+td.v-strong, .bg-verdict.v-strong { background: color-mix(in srgb, var(--good) 38%, var(--panel-2)); }
+td.v-favored, .bg-verdict.v-favored { background: color-mix(in srgb, var(--good) 20%, var(--panel-2)); }
+td.v-even, .bg-verdict.v-even { background: var(--panel-2); }
+td.v-unfavored, .bg-verdict.v-unfavored { background: color-mix(in srgb, var(--bad) 20%, var(--panel-2)); }
+td.v-loses, .bg-verdict.v-loses { background: color-mix(in srgb, var(--bad) 38%, var(--panel-2)); }
+.bring-legend { margin: 6px 0 10px; }
+.bring-cols { display: grid; grid-template-columns: 1.3fr 1fr; gap: 12px; align-items: start; }
+@media (max-width: 800px) { .bring-cols { grid-template-columns: 1fr; } }
+.bring-reco h3, .bring-threats h3 { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+.bring-reco .apply { margin-left: auto; padding: 1px 8px; font-size: 11px; text-transform: none; letter-spacing: 0; }
+.bring-reco ol, .bring-threats ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.bring-reco li, .bring-threats li { padding: 6px 8px; border-radius: 8px; background: var(--panel-2); }
+.rc-head { display: flex; align-items: center; gap: 6px; }
+.rc-line { font-size: 12px; margin-top: 2px; }
+.rc-line.good { color: var(--good); } .rc-line.bad { color: var(--bad); } .rc-line.syn { color: var(--accent); }
+.bg-verdict { margin-left: auto; padding: 0 8px; border-radius: 8px; font-size: 10px; font-weight: 700; }
+.bring-foot { margin: 10px 0 0; }

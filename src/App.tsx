@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { MEGA_STONES } from '@smogon/calc';
+import BringPanel from './components/BringPanel';
 import FieldPanel from './components/FieldPanel';
 import LookUp, { type LookUpKind } from './components/LookUp';
 import MetaList from './components/MetaList';
@@ -52,6 +53,7 @@ export default function App() {
   const [flashLabel, setFlashLabel] = useState('');
   const [listOpen, setListOpen] = useState(false);
   const [lookupOpen, setLookupOpen] = useState(false);
+  const [bringOpen, setBringOpen] = useState(false);
   // null until probed. false = a hosted copy (e.g. GitHub Pages) with no scraper: the button reloads the published data.
   const [canScrape, setCanScrape] = useState<boolean | null>(null);
   useEffect(() => {
@@ -150,6 +152,18 @@ export default function App() {
       copy[side] = { ...t, sets: t.sets.map((s, i) => (i === t.active ? next : s)) };
       return copy;
     });
+
+  /** Put the recommended Pokémon first (leads at the front) and select the leads, like arranging a team in preview. */
+  const applyBring = (bring: number[], leads: number[]) => {
+    setTeams((old) => {
+      const t = old[0];
+      const order = [...bring, ...t.sets.map((_, i) => i).filter((i) => !bring.includes(i))];
+      const sets = order.map((i) => t.sets[i]);
+      const next: [Team, Team] = [{ sets, active: 0, partner: doubles && leads.length > 1 ? 1 : undefined }, old[1]];
+      return next;
+    });
+    setBringOpen(false);
+  };
 
   const changeFormat =(f: BattleFormat) => {
     setFormat(f);
@@ -259,6 +273,13 @@ export default function App() {
         <button onClick={() => setLookupOpen(true)} title="Search moves, items and abilities (Smogon descriptions) and give one to a Pokémon">
           Look up
         </button>
+        <button
+          onClick={() => setBringOpen(true)}
+          disabled={!teams[0].sets.length || !teams[1].sets.length}
+          title="Team preview: see how your team matches up against the opponent's and what to bring"
+        >
+          What to bring
+        </button>
         <span className="meta-note">
           {error ? (
             <span className="err">{error}</span>
@@ -336,6 +357,16 @@ export default function App() {
           {b ? <PokemonEditor set={b} onChange={setActive(1)} meta={meta} format={format} /> : null}
         </div>
       </main>
+
+      {bringOpen && (
+        <BringPanel
+          mine={teams[0].sets}
+          theirs={teams[1].sets}
+          format={format}
+          onApply={applyBring}
+          onClose={() => setBringOpen(false)}
+        />
+      )}
 
       {lookupOpen && (
         <LookUp

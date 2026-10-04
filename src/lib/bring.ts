@@ -1,6 +1,7 @@
 import { blankField, calcMove, type FieldState } from './calc';
 import type { PokemonSet } from './model';
 import { effectiveSpeed, movePriority } from './speed';
+import { megaVariants } from './showdown';
 import { cleanSet } from './teams';
 
 export type Format = 'single' | 'double';
@@ -29,6 +30,7 @@ export interface Cell {
 
 export interface Reason {
   index: number; // into your team
+  form: 'mega' | 'base' | null; // null = can't Mega Evolve; 'base' = holds a Mega Stone but another pick is the one that evolves
   beats: { j: number; note: string }[];
   struggles: number[]; // opposing indices it does badly against
   synergy: string[]; // Doubles: why it works with its lead partner
@@ -49,6 +51,14 @@ export interface Analysis {
   threats: Threat[]; // worst first
   weights: number[]; // how dangerous each of theirs is (1..2)
   value: number;
+  /** Your Pokémon as they are judged: the picks in the form they'll be in, the rest as their Mega (if they have one). */
+  sets: PokemonSet[];
+  /** Which of your picks Mega Evolves (only one can per battle), or null. */
+  mega: number | null;
+  /** True when two or more of your picks hold Mega Stones, so only one of them actually evolves. */
+  conflict: boolean;
+  /** Score any group of yours (with the best choice of which stone holder evolves). */
+  evaluate: (group: number[]) => { value: number; mega: number | null };
 }
 
 const MAX_TURNS = 10; // needing more hits than this counts as "can't KO"
@@ -162,35 +172,63 @@ const label = (s: PokemonSet) => s.nickname || s.species;
 /**
  * Work out which of `mine` to bring against `theirs` (each up to 6, from team preview).
  * Every Pokémon is judged as it is built, at full HP with no field effects.
+ *
+ * Only one Pokémon can Mega Evolve per battle. A stone holder is therefore judged both ways, and a group is scored with
+ * the best choice of which one evolves; any other stone holder in the group plays as its base form. The opponent's
+ * Pokémon are judged as entered (so every stone holder of theirs counts as Mega Evolved, the cautious assumption).
  */
 export function analyze(mineRaw: PokemonSet[], theirsRaw: PokemonSet[], format: Format): Analysis {
-  const mine = mineRaw.map(cleanSet);
+  const given = mineRaw.map(cleanSet);
   const theirs = theirsRaw.map(cleanSet);
   const field = previewField(format);
-  const cells = mine.map((me) => theirs.map((them) => matchup(me, them, field)));
+
+  const variants = given.map((s) => megaVariants(s));
+  const megaSets = given.map((s, i) => (variants[i] ? cleanSet(variants[i]!.mega) : s));
+  const baseSets = variants.map((v) => (v ? cleanSet(v.base) : null));
+  const megaRows = megaSets.map((me) => theirs.map((them) => matchup(me, them, field)));
+  const baseRows = baseSets.map((base) => (base ? theirs.map((them) => matchup(base, them, field)) : null));
+  const canMega = (i: number) => baseRows[i] !== null;
 
   // opposing Pokémon that beat most of your team count for more
   const weights = theirs.map((_, j) => {
-    const avgLoss = mine.length ? mine.reduce((acc, _m, i) => acc - cells[i][j].score, 0) / mine.length : 0;
+    const avgLoss = given.length ? given.reduce((acc, _m, i) => acc - megaRows[i][j].score, 0) / given.length : 0;
     return 1 + clamp(avgLoss, 0, 1);
   });
 
-  const n = Math.min(BRING_COUNT[format], mine.length);
-  let group = mine.map((_, i) => i);
-  let value = 0;
-  if (mine.length && theirs.length) {
-    let best = -Infinity;
-    for (const g of combos(mine.length, n)) {
-      const v = groupValue(cells, g, weights, format);
-      if (v > best + 1e-9) {
-        best = v;
+  /** A group's value with the best choice of who Mega Evolves (nobody is also allowed). */
+  const evaluate = (g: number[]) => {
+    const holders = g.filter(canMega);
+    const options = holders.length ? [...holders, -1] : [-1];
+    let best = { value: -Infinity, mega: null as number | null, cells: megaRows };
+    for (const m of options) {
+      const cells = megaRows.map((row, i) => (g.includes(i) && canMega(i) && i !== m ? baseRows[i]! : row));
+      const value = groupValue(cells, g, weights, format);
+      if (value > best.value + 1e-9) best = { value, mega: m >= 0 ? m : null, cells };
+    }
+    return best;
+  };
+
+  const n = Math.min(BRING_COUNT[format], given.length);
+  let group = given.map((_, i) => i);
+  if (given.length && theirs.length) {
+    let bestValue = -Infinity;
+    for (const g of combos(given.length, n)) {
+      const v = evaluate(g).value;
+      if (v > bestValue + 1e-9) {
+        bestValue = v;
         group = g;
       }
     }
-    value = best;
   } else {
     group = group.slice(0, n);
   }
+
+  const chosen = group.length && theirs.length ? evaluate(group) : { value: 0, mega: null as number | null, cells: megaRows };
+  const cells = chosen.cells;
+  const picked = new Set(group);
+  const sets = given.map((_, i) => (picked.has(i) && canMega(i) && i !== chosen.mega ? baseSets[i]! : megaSets[i]));
+  const form = (i: number): Reason['form'] => (!canMega(i) ? null : picked.has(i) && i !== chosen.mega ? 'base' : 'mega');
+  const conflict = group.filter(canMega).length > 1;
 
   // leads: one in Singles, the best pair in Doubles
   let leads: number[] = [];
@@ -202,7 +240,7 @@ export function analyze(mineRaw: PokemonSet[], theirsRaw: PokemonSet[], format: 
       let best = -Infinity;
       const totalWeight = weights.reduce((x, y) => x + y, 0);
       for (const [a, b] of combos(group.length, 2).map((c) => c.map((x) => group[x]))) {
-        const syn = pairSynergy(mine[a], mine[b]);
+        const syn = pairSynergy(sets[a], sets[b]);
         // a synergy bonus of 0.25 counts like improving the pair's score by 0.125 against everything they have
         const v = groupValue(cells, [a, b], weights, 'double') + syn.bonus * 0.5 * totalWeight;
         if (v > best + 1e-9) {
@@ -232,7 +270,7 @@ export function analyze(mineRaw: PokemonSet[], theirsRaw: PokemonSet[], format: 
       .sort((a, b) => a.s - b.s)
       .slice(0, 3)
       .map(({ j }) => j);
-    return { index: i, beats, struggles, synergy: format === 'double' && leads.includes(i) ? synergyNotes : [] };
+    return { index: i, form: form(i), beats, struggles, synergy: format === 'double' && leads.includes(i) ? synergyNotes : [] };
   });
 
   const threats: Threat[] = [];
@@ -244,7 +282,23 @@ export function analyze(mineRaw: PokemonSet[], theirsRaw: PokemonSet[], format: 
   });
   threats.sort((a, b) => cells[a.answer][a.j].score - cells[b.answer][b.j].score);
 
-  return { format, cells, bring, leads, reasons, threats, weights, value };
+  return {
+    format,
+    cells,
+    bring,
+    leads,
+    reasons,
+    threats,
+    weights,
+    value: chosen.value,
+    sets,
+    mega: chosen.mega,
+    conflict,
+    evaluate: (g) => {
+      const r = evaluate(g);
+      return { value: r.value, mega: r.mega };
+    },
+  };
 }
 
 export { label as pokemonLabel };

@@ -39,6 +39,8 @@ npm run dev        # http://localhost:5173
   damage calculator (each side's best move, hits to KO, who moves first) and shows a 6×6 grid, then recommends the best
   **3 (Singles) or 4 (Doubles)**, a lead (or a lead pair in Doubles, with small bonuses for Fake Out, Intimidate, Tailwind,
   Trick Room, redirection and Helping Hand), why each was picked, and which of their Pokémon your group still can't answer.
+  Only one Pokémon can Mega Evolve per battle, so each of your Mega Stone holders is judged both ways and a group is
+  scored with the best choice of which one evolves (the others play as their base form, tagged **NO MEGA**).
   **Move to front** reorders your team to match and selects the leads. It assumes full HP and no field effects and doesn't
   model switching, Protect or status moves, so treat it as a starting point. Logic lives in `src/lib/bring.ts`
   (`npx tsx scripts/bring-test.mjs` checks it).
@@ -52,7 +54,9 @@ npm run dev        # http://localhost:5173
   clear-all and export/import.
 - **Field and battle state**: weather, terrain, Gravity, Trick Room, screens, hazards, Tailwind, Fairy Aura, Salt Cure,
   Leech Seed, Curse, binding, Ingrain, Aqua Ring, Charge, Steely Spirit, stat boosts, status, HP (bar, value or
-  percent), "Ability active" and Supreme Overlord. **Reset battle** clears all of it.
+  percent), "Ability active" and Supreme Overlord. **Reset battle** clears all of it. In the Field panel the common
+  effects (Reflect, Light Screen, Stealth Rock, Helping Hand) are one-click chips; everything else is added from each
+  side's **+ Add effect** menu and shows as a removable tag while it is on.
 - **Doubles on-field pair**: click a Pokémon to select it, and press **＋** on another slot to put it on the field as the
   second one (the selected Pokémon is always on the field). Spread moves only lose their ×0.75 when they would hit more
   than one Pokémon, so with a single Pokémon on a side they are not reduced. Earthquake-style moves also count your own

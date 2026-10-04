@@ -41,8 +41,16 @@ export default function BringPanel({ mine, theirs, format, onApply, onClose }: P
   }, [onClose]);
 
   const picked = new Set(a.bring);
+  const sets = a.sets;
+  const tagFor = (i: number) => a.reasons.find((r) => r.index === i)?.form ?? null;
   const isLead = (i: number) => a.leads.includes(i);
   const lacking = mine.length < count ? `You only have ${mine.length} Pokémon, so all of them come. Add more to get a real choice.` : '';
+  const conflict = a.conflict
+    ? `Only one Pokémon can Mega Evolve per battle. ${a.mega !== null ? `${pokemonLabel(sets[a.mega])} is assumed to` : 'None is assumed to'}; the other${a.reasons.filter((r) => r.form === 'base').length > 1 ? 's play' : ' plays'} as ${a.reasons
+        .filter((r) => r.form === 'base')
+        .map((r) => pokemonLabel(sets[r.index]))
+        .join(' and ')} (with a Mega Stone that does nothing there).`
+    : '';
   const partial = theirs.length < 6 ? `Only ${theirs.length} of the opponent's 6 ${theirs.length === 1 ? 'is' : 'are'} entered. Add the rest in team preview for the best advice.` : '';
 
   return (
@@ -58,7 +66,7 @@ export default function BringPanel({ mine, theirs, format, onApply, onClose }: P
         </header>
 
         <div className="bring-body">
-          {(lacking || partial) && <p className="bring-note">{[lacking, partial].filter(Boolean).join(' ')}</p>}
+          {(lacking || partial || conflict) && <p className="bring-note">{[lacking, partial, conflict].filter(Boolean).join(' ')}</p>}
 
           <div className="bring-grid-wrap">
             <table className="bring-grid">
@@ -75,12 +83,16 @@ export default function BringPanel({ mine, theirs, format, onApply, onClose }: P
                 </tr>
               </thead>
               <tbody>
-                {mine.map((m, i) => (
+                {sets.map((m, i) => (
                   <tr key={i} className={picked.has(i) ? 'picked' : ''}>
                     <th scope="row">
                       <Sprite species={m.species} size={30} />
                       <span className="bg-name">{pokemonLabel(m)}</span>
                       {picked.has(i) && <span className={'bg-tag' + (isLead(i) ? ' lead' : '')}>{isLead(i) ? 'LEAD' : 'BRING'}</span>}
+                      {picked.has(i) && tagFor(i) === 'mega' && <span className="bg-tag mega" title="This is the one Pokémon that Mega Evolves">MEGA</span>}
+                      {picked.has(i) && tagFor(i) === 'base' && (
+                        <span className="bg-tag nomega" title="Only one Pokémon can Mega Evolve per battle, so this one is judged in its base form">NO MEGA</span>
+                      )}
                     </th>
                     {theirs.map((t, j) => {
                       const c = a.cells[i][j];
@@ -117,18 +129,23 @@ export default function BringPanel({ mine, theirs, format, onApply, onClose }: P
               {a.bring.length === 0 && <p className="hint">Add Pokémon to both teams.</p>}
               <ol>
                 {a.reasons.map((r) => {
-                  const m = mine[r.index];
+                  const m = sets[r.index];
                   return (
                     <li key={r.index}>
                       <div className="rc-head">
                         <Sprite species={m.species} size={26} />
                         <strong>{pokemonLabel(m)}</strong>
                         {isLead(r.index) && <span className="bg-tag lead">LEAD</span>}
+                        {r.form === 'mega' && <span className="bg-tag mega">MEGA</span>}
+                        {r.form === 'base' && <span className="bg-tag nomega">NO MEGA</span>}
                       </div>
                       {r.beats.length > 0 && (
                         <div className="rc-line good">
                           Beats {r.beats.map((b) => `${pokemonLabel(theirs[b.j])} (${b.note})`).join(', ')}
                         </div>
+                      )}
+                      {r.form === 'base' && (
+                        <div className="rc-line hint">Holds a Mega Stone, but only one Pokémon can Mega Evolve per battle, so it's judged as {pokemonLabel(m)}.</div>
                       )}
                       {r.beats.length === 0 && <div className="rc-line hint">Doesn't clearly beat any of theirs; brought for the best remaining coverage.</div>}
                       {r.struggles.length > 0 && <div className="rc-line bad">Struggles against {r.struggles.map((j) => pokemonLabel(theirs[j])).join(', ')}</div>}
@@ -155,7 +172,7 @@ export default function BringPanel({ mine, theirs, format, onApply, onClose }: P
                       <span className={`bg-verdict v-${t.verdict}`}>{VERDICT_TEXT[t.verdict]}</span>
                     </div>
                     <div className="rc-line">
-                      Your best answer is {pokemonLabel(mine[t.answer])}
+                      Your best answer is {pokemonLabel(sets[t.answer])}
                       {t.theirMove ? `; it hits back with ${t.theirMove} for about ${t.theirPct}%` : ''}.
                     </div>
                   </li>
@@ -166,7 +183,7 @@ export default function BringPanel({ mine, theirs, format, onApply, onClose }: P
 
           <p className="hint bring-foot">
             Judged 1v1 at full HP with no weather, terrain or boosts, using each Pokémon's current build (the opponent's are op.gg's
-            most-used sets). It doesn't model switching, Protect, status moves or Doubles positioning, so treat it as a starting point.
+            most-used sets, judged as entered, so a stone holder of theirs counts as Mega Evolved). It doesn't model switching, Protect, status moves or Doubles positioning, so treat it as a starting point.
           </p>
         </div>
       </div>

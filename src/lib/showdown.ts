@@ -216,3 +216,20 @@ export function withItem(set: PokemonSet, item: string): PokemonSet {
   const abs = abilitiesOf(next);
   return { ...set, item, species: next, ability: mega ? abs[0] ?? set.ability : abs.includes(set.ability) ? set.ability : abs[0] ?? '' };
 }
+
+/**
+ * The two forms of a Pokémon holding its Mega Stone: Mega Evolved, and still in its base form (same item, with an
+ * ability that is legal for the form, like the editor's Mega button). Null if it can't Mega Evolve.
+ */
+export function megaVariants(set: PokemonSet): { mega: PokemonSet; base: PokemonSet } | null {
+  const current = baseForMega(set.species);
+  const baseName = current?.base ?? set.species;
+  const megaName = set.item ? megaFor(baseName, set.item) : undefined;
+  if (!megaName || !gen.species.get(toID(megaName))) return null;
+  const as = (species: string, mega: boolean): PokemonSet => {
+    if (species === set.species) return set;
+    const abs = abilitiesOf(species);
+    return { ...set, species, ability: mega ? abs[0] ?? set.ability : abs.includes(set.ability) ? set.ability : abs[0] ?? '' };
+  };
+  return { mega: as(megaName, true), base: as(baseName, false) };
+}

@@ -129,7 +129,7 @@ export default function TurnOrder({ teams, field, onSelect, onTrickRoom, onTailw
       {rows.length === 0 ? (
         <p className="hint">Add Pokémon to see speed order.</p>
       ) : (
-        <ol className="to-list" style={{ gridTemplateRows: `repeat(${Math.ceil(rows.length / 2)}, auto)` }}>
+        <ol className="to-list">
           {rows.map((r, i) => (
             <li
               key={`${r.team}-${r.index}`}

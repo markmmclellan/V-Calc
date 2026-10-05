@@ -228,6 +228,7 @@ const IGNORES_ABILITIES = ['Mold Breaker'];
  */
 export function disguiseIntact(attacker: PokemonSet, defender: PokemonSet, moveName: string): boolean {
   if (defender.species !== 'Mimikyu' || defender.ability !== 'Disguise') return false;
+  if (defender.abilityOn) return false; // "Disguise broken" is ticked in the editor
   if (IGNORES_ABILITIES.includes(attacker.ability)) return false;
   const data = gen.moves.get(toID(moveName)) as { multihit?: number | number[] } | undefined;
   return !!data && !data.multihit;

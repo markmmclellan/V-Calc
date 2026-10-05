@@ -308,9 +308,9 @@ export default function PokemonEditor({ set, onChange, meta, format, weather, on
             </select>
           </label>
         ))}
-        <label className="check" title="For abilities that need to be active (e.g. Flash Fire, Protosynthesis)">
+        <label className="check" title={set.ability === 'Disguise' ? 'Tick once the Disguise has been broken (the first hit is no longer blocked)' : 'For abilities that need to be active (e.g. Flash Fire, Protosynthesis)'}>
           <input type="checkbox" checked={set.abilityOn} onChange={(e) => patch({ abilityOn: e.target.checked })} />
-          Ability active
+          {set.ability === 'Disguise' ? 'Disguise broken' : 'Ability active'}
         </label>
         {set.ability === 'Supreme Overlord' && (
           <label className="inline" title="Supreme Overlord: +10% power per fainted ally (up to 5)">

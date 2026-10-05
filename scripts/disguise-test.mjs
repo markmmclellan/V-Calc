@@ -15,6 +15,7 @@ const garchomp = mk('Garchomp-Mega-Z', ['Earthquake'], 'Levitate', { atk: 32 });
 
 // ---- the helper
 check('intact Mimikyu with Disguise is protected', disguiseIntact(kingambit, mimi(), 'Iron Head'));
+check('ticking "Disguise broken" (abilityOn) removes the protection', !disguiseIntact(kingambit, { ...mimi(), abilityOn: true }, 'Iron Head'));
 check('Mimikyu-Busted is not protected', !disguiseIntact(kingambit, mimi('Mimikyu-Busted'), 'Iron Head'));
 check('a Pokémon without Disguise is not protected', !disguiseIntact(kingambit, mk('Mimikyu', ['Play Rough'], 'Technician'), 'Iron Head'));
 check('Mold Breaker ignores Disguise', !disguiseIntact(mk('Excadrill', ['Iron Head'], 'Mold Breaker'), mimi(), 'Iron Head'));

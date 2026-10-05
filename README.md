@@ -71,6 +71,11 @@ npm run dev        # http://localhost:5173
   than one Pokémon, so with a single Pokémon on a side they are not reduced. Earthquake-style moves also count your own
   partner. Click the second Pokémon (or press its number) to swap the pair. With two Pokémon on a side, the damage
   panels switch to a grid showing every selected attacker's damaging moves against every selected foe.
+- **Stat-move buttons**: a status move that changes stats (Dragon Dance, Swords Dance, Shell Smash, Charm, Screech, Haze...)
+  shows a small button on its row, e.g. **+1 Atk/Spe**. Click it to apply the change to the Battle state instead of using the
+  dropdowns. Boosts go to the user, drops to the opposing Pokémon, and partner moves (Coaching, Howl) to your Doubles
+  partner. Changes stop at ±6, and it says why when nothing happens (Belly Drum below 50% HP, a stat already maxed). It
+  doesn't account for abilities like Contrary, Simple, Clear Body or Defiant.
 - **Mega toggle**: click the Mega Stone to switch between the base and Mega form.
 - **Type matchups**: hover (or focus) a Pokémon's type badges to see everything it is weak to, resists or is immune to,
   grouped by multiplier (4×, 2×, ½×, ¼×, 0×). Type chart only; abilities and items aren't included.

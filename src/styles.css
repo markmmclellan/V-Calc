@@ -441,3 +441,9 @@ td.v-loses, .bg-verdict.v-loses { background: color-mix(in srgb, var(--bad) 38%,
 .winbar .w { background: var(--good); }
 .winbar .l { background: var(--bad); margin-left: auto; }
 .rec-skipped { margin: 0; }
+
+/* stat-move button on status moves */
+.stat-move { flex: none; max-width: 190px; padding: 0 8px; line-height: 1.5; font-size: 11px; font-weight: 600; border-radius: 10px; color: var(--accent); border-color: color-mix(in srgb, var(--accent) 55%, transparent); background: color-mix(in srgb, var(--accent) 12%, transparent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.stat-move:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 28%, transparent); }
+.stat-move.done { color: var(--good); border-color: var(--good); background: color-mix(in srgb, var(--good) 15%, transparent); }
+.stat-move.failed { color: var(--warn); border-color: var(--warn); background: color-mix(in srgb, var(--warn) 14%, transparent); max-width: 260px; }

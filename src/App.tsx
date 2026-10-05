@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { MEGA_STONES } from '@smogon/calc';
+import { MEGA_STONES, toID } from '@smogon/calc';
 import BringPanel from './components/BringPanel';
 import FieldPanel from './components/FieldPanel';
 import LookUp, { type LookUpKind } from './components/LookUp';
@@ -14,6 +14,7 @@ import { canRefreshFromOpgg, loadMeta, refreshFromOpgg, setFromMeta, type MetaEn
 import { gen, zeroBoosts, type PokemonSet } from './lib/model';
 import { abilitiesOf } from './lib/abilities';
 import { withItem } from './lib/showdown';
+import { applyStatEffect, statEffect } from './lib/statMoves';
 import shaymin from '../shaymin-land.svg';
 import victini from '../victini.svg';
 
@@ -165,6 +166,49 @@ export default function App() {
       return next;
     });
     setBringOpen(false);
+  };
+
+  /**
+   * A status move's stat changes, applied for `side`'s selected Pokémon: boosts go to the user, drops to the opposing
+   * Pokémon, partner boosts to the Doubles partner. Returns why nothing changed, or undefined on success.
+   */
+  const applyStatMove = (side: 0 | 1, move: string): string | undefined => {
+    const mine = teams[side];
+    const theirs = teams[1 - side];
+    const me = mine.sets[mine.active];
+    if (!me) return 'No Pokémon selected';
+    const types = (gen.species.get(toID(me.species))?.types ?? []) as string[];
+    const effect = statEffect(move, { types, weather: field.weather });
+    if (!effect) return `${move} has no stat changes to apply`;
+    const partnerOf = (t: Team) => (doubles && onFieldCount(t, true) === 2 ? t.partner : undefined);
+    const allyIdx = partnerOf(mine);
+    const foePartnerIdx = partnerOf(theirs);
+    const foe = theirs.sets[theirs.active];
+    const result = applyStatEffect({
+      me,
+      foe,
+      ally: allyIdx !== undefined ? mine.sets[allyIdx] : undefined,
+      foePartner: foePartnerIdx !== undefined ? theirs.sets[foePartnerIdx] : undefined,
+      effect,
+    });
+    if (!result.ok) return result.reason;
+    setTeams((old) => {
+      const next: [Team, Team] = [old[0], old[1]];
+      const put = (s: 0 | 1, idx: number | undefined, p: PokemonSet | undefined) => {
+        if (idx === undefined || !p) return;
+        next[s] = { ...next[s], sets: next[s].sets.map((x, i) => (i === idx ? p : x)) };
+      };
+      put(side, mine.active, result.me);
+      put(side, allyIdx, result.ally);
+      put((1 - side) as 0 | 1, theirs.active, result.foe);
+      put((1 - side) as 0 | 1, foePartnerIdx, result.foePartner);
+      return next;
+    });
+    if (result.foeCurse) {
+      const key = side === 0 ? 'defenderSide' : 'attackerSide';
+      setField((f) => ({ ...f, [key]: { ...f[key], isCurse: true } }));
+    }
+    return undefined;
   };
 
   const changeFormat =(f: BattleFormat) => {
@@ -340,7 +384,7 @@ export default function App() {
       <main className="layout">
         <div className="col">
           <TeamSide title="Your team" team={teams[0]} onChange={setTeam(0)} meta={meta} format={format} side={0} />
-          {a ? <PokemonEditor set={a} onChange={setActive(0)} meta={meta} format={format} /> : null}
+          {a ? <PokemonEditor set={a} onChange={setActive(0)} meta={meta} format={format} weather={field.weather} onStatMove={(m) => applyStatMove(0, m)} /> : null}
         </div>
 
         <div className="col center">
@@ -363,7 +407,7 @@ export default function App() {
 
         <div className="col">
           <TeamSide title="Opponent" team={teams[1]} onChange={setTeam(1)} meta={meta} format={format} side={1} />
-          {b ? <PokemonEditor set={b} onChange={setActive(1)} meta={meta} format={format} /> : null}
+          {b ? <PokemonEditor set={b} onChange={setActive(1)} meta={meta} format={format} weather={field.weather} onStatMove={(m) => applyStatMove(1, m)} /> : null}
         </div>
       </main>
 

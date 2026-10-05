@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { toID } from '@smogon/calc';
 import { metaFor, type BattleFormat, type Meta } from '../lib/data';
 import {
@@ -19,6 +19,7 @@ import {
 } from '../lib/model';
 import { abilitiesOf } from '../lib/abilities';
 import { baseForMega, megaFor, withItem } from '../lib/showdown';
+import { describeEffect, statEffect } from '../lib/statMoves';
 import { smogonUrl } from '../lib/smogon';
 import PresetBar from './PresetBar';
 import TypeBadges from './TypeBadges';
@@ -30,6 +31,10 @@ interface Props {
   onChange: (s: PokemonSet) => void;
   meta: Meta | null;
   format: BattleFormat;
+  /** Current weather (Growth is stronger in the sun). */
+  weather?: string;
+  /** Apply a status move's stat changes to the right Pokémon. Returns why it did nothing, if it didn't. */
+  onStatMove?: (move: string) => string | undefined;
 }
 
 const STATUSES: [Status, string][] = [
@@ -63,7 +68,16 @@ function NumInput({ value, min, max, onCommit, className }: { value: number; min
   );
 }
 
-export default function PokemonEditor({ set, onChange, meta, format }: Props) {
+export default function PokemonEditor({ set, onChange, meta, format, weather, onStatMove }: Props) {
+  // brief feedback next to the stat-move button that was just clicked
+  const [flash, setFlash] = useState<{ slot: number; text: string; ok: boolean } | null>(null);
+  const flashTimer = useRef<number>(undefined);
+  const useStatMove = (slot: number, move: string) => {
+    const reason = onStatMove?.(move);
+    setFlash({ slot, text: reason ?? 'Applied ✓', ok: !reason });
+    window.clearTimeout(flashTimer.current);
+    flashTimer.current = window.setTimeout(() => setFlash(null), reason ? 3500 : 1200);
+  };
   const species = gen.species.get(toID(set.species));
   const stats = calcStats(set.species, set.nature, set.sp);
   const base = baseStatsOf(set.species);
@@ -230,6 +244,7 @@ export default function PokemonEditor({ set, onChange, meta, format }: Props) {
       <div className="moves">
         {set.moves.map((m, i) => {
           const mv = m ? gen.moves.get(toID(m)) : undefined;
+          const effect = mv && mv.category === 'Status' && onStatMove ? statEffect(mv.name, { types: (species?.types ?? []) as string[], weather }) : null;
           return (
             <div key={i} className="move-row">
               <input
@@ -249,6 +264,17 @@ export default function PokemonEditor({ set, onChange, meta, format }: Props) {
                 </span>
               )}
               {mv && mv.category !== 'Status' && <span className="bp">{mv.basePower || '—'}</span>}
+              {effect && (
+                <button
+                  type="button"
+                  className={'stat-move' + (flash?.slot === i ? (flash.ok ? ' done' : ' failed') : '')}
+                  onClick={() => useStatMove(i, mv!.name)}
+                  title={`Apply ${mv!.name}'s stat changes (${describeEffect(effect)}) to the Battle state below`}
+                >
+                  {flash?.slot === i ? flash.text : describeEffect(effect)}
+                </button>
+              )}
+              {!(mv && mv.category === 'Status') && (
               <label className="crit" title="Calculate as a critical hit">
                 <input
                   type="checkbox"
@@ -261,6 +287,7 @@ export default function PokemonEditor({ set, onChange, meta, format }: Props) {
                 />
                 Crit
               </label>
+              )}
             </div>
           );
         })}

@@ -2,6 +2,7 @@ import { toID } from '@smogon/calc';
 import { calcMove, disguiseIntact, type FieldState } from './calc';
 import { gen, type BoostTable, type PokemonSet } from './model';
 import { compareSpeed, effectiveSpeed, movePriority } from './speed';
+import { selfBoostsAfterHit } from './statMoves';
 
 /** Accuracy of a move as a probability 0..1 (1 for moves that never miss). */
 export type AccuracyOf = (move: string) => number;
@@ -13,22 +14,6 @@ export const HORIZON = 5;
 // What the damage calculator can't tell us about a move.
 
 type Boosts = Partial<BoostTable>;
-
-/** Stat changes the user gets every time the move hits (deterministic ones only, which matter for repeated use). */
-const SELF_BOOSTS: Record<string, Boosts> = {
-  'Draco Meteor': { spa: -2 },
-  'Overheat': { spa: -2 },
-  'Leaf Storm': { spa: -2 },
-  'Make It Rain': { spa: -2 },
-  Superpower: { atk: -1, def: -1 },
-  'Close Combat': { def: -1, spd: -1 },
-  'Armor Cannon': { def: -1, spd: -1 },
-  'Headlong Rush': { def: -1, spd: -1 },
-  'Clanging Scales': { def: -1 },
-  'Scale Shot': { def: -1 },
-  'Torch Song': { spa: 1 },
-  'Psyshield Bash': { def: 1 },
-};
 
 /** After a hit the user must skip its next turn. */
 const RECHARGE = new Set(['Hyper Beam', 'Giga Impact', 'Blast Burn', 'Frenzy Plant', 'Hydro Cannon', 'Meteor Assault', 'Rock Wrecker']);
@@ -227,7 +212,7 @@ export function profile(
   const base = calcMove(att, def, move, false, field, reversed);
   if (!base.ok) return null;
   const rolls = (turn: number) =>
-    calcAt(withBoosts(att, SELF_BOOSTS[move], attPrior(turn)), withBoosts(def, defMove ? SELF_BOOSTS[defMove] : undefined, defPrior(turn)));
+    calcAt(withBoosts(att, selfBoostsAfterHit(move), attPrior(turn)), withBoosts(def, defMove ? selfBoostsAfterHit(defMove) : undefined, defPrior(turn)));
   return {
     move,
     acc: ctx.accOf(move),
@@ -315,7 +300,7 @@ export function recommendSingles(me: PokemonSet, foe: PokemonSet, field: FieldSt
     if (solo.disguise) notes.push('Disguise blocks the first hit');
     if (solo.mode === 'charge') notes.push('charges for a turn first');
     if (solo.mode === 'recharge') notes.push('must recharge after hitting');
-    if (SELF_BOOSTS[move]) notes.push('weakens itself when repeated');
+    if (selfBoostsAfterHit(move)) notes.push('weakens itself when repeated');
     if (solo.acc < 1) notes.push(`${Math.round(solo.acc * 100)}% accurate`);
 
     // pit it against each of their damaging moves; they are assumed to pick whichever is worst for us

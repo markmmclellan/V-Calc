@@ -1,6 +1,6 @@
 import { toID } from '@smogon/calc';
 import type { FieldState, SideState } from './calc';
-import { calcStats, gen, STAT_KEYS, type PokemonSet, type StatKey } from './model';
+import { calcStats, gen, moveInfo, STAT_KEYS, type PokemonSet, type StatKey } from './model';
 
 /**
  * @smogon/calc only records positive priority, so negative brackets are filled in here. Checked against Smogon's
@@ -95,9 +95,10 @@ export interface PriorityInfo {
 
 /** Priority bracket of a move for this Pokemon in this field, including Prankster / Gale Wings / Grassy Glide. */
 export function movePriority(set: PokemonSet, moveName: string, field: FieldState): PriorityInfo | undefined {
-  const mv = moveName ? gen.moves.get(toID(moveName)) : undefined;
-  if (!mv) return undefined;
-  let priority = (mv as { priority?: number }).priority ?? NEGATIVE_PRIORITY[mv.name] ?? 0;
+  const raw = moveName ? gen.moves.get(toID(moveName)) : undefined;
+  const mv = moveInfo(moveName);
+  if (!raw || !mv) return undefined;
+  let priority = (raw as { priority?: number }).priority ?? NEGATIVE_PRIORITY[mv.name] ?? 0;
   let note: string | undefined;
   if (set.ability === 'Prankster' && mv.category === 'Status') {
     priority += 1;

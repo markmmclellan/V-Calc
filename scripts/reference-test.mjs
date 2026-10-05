@@ -40,6 +40,10 @@ const field = blankField();
 const set = { ...blankSet('Garchomp'), ability: 'Rough Skin' };
 const wrong = ref.moves.filter((m) => (movePriority(set, m.name, field)?.priority ?? 0) !== m.priority);
 check('turn-order priority matches Smogon for every move', wrong.length === 0, wrong.map((m) => `${m.name} smogon ${m.priority} ours ${movePriority(set, m.name, field)?.priority}`).join('; '));
+const prankster = { ...blankSet('Whimsicott'), ability: 'Prankster' };
+const pr = ref.moves.filter((m) => m.category === 'Status').filter((m) => (movePriority(prankster, m.name, field)?.priority ?? 0) !== m.priority + 1);
+check(`Prankster adds +1 to all ${ref.moves.filter((m) => m.category === 'Status').length} status moves (including Nasty Plot, Tailwind...)`, pr.length === 0, pr.slice(0, 6).map((m) => m.name).join(', '));
+check('Prankster does nothing to damaging moves', ref.moves.filter((m) => m.category !== 'Status').every((m) => (movePriority(prankster, m.name, field)?.priority ?? 0) === m.priority));
 check('Magic Room / Wonder Room are normal priority', movePriority(set, 'Magic Room', field)?.priority === 0 && movePriority(set, 'Wonder Room', field)?.priority === 0);
 check('Trick Room is -7', movePriority(set, 'Trick Room', field)?.priority === -7);
 

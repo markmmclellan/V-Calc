@@ -5,6 +5,7 @@ import {
   baseStatsOf,
   calcStats,
   gen,
+  moveInfo,
   natureMods,
   natureNames,
   SP_MAX,
@@ -243,8 +244,8 @@ export default function PokemonEditor({ set, onChange, meta, format, weather, on
       <h3>Moves</h3>
       <div className="moves">
         {set.moves.map((m, i) => {
-          const mv = m ? gen.moves.get(toID(m)) : undefined;
-          const effect = mv && mv.category === 'Status' && onStatMove ? statEffect(mv.name, { types: (species?.types ?? []) as string[], weather }) : null;
+          const mv = m ? moveInfo(m) : undefined;
+          const effect = mv && onStatMove ? statEffect(mv.name, { types: (species?.types ?? []) as string[], weather }) : null;
           return (
             <div key={i} className="move-row">
               <input
@@ -263,13 +264,13 @@ export default function PokemonEditor({ set, onChange, meta, format, weather, on
                   {mv.type}
                 </span>
               )}
-              {mv && mv.category !== 'Status' && <span className="bp">{mv.basePower || '—'}</span>}
+              {mv && mv.category !== 'Status' && <span className="bp">{mv.bp || '—'}</span>}
               {effect && (
                 <button
                   type="button"
                   className={'stat-move' + (flash?.slot === i ? (flash.ok ? ' done' : ' failed') : '')}
                   onClick={() => useStatMove(i, mv!.name)}
-                  title={`Apply ${mv!.name}'s stat changes (${describeEffect(effect)}) to the Battle state below`}
+                  title={`Apply ${mv!.name}'s stat changes (${describeEffect(effect)}) to the Battle state below${effect.chance ? ` — it only happens ${effect.chance}% of the time, so press this when it did` : mv!.category === 'Status' ? '' : ' — press after it hits'}`}
                 >
                   {flash?.slot === i ? flash.text : describeEffect(effect)}
                 </button>

@@ -1,7 +1,7 @@
 // Dev helper: the stat-move button (src/lib/statMoves.ts): table vs Smogon's text, and the apply logic.
 import fs from 'node:fs';
-import { applyStatEffect, describeEffect, STAT_MOVE_NAMES, statEffect } from '../src/lib/statMoves.ts';
-import { blankSet, zeroBoosts } from '../src/lib/model.ts';
+import { applyStatEffect, DAMAGING_STAT_MOVE_NAMES, describeEffect, selfBoostsAfterHit, STAT_MOVE_NAMES as ALL_NAMES, statEffect } from '../src/lib/statMoves.ts';
+import { blankSet, moveInfo, zeroBoosts } from '../src/lib/model.ts';
 
 let fails = 0;
 const check = (label, ok, detail = '') => { if (!ok) fails++; console.log(ok ? 'ok  ' : 'FAIL', label, detail); };
@@ -9,6 +9,8 @@ const check = (label, ok, detail = '') => { if (!ok) fails++; console.log(ok ? '
 const ref = JSON.parse(fs.readFileSync('public/data/smogon.json', 'utf8'));
 const byName = new Map(ref.moves.map((m) => [m.name, m]));
 const plain = { types: ['Normal'], weather: '' };
+// the status moves and the damaging moves are checked separately (Smogon words them differently)
+const STAT_MOVE_NAMES = ALL_NAMES.filter((n) => !DAMAGING_STAT_MOVE_NAMES.includes(n));
 
 // ------------------------------------------------------------------ the table vs Smogon's descriptions
 const STATS = { Attack: 'atk', Defense: 'def', 'Special Attack': 'spa', 'Special Defense': 'spd', Speed: 'spe' };
@@ -64,6 +66,64 @@ const forgotten = ref.moves
   .map((m) => m.name)
   .filter((n) => !STAT_MOVE_NAMES.includes(n) && !SKIP[n]);
 check('no stat-changing status move was left out of the table', forgotten.length === 0, forgotten.join(', '));
+
+// ------------------------------------------------------------------ damaging moves with stat effects
+const dmgBad = [];
+for (const name of DAMAGING_STAT_MOVE_NAMES) {
+  const m = byName.get(name);
+  const e = statEffect(name, plain);
+  if (!m) { dmgBad.push(`${name}: not in Champions`); continue; }
+  if (m.category === 'Status') dmgBad.push(`${name}: is a status move`);
+  const t = m.description;
+  for (const [side, boosts] of [['self', e.self], ['foe', e.foe]]) {
+    for (const [k, v] of Object.entries(boosts ?? {})) {
+      const stat = Object.entries(STATS).find(([, key]) => key === k)[0];
+      if (!t.includes(stat)) dmgBad.push(`${name}: ${stat} not in text`);
+      if (name !== 'Ancient Power' && !new RegExp(`\\b${Math.abs(v)} stages?\\b`).test(t)) dmgBad.push(`${name}: no "${Math.abs(v)} stage(s)"`);
+      if (!new RegExp(`${v > 0 ? 'raise|Raises' : 'lower|Lowers'}`).test(t)) dmgBad.push(`${name}: direction`);
+      if (!t.includes(side === 'self' ? "user's" : "target's")) dmgBad.push(`${name}: wrong side`);
+    }
+  }
+  const ch = t.match(/(\d+)% chance to (?:raise|lower)/);
+  const pct = ch ? +ch[1] : 100;
+  if ((e.chance ?? 100) !== pct && !e.note) dmgBad.push(`${name}: chance ${e.chance ?? 100} vs Smogon ${pct}`);
+}
+check(`all ${DAMAGING_STAT_MOVE_NAMES.length} damaging moves match Smogon's stat, size, side and chance`, dmgBad.length === 0, dmgBad.slice(0, 5).join(' | '));
+
+// completeness: every damaging move whose text says it raises/lowers the user's or target's stats must be in the table
+const KNOWN_SKIP = new Set(['Body Press', 'Foul Play', 'Rapid Spin', 'Spit Up', 'Syrup Bomb', 'Stored Power', 'Power Trip', 'Belch', 'Psych Up', 'Fling', 'Pluck', 'Bug Bite']);
+const dmgForgotten = ref.moves
+  .filter((m) => m.category !== 'Status' && /(\d+)% chance to (raise|lower) the (user|target)'s (Special Attack|Special Defense|Attack|Defense|Speed|Accuracy|Evasion)|^(Raises|Lowers) the (user|target)'s/.test(m.description))
+  .map((m) => m.name)
+  .filter((n) => !DAMAGING_STAT_MOVE_NAMES.includes(n) && !KNOWN_SKIP.has(n));
+check('no damaging stat-changing move was left out', dmgForgotten.length === 0, dmgForgotten.join(', '));
+
+check('Draco Meteor label', /−2 SpA/.test(describeEffect(statEffect('Draco Meteor', plain))), describeEffect(statEffect('Draco Meteor', plain)));
+check('Close Combat label', /−1 Def\/SpD/.test(describeEffect(statEffect('Close Combat', plain))), describeEffect(statEffect('Close Combat', plain)));
+check('chance-based label shows the odds', /20%/.test(describeEffect(statEffect('Shadow Ball', plain))), describeEffect(statEffect('Shadow Ball', plain)));
+check('Fell Stinger label says when', /KO/.test(describeEffect(statEffect('Fell Stinger', plain))));
+check('Draco Meteor lowers the user, twice stacks to -4', (() => {
+  const me = blankSet('Salamence'); const foe = blankSet('Garchomp');
+  const r1 = applyStatEffect({ me, foe, effect: statEffect('Draco Meteor', plain) });
+  const r2 = applyStatEffect({ me: r1.me, foe: r1.foe, effect: statEffect('Draco Meteor', plain) });
+  return r1.ok && r2.me.boosts.spa === -4 && r2.foe.boosts.spa === 0;
+})());
+check('Icy Wind lowers the foe, not the user', (() => {
+  const r = applyStatEffect({ me: blankSet('Salamence'), foe: blankSet('Garchomp'), effect: statEffect('Icy Wind', plain) });
+  return r.ok && r.foe.boosts.spe === -1 && r.me.boosts.spe === 0;
+})());
+check('engine only counts the reliable, damage-relevant self changes', JSON.stringify(selfBoostsAfterHit('Draco Meteor')) === '{"spa":-2}' && JSON.stringify(selfBoostsAfterHit('Close Combat')) === '{"def":-1,"spd":-1}' && selfBoostsAfterHit('Flame Charge') === undefined && selfBoostsAfterHit('Charge Beam') === undefined && selfBoostsAfterHit('Fell Stinger') === undefined && selfBoostsAfterHit('Icy Wind') === undefined);
+
+// ------------------------------------------------------------------ the editor must actually show the button
+// The damage library's raw Champions data has no `category` for 75 status moves (Nasty Plot, Shell Smash...), so the
+// editor has to read the move through moveInfo(). This is the editor's exact condition for showing a button.
+const noButton = STAT_MOVE_NAMES.filter((n) => !(moveInfo(n)?.category === 'Status' && statEffect(n, { types: ['Normal'], weather: '' })));
+check('every move in the table gets a button (is a known status move)', noButton.length === 0, noButton.join(', '));
+check('Nasty Plot, Shell Smash, Coil, Quiver Dance and Rock Polish specifically', ['Nasty Plot', 'Shell Smash', 'Coil', 'Quiver Dance', 'Rock Polish'].every((n) => moveInfo(n)?.category === 'Status'));
+const wrongCat = ref.moves.filter((m) => moveInfo(m.name) && moveInfo(m.name).category !== m.category).map((m) => `${m.name}: smogon ${m.category}, ours ${moveInfo(m.name).category}`);
+check(`the category matches Smogon for all ${ref.moves.length} moves`, wrongCat.length === 0, wrongCat.slice(0, 4).join(' | '));
+check('moveInfo ignores unknown or empty names', moveInfo('') === undefined && moveInfo('Not A Move') === undefined && moveInfo('nasty plot')?.name === 'Nasty Plot');
+check('damaging moves keep their base power', moveInfo('Earthquake').bp === 100 && moveInfo('Nasty Plot').bp === 0);
 
 // ------------------------------------------------------------------ the special cases
 const set = (o = {}) => ({ ...blankSet('Garchomp'), boosts: zeroBoosts(), hpPercent: 100, ...o });
@@ -152,7 +212,7 @@ check('label: foe move', label('Charm') === 'foe −2 Atk', label('Charm'));
 check('label: partner move', label('Coaching') === 'partner +1 Atk/Def', label('Coaching'));
 check('label: Howl names both', label('Howl') === '+1 Atk, ally +1 Atk', label('Howl'));
 check('label: Haze', label('Haze') === 'reset all stats');
-check('damaging and unknown moves have no stat button', statEffect('Earthquake', plain) === null && statEffect('Protect', plain) === null && statEffect('', plain) === null && statEffect('Draco Meteor', plain) === null);
+check('plain damaging moves, Protect and unknown names have no stat button', statEffect('Earthquake', plain) === null && statEffect('Protect', plain) === null && statEffect('', plain) === null && statEffect('Not A Move', plain) === null);
 
 console.log(fails ? `\n${fails} FAILED` : '\nall passed');
 process.exit(fails ? 1 : 0);

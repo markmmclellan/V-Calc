@@ -12,12 +12,88 @@ export interface StatEffect {
   haze?: boolean; // reset every stat stage
   copyFoe?: boolean; // Psych Up
   invertFoe?: boolean; // Topsy-Turvy
+  chance?: number; // % chance the effect happens (damaging moves); omitted = always. You press the button when it did.
+  note?: string; // a condition shown on the button, e.g. "if it KOs"
 }
 
 const ALL: Boosts = { atk: 1, def: 1, spa: 1, spd: 1, spe: 1 };
 
 /** Every stat-changing status move in Champions (checked against Smogon's move text by scripts/statmoves-test.mjs). */
+/** Damaging moves whose hit also changes stats. Verified against Smogon's text by scripts/statmoves-test.mjs. */
+const DAMAGING: Record<string, StatEffect> = {
+  // always, on the user (the "weakens itself" moves)
+  'Armor Cannon': { self: { def: -1, spd: -1 } },
+  'Clanging Scales': { self: { def: -1 } },
+  'Close Combat': { self: { def: -1, spd: -1 } },
+  'Draco Meteor': { self: { spa: -2 } },
+  'Hammer Arm': { self: { spe: -1 } },
+  'Headlong Rush': { self: { def: -1, spd: -1 } },
+  'Ice Hammer': { self: { spe: -1 } },
+  'Leaf Storm': { self: { spa: -2 } },
+  'Make It Rain': { self: { spa: -2 } },
+  Overheat: { self: { spa: -2 } },
+  'Scale Shot': { self: { def: -1, spe: 1 } },
+  Superpower: { self: { atk: -1, def: -1 } },
+  // guaranteed boosts for the user
+  'Aqua Step': { self: { spe: 1 } },
+  'Aura Wheel': { self: { spe: 1 } },
+  'Flame Charge': { self: { spe: 1 } },
+  'Psyshield Bash': { self: { def: 1 } },
+  'Torch Song': { self: { spa: 1 } },
+  Trailblaze: { self: { spe: 1 } },
+  // boosts for the user that only sometimes happen
+  'Ancient Power': { self: ALL, chance: 10 },
+  'Charge Beam': { self: { spa: 1 }, chance: 70 },
+  'Fiery Dance': { self: { spa: 1 }, chance: 50 },
+  'Meteor Mash': { self: { atk: 1 }, chance: 20 },
+  'Steel Wing': { self: { def: 1 }, chance: 10 },
+  'Fell Stinger': { self: { atk: 3 }, note: 'if it KOs' },
+  'Electro Shot': { self: { spa: 1 }, note: 'charge turn' },
+  'Meteor Beam': { self: { spa: 1 }, note: 'charge turn' },
+  // guaranteed drops for the opponent
+  'Acid Spray': { foe: { spd: -2 } },
+  'Apple Acid': { foe: { spd: -1 } },
+  'Bitter Malice': { foe: { atk: -1 } },
+  'Breaking Swipe': { foe: { atk: -1 } },
+  Bulldoze: { foe: { spe: -1 } },
+  'Chilling Water': { foe: { atk: -1 } },
+  'Drum Beating': { foe: { spe: -1 } },
+  Electroweb: { foe: { spe: -1 } },
+  'Fire Lash': { foe: { def: -1 } },
+  'Grav Apple': { foe: { def: -1 } },
+  'Icy Wind': { foe: { spe: -1 } },
+  'Low Sweep': { foe: { spe: -1 } },
+  'Lumina Crash': { foe: { spd: -2 } },
+  Lunge: { foe: { atk: -1 } },
+  'Mud Shot': { foe: { spe: -1 } },
+  'Mystical Fire': { foe: { spa: -1 } },
+  Pounce: { foe: { spe: -1 } },
+  'Rock Tomb': { foe: { spe: -1 } },
+  'Skitter Smack': { foe: { spa: -1 } },
+  Snarl: { foe: { spa: -1 } },
+  'Spirit Break': { foe: { spa: -1 } },
+  'Struggle Bug': { foe: { spa: -1 } },
+  'Trop Kick': { foe: { atk: -1 } },
+  // drops for the opponent that only sometimes happen
+  'Bug Buzz': { foe: { spd: -1 }, chance: 10 },
+  Crunch: { foe: { def: -1 }, chance: 20 },
+  'Crush Claw': { foe: { def: -1 }, chance: 50 },
+  'Earth Power': { foe: { spd: -1 }, chance: 10 },
+  'Energy Ball': { foe: { spd: -1 }, chance: 10 },
+  'Flash Cannon': { foe: { spd: -1 }, chance: 10 },
+  'Focus Blast': { foe: { spd: -1 }, chance: 10 },
+  'Iron Tail': { foe: { def: -1 }, chance: 30 },
+  Liquidation: { foe: { def: -1 }, chance: 20 },
+  Moonblast: { foe: { spa: -1 }, chance: 10 },
+  'Play Rough': { foe: { atk: -1 }, chance: 10 },
+  Psychic: { foe: { spd: -1 }, chance: 10 },
+  'Razor Shell': { foe: { def: -1 }, chance: 50 },
+  'Shadow Ball': { foe: { spd: -1 }, chance: 20 },
+  'Triple Arrows': { foe: { def: -1 }, chance: 50 },
+};
+
 const MOVES: Record<string, StatEffect> = {
+  ...DAMAGING,
   // the user
   'Acid Armor': { self: { def: 2 } },
   Agility: { self: { spe: 2 } },
@@ -89,6 +165,21 @@ export function statEffect(move: string, ctx: { types: string[]; weather?: strin
 /** Names of the moves in the table (for tests). */
 export const STAT_MOVE_NAMES = [...Object.keys(MOVES), 'Curse', 'Growth'];
 
+/** Names of the damaging moves in the table (for tests). */
+export const DAMAGING_STAT_MOVE_NAMES = Object.keys(DAMAGING);
+
+/**
+ * What a damaging move reliably does to the user's own stats every time it hits (for simulating a move used turn after
+ * turn). Excludes chance-based effects, conditional ones (Fell Stinger), and speed, which doesn't change the damage.
+ */
+export function selfBoostsAfterHit(move: string): Boosts | undefined {
+  const e = DAMAGING[move];
+  if (!e?.self || e.chance || e.note) return undefined;
+  const { spe: _spe, ...rest } = e.self;
+  void _spe;
+  return Object.keys(rest).length ? rest : undefined;
+}
+
 const LABEL: Record<keyof BoostTable, string> = { atk: 'Atk', def: 'Def', spa: 'SpA', spd: 'SpD', spe: 'Spe' };
 const ORDER: (keyof BoostTable)[] = ['atk', 'def', 'spa', 'spd', 'spe'];
 
@@ -116,7 +207,8 @@ export function describeEffect(e: StatEffect): string {
   if (e.ally) parts.push(`${e.self ? 'ally' : 'partner'} ${boostText(e.ally)}`);
   if (e.foeCurse) parts.push('curse foe');
   if (e.hpCost) parts.push(`−${Math.round(e.hpCost)}% HP`);
-  return parts.join(', ');
+  const extra = [e.chance ? `${e.chance}%` : '', e.note ?? ''].filter(Boolean).join(', ');
+  return parts.join(', ') + (extra ? ` (${extra})` : '');
 }
 
 // ---------------------------------------------------------------------------------------------------------------------

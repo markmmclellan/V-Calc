@@ -1,4 +1,4 @@
-import { calcStat, Generations, NATURES, toID } from '@smogon/calc';
+import { calcStat, Generations, Move, NATURES, toID } from '@smogon/calc';
 
 // Generation 0 is @smogon/calc's native Pokemon Champions ruleset: Champions move data, level 50, Stat Points.
 export const gen = Generations.get(0);
@@ -20,6 +20,36 @@ export type BoostTable = Record<Exclude<StatKey, 'hp'>, number>;
 export const LEVEL = 50;
 export const SP_MAX = 32;
 export const SP_TOTAL = 66;
+
+export interface MoveInfo {
+  name: string;
+  type: string;
+  category: 'Physical' | 'Special' | 'Status';
+  bp: number;
+}
+
+const moveCache = new Map<string, MoveInfo | null>();
+
+/**
+ * A move's name, type, category and base power, or undefined if it isn't a known move.
+ * The calculator's raw Champions move data is sparse (75 status moves, such as Nasty Plot, have no `category` stored),
+ * so never read `gen.moves.get(...).category` directly: building a `Move` fills the gaps in correctly.
+ */
+export function moveInfo(name: string): MoveInfo | undefined {
+  const id = toID(name);
+  if (!id) return undefined;
+  let info = moveCache.get(id);
+  if (info === undefined) {
+    try {
+      const m = gen.moves.get(id) ? new Move(gen, name) : undefined;
+      info = m ? { name: m.name, type: m.type, category: m.category as MoveInfo['category'], bp: m.bp ?? 0 } : null;
+    } catch {
+      info = null;
+    }
+    moveCache.set(id, info);
+  }
+  return info ?? undefined;
+}
 
 export const zeroSP = (): StatTable => ({ hp: 0, atk: 0, def: 0, spa: 0, spd: 0, spe: 0 });
 export const zeroBoosts = (): BoostTable => ({ atk: 0, def: 0, spa: 0, spd: 0, spe: 0 });

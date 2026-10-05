@@ -298,7 +298,7 @@ export default function RecommendPanel({ mine, theirs, field, doubles, onClose }
           <p className="hint bring-foot">
             {doubles
               ? "Doubles: scores each combined plan for this turn by KO chance and damage, counting focus fire, spread-move reduction and friendly fire. It doesn't know what the opponent will do, Protect, switching, or who they'll target."
-              : "Singles: simulates both sides repeating their move for up to 5 turns and assumes they use whichever of their damaging moves is worst for you. Accounts for accuracy, current HP, boosts, speed and priority, Disguise, recharge and charge turns, and stat drops from moves like Draco Meteor. It doesn't know about switching, Protect, status moves, items like Focus Sash or Sitrus Berry, residual damage, or speed changes."}{' '}
+              : "Singles: simulates both sides repeating their move for up to 5 turns and assumes they use whichever of their damaging moves is worst for you. Accounts for accuracy, current HP, boosts, speed and priority, Disguise, recharge and charge turns, and stat drops from moves like Draco Meteor. It doesn't know about switching, Protect, status moves, items like Sitrus Berry (Focus Sash and Sturdy at full HP are handled), residual damage, or speed changes."}{' '}
             Moves that only matter situationally ({Object.keys(SITUATIONAL).slice(0, 3).join(', ')}…) are listed but not scored.
           </p>
         </div>

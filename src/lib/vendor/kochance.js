@@ -415,6 +415,9 @@ function getKOChance(gen, attacker, defender, move, field, damageObj, err, extra
         move.timesUsed = 1;
     if (move.timesUsedWithMetronome === undefined)
         move.timesUsedWithMetronome = 1;
+    if (extra && extra.sash && damage[damage.length - 1] >= defender.maxHP() && damage[0] * 2 >= defender.maxHP()) {
+        return { chance: 1, n: 2, text: 'guaranteed 2HKO (Focus Sash / Sturdy leaves it at 1 HP)' };
+    }
     if (damage[0] >= defender.maxHP() && move.timesUsed === 1 && move.timesUsedWithMetronome === 1 && !(extra && extra.disguise)) {
         return { chance: 1, n: 1, text: 'guaranteed OHKO' };
     }

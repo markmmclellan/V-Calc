@@ -233,6 +233,20 @@ export function disguiseIntact(attacker: PokemonSet, defender: PokemonSet, moveN
   return !!data && !data.multihit;
 }
 
+/**
+ * Focus Sash (and Sturdy): at full HP the holder survives a hit that would KO it, at 1 HP. Only the first hit is
+ * affected, so callers treat a would-be OHKO as needing one more hit. Mold Breaker ignores Sturdy but not the Sash;
+ * multi-hit moves break the Sash on the first hit, which isn't modeled, so they're left alone.
+ */
+export function sashIntact(attacker: PokemonSet, defender: PokemonSet, moveName: string): boolean {
+  if (defender.hpPercent < 100) return false;
+  const viaItem = defender.item === 'Focus Sash';
+  const viaAbility = defender.ability === 'Sturdy' && !IGNORES_ABILITIES.includes(attacker.ability);
+  if (!viaItem && !viaAbility) return false;
+  const data = gen.moves.get(toID(moveName)) as { multihit?: number | number[] } | undefined;
+  return !!data && !data.multihit;
+}
+
 export function calcMove(
   attacker: PokemonSet,
   defender: PokemonSet,
@@ -283,6 +297,7 @@ export function calcMove(
       ingrain: ds.isIngrain,
       aquaRing: ds.isAquaRing,
       disguise: disguiseIntact(attacker, defender, moveName),
+      sash: sashIntact(attacker, defender, moveName),
     };
     let ko = '';
     let libKo = '';

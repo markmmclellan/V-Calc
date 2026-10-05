@@ -1,5 +1,5 @@
 import { toID } from '@smogon/calc';
-import { calcMove, disguiseIntact, type FieldState } from './calc';
+import { calcMove, disguiseIntact, sashIntact, type FieldState } from './calc';
 import { gen, type BoostTable, type PokemonSet } from './model';
 import { compareSpeed, effectiveSpeed, movePriority } from './speed';
 import { selfBoostsAfterHit } from './statMoves';
@@ -71,13 +71,15 @@ export interface Profile {
   hp: number; // target's current HP
   maxHP: number;
   disguise: boolean; // an intact Mimikyu: the first hit that lands deals nothing and costs it 1/8 max HP
+  sash?: boolean; // full-HP Focus Sash / Sturdy: the first hit can't take it below 1 HP
 }
 
 /** pmf over turns 1..HORIZON of the turn the target first faints (mass beyond the horizon is simply missing). */
 export function killTimes(p: Profile, horizon = HORIZON): number[] {
   const chip = Math.floor(p.maxHP / 8);
-  const key = (c: number, up: number, rc: number) => (c * 2 + up) * 2 + rc;
-  let alive = new Map<number, number>([[key(0, p.disguise ? 1 : 0, 0), 1]]);
+  // up: 0 nothing special, 1 Disguise still up, 2 Focus Sash still up
+  const key = (c: number, up: number, rc: number) => (c * 4 + up) * 2 + rc;
+  let alive = new Map<number, number>([[key(0, p.disguise ? 1 : p.sash ? 2 : 0, 0), 1]]);
   const out: number[] = [];
   const add = (m: Map<number, number>, k: number, v: number) => m.set(k, (m.get(k) ?? 0) + v);
   for (let t = 1; t <= horizon; t++) {
@@ -86,8 +88,8 @@ export function killTimes(p: Profile, horizon = HORIZON): number[] {
     const rolls = p.rolls(t);
     for (const [k, pr] of alive) {
       const rc = k & 1;
-      const up = (k >> 1) & 1;
-      const c = k >> 2;
+      const up = (k >> 1) & 3;
+      const c = k >> 3;
       const acts = p.mode === 'charge' ? t % 2 === 0 : p.mode === 'recharge' ? rc === 0 : true;
       if (!acts) {
         add(next, key(c, up, 0), pr); // charging or recharging this turn
@@ -96,7 +98,7 @@ export function killTimes(p: Profile, horizon = HORIZON): number[] {
       add(next, key(c, up, 0), pr * (1 - p.acc)); // missed
       const hit = pr * p.acc;
       const rcAfter = p.mode === 'recharge' ? 1 : 0;
-      if (up) {
+      if (up === 1) {
         const nc = c + chip; // the Disguise absorbs the hit and breaks
         if (nc >= p.hp) died += hit;
         else add(next, key(nc, 0, rcAfter), hit);
@@ -104,8 +106,10 @@ export function killTimes(p: Profile, horizon = HORIZON): number[] {
         const w = hit / rolls.length;
         for (const r of rolls) {
           const nc = c + r;
-          if (nc >= p.hp) died += w;
-          else add(next, key(nc, 0, rcAfter), w);
+          if (nc >= p.hp) {
+            if (up === 2) add(next, key(p.hp - 1, 0, rcAfter), w); // the Sash leaves it at 1 HP
+            else died += w;
+          } else add(next, key(nc, 0, rcAfter), w);
         }
       } else {
         add(next, key(c, 0, rcAfter), hit);
@@ -222,6 +226,7 @@ export function profile(
     hp: base.curHP,
     maxHP: base.defenderHP,
     disguise: disguiseIntact(att, def, move),
+    sash: sashIntact(att, def, move),
   };
 }
 
@@ -269,7 +274,7 @@ function pctOfHp(p: Profile, turn = 1): number {
 }
 
 function koOnce(p: Profile): number {
-  if (p.disguise) return 0; // the first hit is blocked
+  if (p.disguise || p.sash) return 0; // the first hit is blocked / can't KO
   const rolls = p.rolls(1);
   return rolls.length ? p.acc * (rolls.filter((r) => r >= p.hp).length / rolls.length) : 0;
 }
@@ -298,6 +303,7 @@ export function recommendSingles(me: PokemonSet, foe: PokemonSet, field: FieldSt
     const koBy = cumulative(killTimes(solo)).slice(0, 3);
     const notes: string[] = [];
     if (solo.disguise) notes.push('Disguise blocks the first hit');
+    if (solo.sash) notes.push('Focus Sash / Sturdy survives the first hit');
     if (solo.mode === 'charge') notes.push('charges for a turn first');
     if (solo.mode === 'recharge') notes.push('must recharge after hitting');
     if (selfBoostsAfterHit(move)) notes.push('weakens itself when repeated');
@@ -380,7 +386,7 @@ export function spreadOf(move: string, field: FieldState, attacker: PokemonSet):
 }
 
 /** Chance that the summed damage of independent attacks reaches `hp` (each attack lands with its accuracy). */
-export function koProbability(sources: { acc: number; rolls: number[] }[], hp: number, firstHitBlocked = false, chip = 0): number {
+export function koProbability(sources: { acc: number; rolls: number[] }[], hp: number, firstHitBlocked = false, chip = 0, sash = false): number {
   if (!sources.length) return 0;
   let p = 0;
   const n = sources.length;
@@ -394,6 +400,7 @@ export function koProbability(sources: { acc: number; rolls: number[] }[], hp: n
       } else pm *= 1 - sources[i].acc;
     }
     if (pm === 0) continue;
+    if (sash && hit.length === 1) continue; // a lone hit can't KO through a Focus Sash
     // enumerate combinations of rolls over the attacks that landed
     let totals: number[] = [firstHitBlocked ? chip : 0];
     hit.forEach((rolls, idx) => {
@@ -414,6 +421,7 @@ export interface Hit {
   rolls: number[];
   hp: number;
   disguise: boolean;
+  sash?: boolean;
   maxHP: number;
 }
 export interface DoublesOption {
@@ -481,7 +489,7 @@ export function recommendDoubles(mine: PokemonSet[], foes: PokemonSet[], field: 
       const hitsOn = (foeIdx: number): Hit | null => {
         const r = calcMove(me, foes[foeIdx], move, false, field, false);
         if (!r.ok) return null;
-        return { foe: foeIdx, move, acc: accOf(move), rolls: r.rolls, hp: r.curHP, maxHP: r.defenderHP, disguise: disguiseIntact(me, foes[foeIdx], move) };
+        return { foe: foeIdx, move, acc: accOf(move), rolls: r.rolls, hp: r.curHP, maxHP: r.defenderHP, disguise: disguiseIntact(me, foes[foeIdx], move), sash: sashIntact(me, foes[foeIdx], move) };
       };
       let ally: DoublesOption['ally'] = null;
       if (spread === 'all' && partner) {
@@ -515,7 +523,7 @@ export function recommendDoubles(mine: PokemonSet[], foes: PokemonSet[], field: 
       const hp = hits[0]?.hp ?? 0;
       if (!hits.length) return { foe: i, ko: 0, avgPct: 0 };
       const blocked = hits.some((h) => h.disguise);
-      const ko = koProbability(hits.map((h) => ({ acc: h.acc, rolls: h.rolls })), hp, blocked, blocked ? Math.floor(hits[0].maxHP / 8) : 0);
+      const ko = koProbability(hits.map((h) => ({ acc: h.acc, rolls: h.rolls })), hp, blocked, blocked ? Math.floor(hits[0].maxHP / 8) : 0, hits.some((h) => h.sash));
       const expected = hits.reduce((s, h) => s + h.acc * avg(h.rolls), 0);
       return { foe: i, ko, avgPct: hp ? Math.min(100, (expected / hp) * 100) : 0 };
     });

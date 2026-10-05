@@ -10,6 +10,8 @@ export interface ExtraResidual {
   aquaRing?: boolean;
   /** The defender is an intact Mimikyu: the first hit is blocked and costs it 1/8 max HP. */
   disguise?: boolean;
+  /** The defender is at full HP with a Focus Sash (or Sturdy): a would-be OHKO leaves it at 1 HP. */
+  sash?: boolean;
 }
 
 export function getKOChance(

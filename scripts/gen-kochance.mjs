@@ -73,6 +73,15 @@ getKO = must(
             : (multipleTurns ? "KO in ".concat(shown, " turns") : "".concat(shown, "HKO"));`,
 );
 getKO = must(getKO, 'text += "OHKO".concat(hazardsText);', 'text += KOTurnText.concat(hazardsText);');
+// Focus Sash / Sturdy: a hit that would KO from full HP leaves 1 HP, so the next hit finishes it
+getKO = must(
+  getKO,
+  'if (damage[0] >= defender.maxHP() && move.timesUsed === 1',
+  `if (extra && extra.sash && damage[damage.length - 1] >= defender.maxHP() && damage[0] * 2 >= defender.maxHP()) {
+        return { chance: 1, n: 2, text: 'guaranteed 2HKO (Focus Sash / Sturdy leaves it at 1 HP)' };
+    }
+    if (damage[0] >= defender.maxHP() && move.timesUsed === 1`,
+);
 
 const hook = `    if (extra) {
         var xMaxHP = defender.maxHP();

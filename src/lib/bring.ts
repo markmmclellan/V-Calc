@@ -1,4 +1,4 @@
-import { blankField, calcMove, disguiseIntact, type FieldState } from './calc';
+import { blankField, calcMove, disguiseIntact, sashIntact, type FieldState } from './calc';
 import type { PokemonSet } from './model';
 import { effectiveSpeed, movePriority } from './speed';
 import { megaVariants } from './showdown';
@@ -16,6 +16,7 @@ export interface Strike {
   turns: number; // hits needed to KO from full HP (Infinity = can't); includes the hit Disguise absorbs
   priority: number;
   disguise?: boolean; // the target is an intact Mimikyu: its first hit is blocked and it loses 1/8 max HP
+  sash?: boolean; // the target holds a Focus Sash (or has Sturdy) at full HP: a one-hit KO takes two
 }
 
 export type Verdict = 'strong' | 'favored' | 'even' | 'unfavored' | 'loses';
@@ -84,8 +85,10 @@ function bestStrike(att: PokemonSet, def: PokemonSet, field: FieldState, reverse
     if (pct > best.pct) {
       // Mimikyu's Disguise soaks up the first hit and chips it for 1/8, so it needs one more hit than the damage suggests
       const disguise = disguiseIntact(att, def, m);
-      const turns = disguise ? 1 + Math.ceil((100 - 12.5) / pct - 1e-9) : Math.ceil(100 / pct - 1e-9);
-      best = { move: m, pct, turns: turns > MAX_TURNS ? Infinity : turns, priority: movePriority(att, m, field)?.priority ?? 0, disguise };
+      let turns = disguise ? 1 + Math.ceil((100 - 12.5) / pct - 1e-9) : Math.ceil(100 / pct - 1e-9);
+      const sash = sashIntact(att, def, m) && turns === 1;
+      if (sash) turns = 2; // the Sash leaves it at 1 HP
+      best = { move: m, pct, turns: turns > MAX_TURNS ? Infinity : turns, priority: movePriority(att, m, field)?.priority ?? 0, disguise, sash };
     }
   }
   return best;

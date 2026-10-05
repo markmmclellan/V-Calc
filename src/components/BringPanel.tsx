@@ -23,7 +23,7 @@ const VERDICT_TEXT: Record<Verdict, string> = {
 const hko = (turns: number) => (isFinite(turns) ? `${turns}HKO` : '—');
 
 function cellTitle(me: PokemonSet, them: PokemonSet, c: Cell): string {
-  const note = (s: Cell['mine']) => (s.disguise ? ', Disguise blocks the first hit' : '');
+  const note = (s: Cell['mine']) => (s.disguise ? ', Disguise blocks the first hit' : s.sash ? ', Focus Sash survives the first hit' : '');
   const mine = c.mine.move ? `${c.mine.move} ${Math.round(c.mine.pct)}% (${hko(c.mine.turns)}${note(c.mine)})` : 'no damaging move that works';
   const theirs = c.theirs.move ? `${c.theirs.move} ${Math.round(c.theirs.pct)}% (${hko(c.theirs.turns)}${note(c.theirs)})` : 'no damaging move that works';
   const speed = c.first === 'me' ? `${pokemonLabel(me)} moves first` : c.first === 'them' ? `${pokemonLabel(them)} moves first` : 'speed tie';

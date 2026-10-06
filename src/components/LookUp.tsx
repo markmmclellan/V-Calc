@@ -1,14 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { abilitiesOf } from '../lib/abilities';
 import { loadReference, searchEntries, targetLabel, type RefEntry, type RefMove, type Reference } from '../lib/reference';
-import type { PokemonSet } from '../lib/model';
 
 export type LookUpKind = 'moves' | 'items' | 'abilities';
 
 interface Props {
-  /** The selected Pokémon on each side (what the Use buttons act on). */
-  actives: [PokemonSet | undefined, PokemonSet | undefined];
-  onUse: (side: 0 | 1, kind: LookUpKind, name: string) => void;
   onClose: () => void;
 }
 
@@ -18,8 +13,8 @@ const TYPES = ['Normal', 'Fire', 'Water', 'Electric', 'Grass', 'Ice', 'Fighting'
 const TAB_LABEL: Record<LookUpKind, string> = { moves: 'Moves', items: 'Items', abilities: 'Abilities' };
 const SINGULAR: Record<LookUpKind, string> = { moves: 'move', items: 'item', abilities: 'ability' };
 
-/** Searchable move / item / ability reference (Smogon's Champions dex), with buttons to use one on a Pokémon. */
-export default function LookUp({ actives, onUse, onClose }: Props) {
+/** Searchable move / item / ability reference (Smogon's Champions dex). */
+export default function LookUp({ onClose }: Props) {
   const [ref, setRef] = useState<Reference | null>(null);
   const [error, setError] = useState('');
   const [tab, setTab] = useState<LookUpKind>('moves');
@@ -51,41 +46,6 @@ export default function LookUp({ actives, onUse, onClose }: Props) {
   }, [ref, tab, query, type, category]);
 
   const shown = results.slice(0, SHOW_LIMIT);
-
-  /** Why a Use button is unavailable for this Pokémon, or '' when it works. */
-  const blocked = (p: PokemonSet | undefined, name: string): string => {
-    if (!p) return 'No Pokémon on this side';
-    if (tab === 'abilities' && !abilitiesOf(p.species).includes(name)) return `${p.species} can't have ${name}`;
-    if (tab === 'moves' && !p.moves.includes(name) && p.moves.every((m) => m)) return `All 4 of ${p.species}'s move slots are full`;
-    return '';
-  };
-  const has = (p: PokemonSet | undefined, name: string) =>
-    !!p && (tab === 'items' ? p.item === name : tab === 'abilities' ? p.ability === name : p.moves.includes(name));
-
-  const useButtons = (name: string) =>
-    ([0, 1] as const).map((side) => {
-      const p = actives[side];
-      const why = blocked(p, name);
-      const on = has(p, name);
-      return (
-        <button
-          key={side}
-          disabled={!!why || on}
-          className={on ? 'ok' : ''}
-          title={
-            why ||
-            (on
-              ? `${p?.species} already has it`
-              : tab === 'moves'
-                ? `Add to ${p?.species}'s first empty move slot`
-                : `Give to ${p?.species}${tab === 'items' ? ' (a Mega Stone switches it to its Mega form)' : ''}`)
-          }
-          onClick={() => onUse(side, tab, name)}
-        >
-          {on ? '✓' : side === 0 ? 'Use: You' : 'Use: Opp'}
-        </button>
-      );
-    });
 
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
@@ -167,7 +127,6 @@ export default function LookUp({ actives, onUse, onClose }: Props) {
                   </div>
                   <div className="lu-desc">{(e as RefEntry).description || 'No description.'}</div>
                 </div>
-                <div className="lu-use">{useButtons(e.name)}</div>
               </li>
             );
           })}

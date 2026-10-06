@@ -339,14 +339,12 @@ label.inline select { padding: 1px 4px; }
 .modal-sub select { flex: none; }
 .lookup-count { padding: 0 12px 6px; }
 .lookup-rows { list-style: none; margin: 0; padding: 0 8px 10px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
-.lookup-rows li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 4px 8px; border-radius: 6px; background: var(--panel-2); }
+.lookup-rows li { display: grid; padding: 4px 8px; border-radius: 6px; background: var(--panel-2); }
 .lookup-rows li:hover { background: var(--line); }
 .lu-line { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; }
 .lu-name { font-weight: 700; }
 .lu-stats { color: var(--muted); font-size: 11px; }
 .lu-desc { font-size: 12px; color: var(--muted); margin-top: 1px; }
-.lu-use { display: flex; gap: 4px; }
-.lu-use button { padding: 1px 8px; font-size: 12px; white-space: nowrap; }
 .lookup-rows .lu-empty { display: block; padding: 12px; text-align: center; background: transparent; }
 .cat { font-size: 10px; font-weight: 700; text-transform: uppercase; padding: 0 6px; border-radius: 8px; background: var(--line); color: var(--muted); }
 .cat-physical { color: #f0a47a; } .cat-special { color: #8fb4ff; }

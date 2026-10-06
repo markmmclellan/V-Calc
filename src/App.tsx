@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { MEGA_STONES, toID } from '@smogon/calc';
 import BringPanel from './components/BringPanel';
 import FieldPanel from './components/FieldPanel';
-import LookUp, { type LookUpKind } from './components/LookUp';
+import LookUp from './components/LookUp';
 import MetaList from './components/MetaList';
 import RecommendPanel from './components/RecommendPanel';
 import PokemonEditor from './components/PokemonEditor';
@@ -12,8 +12,6 @@ import TeamSide, { focusSlot, onFieldCount, type Team } from './components/TeamS
 import { normalizeField, type FieldState } from './lib/calc';
 import { canRefreshFromOpgg, loadMeta, refreshFromOpgg, setFromMeta, type MetaEntry, type BattleFormat, type Meta } from './lib/data';
 import { gen, zeroBoosts, type PokemonSet } from './lib/model';
-import { abilitiesOf } from './lib/abilities';
-import { withItem } from './lib/showdown';
 import { applyStatEffect, statEffect } from './lib/statMoves';
 import shaymin from '../shaymin-land.svg';
 import victini from '../victini.svg';
@@ -131,29 +129,6 @@ export default function App() {
       const next: [Team, Team] = [old[0], old[1]];
       next[side] = { ...t, sets: [...t.sets, setFromMeta(entry, format)], active: t.sets.length };
       return next;
-    });
-
-  /** Apply a move / item / ability picked in the Look up panel to a side's selected Pokémon. */
-  const useReference = (side: 0 | 1, kind: LookUpKind, name: string) =>
-    setTeams((old) => {
-      const t = old[side];
-      const p = t.sets[t.active];
-      if (!p) return old;
-      let next: PokemonSet = p;
-      if (kind === 'items') next = withItem(p, name);
-      else if (kind === 'abilities') {
-        if (!abilitiesOf(p.species).includes(name)) return old;
-        next = { ...p, ability: name };
-      } else {
-        const slot = p.moves.indexOf('');
-        if (slot < 0 || p.moves.includes(name)) return old;
-        const moves = [...p.moves];
-        moves[slot] = name;
-        next = { ...p, moves, critMoves: (p.critMoves ?? []).map((c, i) => (i === slot ? false : c)) };
-      }
-      const copy: [Team, Team] = [old[0], old[1]];
-      copy[side] = { ...t, sets: t.sets.map((s, i) => (i === t.active ? next : s)) };
-      return copy;
     });
 
   /** Put the recommended Pokémon first (leads at the front) and select the leads, like arranging a team in preview. */
@@ -428,11 +403,7 @@ export default function App() {
       )}
 
       {lookupOpen && (
-        <LookUp
-          actives={[teams[0].sets[teams[0].active], teams[1].sets[teams[1].active]]}
-          onUse={useReference}
-          onClose={() => setLookupOpen(false)}
-        />
+        <LookUp onClose={() => setLookupOpen(false)} />
       )}
 
       {listOpen && meta && (

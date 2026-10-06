@@ -55,8 +55,7 @@ npm run dev        # http://localhost:5173
   `src/lib/recommend.ts` (`npx tsx scripts/recommend-test.mjs` checks it).
 - **Look up**: the header's **Look up** button opens a searchable reference of every Champions move, item and ability with
   Smogon's descriptions. Search by name *or by what it does* ("lowers speed", "1.5x", "flinch"), filter moves by type and
-  category, and press **Use: You / Use: Opp** to give one to that side's selected Pokémon (a Mega Stone switches it to
-  its Mega form; an ability must be one that Pokémon can have; a move goes in the first empty slot).
+  category.
 - **op.gg usage panel** for the active Pokémon (moves, items, abilities, natures, spreads), for Singles or Doubles.
   Pick which move slot a clicked move fills.
 - **Presets**: save custom builds per Pokémon (shared across its Mega and other forms), with rename, update, delete,

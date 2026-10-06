@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { loadReference, searchEntries, targetLabel, type RefEntry, type RefMove, type Reference } from '../lib/reference';
+import { loadReference, searchEntries, targetLabel, type RefMove, type Reference } from '../lib/reference';
 
 export type LookUpKind = 'moves' | 'items' | 'abilities';
 
@@ -8,19 +8,21 @@ interface Props {
 }
 
 const SHOW_LIMIT = 150;
-const TYPES = ['Normal', 'Fire', 'Water', 'Electric', 'Grass', 'Ice', 'Fighting', 'Poison', 'Ground', 'Flying', 'Psychic', 'Bug', 'Rock', 'Ghost', 'Dragon', 'Dark', 'Steel', 'Fairy'];
 
-const TAB_LABEL: Record<LookUpKind, string> = { moves: 'Moves', items: 'Items', abilities: 'Abilities' };
-const SINGULAR: Record<LookUpKind, string> = { moves: 'move', items: 'item', abilities: 'ability' };
+const KIND_LABEL: Record<LookUpKind, string> = { moves: 'Move', items: 'Item', abilities: 'Ability' };
 
-/** Searchable move / item / ability reference (Smogon's Champions dex). */
+interface Row {
+  name: string;
+  description: string;
+  kind: LookUpKind;
+  move?: RefMove;
+}
+
+/** One searchable list of every Champions move, item and ability (Smogon's Champions dex). */
 export default function LookUp({ onClose }: Props) {
   const [ref, setRef] = useState<Reference | null>(null);
   const [error, setError] = useState('');
-  const [tab, setTab] = useState<LookUpKind>('moves');
   const [query, setQuery] = useState('');
-  const [type, setType] = useState('');
-  const [category, setCategory] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -34,17 +36,19 @@ export default function LookUp({ onClose }: Props) {
     return () => document.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  useEffect(() => inputRef.current?.focus(), [tab]);
-
-  const results = useMemo(() => {
-    if (!ref) return [];
-    if (tab === 'moves') {
-      const filtered = ref.moves.filter((m) => (!type || m.type === type) && (!category || m.category === category));
-      return searchEntries(filtered, query);
-    }
-    return searchEntries(ref[tab], query);
-  }, [ref, tab, query, type, category]);
-
+  const all = useMemo<Row[]>(
+    () =>
+      ref
+        ? [
+            ...ref.moves.map((m): Row => ({ name: m.name, description: m.description, kind: 'moves', move: m })),
+            ...ref.items.map((e): Row => ({ name: e.name, description: e.description, kind: 'items' })),
+            ...ref.abilities.map((e): Row => ({ name: e.name, description: e.description, kind: 'abilities' })),
+          ]
+        : [],
+    [ref],
+  );
+  const searching = query.trim().length > 0;
+  const results = useMemo(() => (searching ? searchEntries(all, query) : []), [all, query, searching]);
   const shown = results.slice(0, SHOW_LIMIT);
 
   return (
@@ -52,16 +56,6 @@ export default function LookUp({ onClose }: Props) {
       <div className="modal lookup" role="dialog" aria-modal="true" aria-label="Look up moves, items and abilities">
         <header className="modal-head">
           <h2>Look up</h2>
-          <div className="seg" role="tablist" aria-label="What to look up">
-            {(['moves', 'items', 'abilities'] as const).map((k) => (
-              <button key={k} role="tab" aria-selected={tab === k} className={tab === k ? 'on' : ''} onClick={() => {
-                  setTab(k);
-                  setQuery(''); // a query for moves makes no sense on the items tab
-                }}>
-                {TAB_LABEL[k]}
-              </button>
-            ))}
-          </div>
           <button className="icon close" onClick={onClose} aria-label="Close" title="Close (Esc)">
             ✕
           </button>
@@ -71,27 +65,9 @@ export default function LookUp({ onClose }: Props) {
           <input
             ref={inputRef}
             value={query}
-            placeholder={
-              tab === 'moves' ? 'Search moves, e.g. "lowers speed" or "flinch"…' : tab === 'items' ? 'Search items, e.g. "1.5x" or "berry"…' : 'Search abilities, e.g. "weather" or "contact"…'
-            }
+            placeholder='Search moves, items and abilities, e.g. "intimidate", "lowers speed", "1.5x"…'
             onChange={(e) => setQuery(e.target.value)}
           />
-          {tab === 'moves' && (
-            <>
-              <select value={type} onChange={(e) => setType(e.target.value)} aria-label="Filter by type">
-                <option value="">Any type</option>
-                {TYPES.map((t) => (
-                  <option key={t}>{t}</option>
-                ))}
-              </select>
-              <select value={category} onChange={(e) => setCategory(e.target.value)} aria-label="Filter by category">
-                <option value="">Any category</option>
-                <option>Physical</option>
-                <option>Special</option>
-                <option>Status</option>
-              </select>
-            </>
-          )}
         </div>
         <div className="lookup-count hint">
           {error ? (
@@ -100,20 +76,23 @@ export default function LookUp({ onClose }: Props) {
             'Loading…'
           ) : (
             <>
-              {results.length} {results.length === 1 ? SINGULAR[tab] : TAB_LABEL[tab].toLowerCase()}
-              {results.length > SHOW_LIMIT ? ` (showing the first ${SHOW_LIMIT}: refine your search)` : ''} · Smogon Champions dex
+              {!searching
+                ? 'Type to search every move, item and ability'
+                : `${results.length} ${results.length === 1 ? 'result' : 'results'}${results.length > SHOW_LIMIT ? ` (showing the first ${SHOW_LIMIT}: refine your search)` : ''}`}{' '}
+              · Smogon Champions dex
             </>
           )}
         </div>
 
         <ul className="lookup-rows">
           {shown.map((e) => {
-            const m = tab === 'moves' ? (e as RefMove) : null;
+            const m = e.move;
             return (
-              <li key={e.name}>
+              <li key={`${e.kind}-${e.name}`}>
                 <div className="lu-main">
                   <div className="lu-line">
                     <span className="lu-name">{e.name}</span>
+                    <span className={`cat lu-kind lu-kind-${e.kind}`}>{KIND_LABEL[e.kind]}</span>
                     {m && (
                       <>
                         <span className={`type t-${m.type.toLowerCase()}`}>{m.type}</span>
@@ -125,12 +104,12 @@ export default function LookUp({ onClose }: Props) {
                       </>
                     )}
                   </div>
-                  <div className="lu-desc">{(e as RefEntry).description || 'No description.'}</div>
+                  <div className="lu-desc">{e.description || 'No description.'}</div>
                 </div>
               </li>
             );
           })}
-          {ref && results.length === 0 && <li className="lu-empty hint">Nothing matches “{query}”.</li>}
+          {ref && searching && results.length === 0 && <li className="lu-empty hint">Nothing matches “{query}”.</li>}
         </ul>
       </div>
     </div>

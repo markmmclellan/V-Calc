@@ -53,9 +53,9 @@ npm run dev        # http://localhost:5173
   moves included), and shows what each opposing Pokémon can do to yours. Status moves, Fake Out and similar situational
   moves are listed but not scored; switching, Protect, Focus Sash and residual damage are not modeled. Logic lives in
   `src/lib/recommend.ts` (`npx tsx scripts/recommend-test.mjs` checks it).
-- **Look up**: the header's **Look up** button opens a searchable reference of every Champions move, item and ability with
-  Smogon's descriptions. Search by name *or by what it does* ("lowers speed", "1.5x", "flinch"), filter moves by type and
-  category.
+- **Look up**: the header's **Look up** button opens one search box over every Champions move, item and ability, with
+  Smogon's descriptions. Search by name *or by what it does* ("lowers speed", "1.5x", "flinch"); no tabs or filters to
+  click, each result is labelled Move / Item / Ability.
 - **op.gg usage panel** for the active Pokémon (moves, items, abilities, natures, spreads), for Singles or Doubles.
   Pick which move slot a clicked move fills.
 - **Presets**: save custom builds per Pokémon (shared across its Mega and other forms), with rename, update, delete,

@@ -3,6 +3,7 @@ import { MEGA_STONES, toID } from '@smogon/calc';
 import BringPanel from './components/BringPanel';
 import FieldPanel from './components/FieldPanel';
 import LookUp from './components/LookUp';
+import Mascot from './components/Mascot';
 import MetaList from './components/MetaList';
 import RecommendPanel from './components/RecommendPanel';
 import PokemonEditor from './components/PokemonEditor';
@@ -418,12 +419,7 @@ export default function App() {
 
       <footer className="app-footer">© 2026 Mark McLellan</footer>
 
-      <img
-        className="mascot"
-        src="https://play.pokemonshowdown.com/sprites/gen5ani/shaymin.gif"
-        alt="Shaymin"
-        title="Shaymin!"
-      />
+      <Mascot />
     </div>
   );
 }

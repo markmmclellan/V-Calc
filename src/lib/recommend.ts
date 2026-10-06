@@ -1,6 +1,6 @@
 import { toID } from '@smogon/calc';
 import { calcMove, disguiseIntact, sashIntact, type FieldState } from './calc';
-import { gen, type BoostTable, type PokemonSet } from './model';
+import { gen, zeroBoosts, type BoostTable, type PokemonSet } from './model';
 import { compareSpeed, effectiveSpeed, movePriority } from './speed';
 import { selfBoostsAfterHit } from './statMoves';
 
@@ -368,6 +368,67 @@ export function recommendSingles(me: PokemonSet, foe: PokemonSet, field: FieldSt
   if (!mine.scored.length) warnings.push(`${me.nickname || me.species} has no damaging move that works against ${foe.nickname || foe.species}.`);
   if (!theirs.scored.length && !theirs.situational.length) warnings.push(`${foe.nickname || foe.species} has no damaging move listed, so its reply can't be modeled.`);
   return { options, mine, theirs, mySpeed, theirSpeed, replies, warnings };
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Singles: should you switch out?
+
+export interface SwitchOption {
+  index: number; // position in the bench list that was passed in
+  hitMove: string | null; // the move the opponent is assumed to use on the incoming Pokémon
+  hitPct: number; // average damage as a % of its current HP
+  koOnSwitch: number; // chance that hit KOs it outright (accuracy included)
+  win: number; // chance to win the 1v1 after switching in (the free hit included)
+  bestMove: string | null; // its best move once it is in
+  first: 'me' | 'them' | 'tie' | null;
+}
+export interface SwitchResult {
+  stayWin: number; // chance to win if the current Pokémon stays in and attacks
+  options: SwitchOption[]; // best first
+}
+
+/** HP% (1..100) left after taking `damage` from `curHP`/`maxHP`, rounded up so it never reads as fainted. */
+function hpAfter(curHP: number, maxHP: number, damage: number): number {
+  return Math.max(1, Math.min(100, Math.ceil(((curHP - damage) / maxHP) * 100 - 1e-9)));
+}
+
+/**
+ * For each benched Pokémon: the opponent gets a free hit on it as it comes in (their move that hurts it most), then the
+ * two fight it out like the normal Singles race. Compared with `stayWin`, the current Pokémon just attacking.
+ * Doesn't model hazards on your side, the opponent switching too, or the opponent not attacking.
+ */
+export function recommendSwitches(me: PokemonSet, foe: PokemonSet, bench: PokemonSet[], field: FieldState, accOf: AccuracyOf): SwitchResult {
+  const stayWin = recommendSingles(me, foe, field, accOf).options[0]?.win ?? 0;
+  const race = (b: PokemonSet) => recommendSingles(b, foe, field, accOf);
+  const options: SwitchOption[] = bench.map((raw, index) => {
+    const b: PokemonSet = { ...raw, boosts: zeroBoosts() }; // stat changes are lost on switching
+    const theirCtx: Pair = { att: foe, def: b, field, reversed: true, accOf };
+    const hits = classify(foe, b, field, true)
+      .scored.map((move) => profile(theirCtx, move, () => 0, null, () => 0))
+      .filter((p): p is Profile => !!p)
+      .sort((x, y) => pctOfHp(y) * y.acc - pctOfHp(x) * x.acc);
+    const hit = hits[0];
+    const full = race(b).options[0];
+    if (!hit) return { index, hitMove: null, hitPct: 0, koOnSwitch: 0, win: full?.win ?? 0, bestMove: full?.move ?? null, first: full?.first ?? null };
+
+    const rolls = hit.rolls(1);
+    const surviving = rolls.filter((r) => r < hit.hp);
+    const koFrac = rolls.length ? 1 - surviving.length / rolls.length : 0;
+    // average the race over a few representative surviving rolls (low, middle, high)
+    const picks = surviving.length ? [surviving[0], surviving[Math.floor((surviving.length - 1) / 2)], surviving[surviving.length - 1]] : [];
+    let after = 0;
+    let mid: SinglesOption | undefined;
+    picks.forEach((r, i) => {
+      const top = race({ ...b, hpPercent: hpAfter(hit.hp, hit.maxHP, r) }).options[0];
+      after += (top?.win ?? 0) / picks.length;
+      if (i === 1) mid = top;
+    });
+    const win = hit.acc * (1 - koFrac) * after + (1 - hit.acc) * (full?.win ?? 0);
+    const best = mid ?? full;
+    return { index, hitMove: hit.move, hitPct: pctOfHp(hit), koOnSwitch: hit.acc * koFrac, win, bestMove: best?.move ?? null, first: best?.first ?? null };
+  });
+  options.sort((a, b) => b.win - a.win);
+  return { stayWin, options };
 }
 
 // ---------------------------------------------------------------------------------------------------------------------

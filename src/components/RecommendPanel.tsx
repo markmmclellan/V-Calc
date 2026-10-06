@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { FieldState } from '../lib/calc';
 import { calcStats, type PokemonSet } from '../lib/model';
 import { loadReference } from '../lib/reference';
-import { recommendDoubles, recommendSingles, SITUATIONAL, type AccuracyOf, type DoublesOption, type Plan } from '../lib/recommend';
+import { recommendDoubles, recommendSingles, recommendSwitches, SITUATIONAL, type AccuracyOf, type DoublesOption, type Plan } from '../lib/recommend';
 import Sprite from './Sprite';
 
 interface Props {
@@ -10,11 +10,14 @@ interface Props {
   mine: PokemonSet[];
   /** The opponent's active Pokémon (and partner). */
   theirs: PokemonSet[];
+  /** Your other Pokémon on the team (candidates to switch in; Singles only). */
+  bench?: PokemonSet[];
   field: FieldState;
   doubles: boolean;
   onClose: () => void;
 }
 
+const EMPTY: PokemonSet[] = [];
 const label = (s: PokemonSet) => s.nickname || s.species;
 const pct = (x: number) => `${Math.round(x * 100)}%`;
 const STATUS: Record<string, string> = { brn: 'burned', par: 'paralyzed', psn: 'poisoned', tox: 'badly poisoned', slp: 'asleep', frz: 'frozen' };
@@ -45,7 +48,7 @@ function orderText(first: 'me' | 'them' | 'tie'): string {
   return first === 'me' ? 'you move first' : first === 'them' ? 'they move first' : 'speed tie';
 }
 
-export default function RecommendPanel({ mine, theirs, field, doubles, onClose }: Props) {
+export default function RecommendPanel({ mine, theirs, bench = EMPTY, field, doubles, onClose }: Props) {
   const [acc, setAcc] = useState<AccuracyOf | null>(null);
   const [accError, setAccError] = useState(false);
 
@@ -69,6 +72,7 @@ export default function RecommendPanel({ mine, theirs, field, doubles, onClose }
   }, [onClose]);
 
   const singles = useMemo(() => (acc && !doubles && mine[0] && theirs[0] ? recommendSingles(mine[0], theirs[0], field, acc) : null), [acc, doubles, mine, theirs, field]);
+  const switches = useMemo(() => (acc && !doubles && mine[0] && theirs[0] && bench.length ? recommendSwitches(mine[0], theirs[0], bench, field, acc) : null), [acc, doubles, mine, theirs, bench, field]);
   const dbl = useMemo(() => (acc && doubles ? recommendDoubles(mine, theirs, field, acc) : null), [acc, doubles, mine, theirs, field]);
 
   const targetText = (a: DoublesOption): string =>
@@ -199,6 +203,52 @@ export default function RecommendPanel({ mine, theirs, field, doubles, onClose }
                 </section>
               )}
 
+              {switches && (
+                <section className="rec-switch">
+                  <h3>
+                    Switch out?{' '}
+                    {switches.options[0] && switches.options[0].win > switches.stayWin + 0.05 ? (
+                      <span className="rec-win">
+                        Switch to {label(bench[switches.options[0].index])} ({pct(switches.options[0].win)} vs {pct(switches.stayWin)} staying in)
+                      </span>
+                    ) : (
+                      <span className="hint">Staying in is best ({pct(switches.stayWin)} to win)</span>
+                    )}
+                  </h3>
+                  <table className="rec-table">
+                    <thead>
+                      <tr>
+                        <th>Switch to</th>
+                        <th title="Chance to win the 1v1 after taking their free hit as it comes in">Win</th>
+                        <th>Their hit on the switch</th>
+                        <th title="Chance their hit KOs it as it comes in">KO'd on entry</th>
+                        <th>Then it uses</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {switches.options.map((o) => (
+                        <tr key={o.index} className={o.win > switches.stayWin + 0.05 ? 'best' : ''}>
+                          <td className="mv">
+                            <Sprite species={bench[o.index].species} size={22} /> {label(bench[o.index])}
+                          </td>
+                          <td>{pct(o.win)}</td>
+                          <td>{o.hitMove ? `${o.hitMove} · ${Math.round(o.hitPct)}%` : 'no damaging move'}</td>
+                          <td>{pct(o.koOnSwitch)}</td>
+                          <td>
+                            {o.bestMove ?? '—'}
+                            {o.bestMove && o.first ? ` (${orderText(o.first)})` : ''}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <p className="hint">
+                    Each benched Pokémon takes the opponent's strongest hit as it comes in, then trades blows, compared with your current Pokémon staying in. Ignores hazards, and assumes the opponent keeps attacking
+                    rather than switching.
+                  </p>
+                </section>
+              )}
+
               <p className="hint rec-skipped">
                 {singles.mine.blocked.length > 0 && <>No effect on {label(theirs[0])}: {singles.mine.blocked.map((b) => `${b.move} (${b.reason})`).join(', ')}. </>}
                 {singles.mine.status.length > 0 && <>Not scored (status moves): {singles.mine.status.join(', ')}. </>}
@@ -298,7 +348,7 @@ export default function RecommendPanel({ mine, theirs, field, doubles, onClose }
           <p className="hint bring-foot">
             {doubles
               ? "Doubles: scores each combined plan for this turn by KO chance and damage, counting focus fire, spread-move reduction and friendly fire. It doesn't know what the opponent will do, Protect, switching, or who they'll target."
-              : "Singles: simulates both sides repeating their move for up to 5 turns and assumes they use whichever of their damaging moves is worst for you. Accounts for accuracy, current HP, boosts, speed and priority, Disguise, recharge and charge turns, and stat drops from moves like Draco Meteor. It doesn't know about switching, Protect, status moves, items like Sitrus Berry (Focus Sash and Sturdy at full HP are handled), residual damage, or speed changes."}{' '}
+              : "Singles: simulates both sides repeating their move for up to 5 turns and assumes they use whichever of their damaging moves is worst for you. Accounts for accuracy, current HP, boosts, speed and priority, Disguise, recharge and charge turns, and stat drops from moves like Draco Meteor. Switching is covered by the 'Switch out?' table. It doesn't know about Protect, status moves, items like Sitrus Berry (Focus Sash and Sturdy at full HP are handled), residual damage, or speed changes."}{' '}
             Moves that only matter situationally ({Object.keys(SITUATIONAL).slice(0, 3).join(', ')}…) are listed but not scored.
           </p>
         </div>

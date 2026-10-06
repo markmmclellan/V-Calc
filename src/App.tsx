@@ -270,6 +270,8 @@ export default function App() {
     [t.sets[t.active], doubles && onFieldCount(t, true) === 2 ? t.sets[t.partner!] : undefined].filter((s): s is PokemonSet => !!s);
   const yours = lineup(teams[0]);
   const theirs = lineup(teams[1]);
+  // Your other team members: candidates to switch in (Best move > Switch out?).
+  const bench = useMemo(() => teams[0].sets.filter((s, i) => i !== teams[0].active && i !== teams[0].partner && !!s.species), [teams]);
 
   const a = teams[0].sets[teams[0].active];
   const b = teams[1].sets[teams[1].active];
@@ -412,7 +414,7 @@ export default function App() {
       </main>
 
       {recOpen && (
-        <RecommendPanel mine={yours} theirs={theirs} field={calcField} doubles={doubles} onClose={() => setRecOpen(false)} />
+        <RecommendPanel mine={yours} theirs={theirs} bench={bench} field={calcField} doubles={doubles} onClose={() => setRecOpen(false)} />
       )}
 
       {bringOpen && (

@@ -1,7 +1,7 @@
 // Dev helper: checks the "best move" engine (src/lib/recommend.ts).
 import { blankField } from '../src/lib/calc.ts';
 import { blankSet } from '../src/lib/model.ts';
-import { HORIZON, killTimes, koProbability, profile, raceResult, recommendDoubles, recommendSingles, spreadOf } from '../src/lib/recommend.ts';
+import { HORIZON, killTimes, koProbability, profile, raceResult, recommendDoubles, recommendSingles, recommendSwitches, spreadOf } from '../src/lib/recommend.ts';
 
 let fails = 0;
 const check = (label, ok, detail = '') => { if (!ok) fails++; console.log(ok ? 'ok  ' : 'FAIL', label, detail); };
@@ -172,6 +172,26 @@ const t0 = performance.now();
 recommendSingles(garchomp, incin, singles(), sure1);
 recommendDoubles([earthquaker, gholdengo], [salamence, rillaboom], doubles(), sure1);
 const ms = performance.now() - t0;
+// ------------------------------------------------------------------ switching out
+{
+  const mk = (species, moves, ability, sp = {}) => ({ ...blankSet(species), ability, nature: 'Serious', moves: [...moves, '', '', '', ''].slice(0, 4), sp: { hp: 0, atk: 0, def: 0, spa: 0, spd: 0, spe: 0, ...sp } });
+  const f = { ...blankField(), gameType: 'Singles' };
+  const acc1 = () => 1;
+  const garchomp = mk('Garchomp', ['Earthquake'], 'Rough Skin', { atk: 32 });
+  const pikachu = mk('Pikachu', ['Thunderbolt'], 'Static');
+  const salamence = mk('Salamence', ['Dragon Claw'], 'Intimidate');
+  const sw = recommendSwitches(pikachu, garchomp, [salamence, mk('Gengar', ['Shadow Ball'], 'Cursed Body')], f, acc1);
+  const sal = sw.options.find((o) => o.index === 0);
+  check('switching into a Ground immunity takes no hit (Earthquake vs Salamence)', sal && sal.hitMove === null && sal.koOnSwitch === 0, JSON.stringify(sal));
+  check('stay-in win is a probability', sw.stayWin >= 0 && sw.stayWin <= 1);
+  check('switch options are sorted best first and are probabilities', sw.options.every((o, i) => o.win >= 0 && o.win <= 1 && (i === 0 || sw.options[i - 1].win >= o.win)));
+  // a bench Pokémon that the foe KOs on entry has a 0% win chance
+  const frail = { ...mk('Pikachu', ['Thunderbolt'], 'Static'), hpPercent: 1 };
+  const kill = recommendSwitches(salamence, garchomp, [frail], f, acc1).options[0];
+  check('a 1% HP Pokémon is knocked out on entry and cannot win', kill.koOnSwitch > 0.99 && kill.win < 0.01, JSON.stringify(kill));
+  check('no bench: no options, no crash', recommendSwitches(pikachu, garchomp, [], f, acc1).options.length === 0);
+}
+
 check('a full Singles + Doubles recommendation is fast', ms < 3000, `${Math.round(ms)} ms`);
 check('the horizon is what the tests assume', HORIZON === 5);
 

@@ -177,7 +177,8 @@ button.stale { border-color: var(--warn); color: var(--warn); }
 .to-toggles { display: flex; gap: 4px; flex-wrap: wrap; }
 
 /* Shaymin mascot */
-.mascot { position: fixed; right: 24px; bottom: 16px; background-repeat: no-repeat; image-rendering: pixelated; z-index: 5; user-select: none; touch-action: none; cursor: grab; }
+.mascot-box { position: fixed; right: 24px; bottom: 16px; z-index: 5; pointer-events: none; display: flex; align-items: flex-end; justify-content: center; }
+.mascot { background-repeat: no-repeat; image-rendering: pixelated; user-select: none; touch-action: none; cursor: grab; pointer-events: auto; }
 .mascot.dragging { cursor: grabbing; }
 
 /* mega stone toggle */

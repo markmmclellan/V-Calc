@@ -248,6 +248,14 @@ export function sashIntact(attacker: PokemonSet, defender: PokemonSet, moveName:
   return !!data && !data.multihit;
 }
 
+/**
+ * Last Respects is 50 + 50 per fainted ally (Smogon's Champions dex). The damage library leaves it at 50, so the
+ * "Fainted allies" count from the editor sets the power here.
+ */
+export function lastRespectsPower(moveName: string, attacker: PokemonSet): { basePower: number } | undefined {
+  return moveName === 'Last Respects' ? { basePower: 50 + 50 * Math.min(100, attacker.alliesFainted ?? 0) } : undefined;
+}
+
 export function calcMove(
   attacker: PokemonSet,
   defender: PokemonSet,
@@ -277,9 +285,10 @@ export function calcMove(
     const a = buildPokemon(attacker, !!attackerSide.isSteelySpirit);
     const d = buildPokemon(defender);
     if (!a || !d || !moveName) return empty;
-    let move = new Move(gen, moveName, { isCrit: crit });
+    const overrides = lastRespectsPower(moveName, attacker);
+    let move = new Move(gen, moveName, { isCrit: crit, ...(overrides ? { overrides } : {}) });
     const targets = field.gameType === 'Doubles' ? spreadTargets(move, onField(defenderSide), onField(attackerSide) - 1) : null;
-    if (targets !== null && targets < 2) move = new SingleTargetMove(gen, moveName, { isCrit: crit });
+    if (targets !== null && targets < 2) move = new SingleTargetMove(gen, moveName, { isCrit: crit, ...(overrides ? { overrides } : {}) });
     if (move.category === 'Status') return { ...empty, category: 'Status', type: move.type };
     const result = calculate(gen, a, d, move, buildField(field, reversed));
     const [min, max] = result.range();

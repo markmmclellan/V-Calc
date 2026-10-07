@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import { toID } from '@smogon/calc';
+import { lastRespectsPower } from '../lib/calc';
 import { metaFor, type BattleFormat, type Meta } from '../lib/data';
 import {
   baseStatsOf,
@@ -264,7 +265,7 @@ export default function PokemonEditor({ set, onChange, meta, format, weather, on
                   {mv.type}
                 </span>
               )}
-              {mv && mv.category !== 'Status' && <span className="bp">{mv.bp || '—'}</span>}
+              {mv && mv.category !== 'Status' && <span className="bp">{lastRespectsPower(mv.name, set)?.basePower ?? (mv.bp || '—')}</span>}
               {effect && (
                 <button
                   type="button"
@@ -312,8 +313,8 @@ export default function PokemonEditor({ set, onChange, meta, format, weather, on
           <input type="checkbox" checked={set.abilityOn} onChange={(e) => patch({ abilityOn: e.target.checked })} />
           {set.ability === 'Disguise' ? 'Disguise broken' : 'Ability active'}
         </label>
-        {set.ability === 'Supreme Overlord' && (
-          <label className="inline" title="Supreme Overlord: +10% power per fainted ally (up to 5)">
+        {(set.ability === 'Supreme Overlord' || set.moves.includes('Last Respects')) && (
+          <label className="inline" title="How many of your Pokémon have fainted: Supreme Overlord gives +10% power each (up to 5), Last Respects is 50 + 50 power each">
             Fainted allies
             <select value={set.alliesFainted ?? 0} onChange={(e) => patch({ alliesFainted: +e.target.value })}>
               {[0, 1, 2, 3, 4, 5].map((n) => (

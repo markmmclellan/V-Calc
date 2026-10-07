@@ -161,6 +161,12 @@ binding, Mimikyu's Disguise) and a fix so Gravity and Iron Ball ground Pokémon 
 - The scraper depends on op.gg's page format. If op.gg redesigns the site, the scraper (and Refresh) will need updating;
   the data already on disk keeps working.
 
+## Version
+
+The footer shows the version, the git commit and when that build was made (for example `v0.1.0 (154000c) · built Oct 7,
+2026, 3:12 PM`), so you can tell when a new deploy has gone live. Bump `version` in `package.json` for a new release.
+Last Respects uses the editor's **Fainted allies** box (50 + 50 power per ally), which also drives Supreme Overlord.
+
 ## Credits
 
 Damage math by [`@smogon/calc`](https://github.com/smogon/damage-calc) (MIT). Usage data from

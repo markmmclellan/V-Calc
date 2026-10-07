@@ -417,7 +417,9 @@ export default function App() {
         />
       )}
 
-      <footer className="app-footer">© 2026 Mark McLellan</footer>
+      <footer className="app-footer">
+        © 2026 Mark McLellan · <span title={`Built ${new Date(__APP_BUILT__).toLocaleString()}`}>v{__APP_VERSION__}{__APP_COMMIT__ ? ` (${__APP_COMMIT__})` : ''} · built {new Date(__APP_BUILT__).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}</span>
+      </footer>
 
       <Mascot />
     </div>

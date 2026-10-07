@@ -1,3 +1,5 @@
+import { execSync } from 'node:child_process';
+import fs from 'node:fs';
 import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 // @ts-expect-error plain JS module
@@ -40,7 +42,24 @@ function refreshEndpoint(): Plugin {
   };
 }
 
+/** Short git commit of this build, or '' when git isn't available. */
+function commit(): string {
+  try {
+    return execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+  } catch {
+    return '';
+  }
+}
+
+const pkg = JSON.parse(fs.readFileSync('./package.json', 'utf8'));
+
 export default defineConfig({
   plugins: [react(), refreshEndpoint()],
   base: './',
+  // shown in the footer so you can tell which deploy you're looking at
+  define: {
+    __APP_VERSION__: JSON.stringify(pkg.version),
+    __APP_COMMIT__: JSON.stringify(commit()),
+    __APP_BUILT__: JSON.stringify(new Date().toISOString()),
+  },
 });

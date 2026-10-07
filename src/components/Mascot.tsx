@@ -18,7 +18,7 @@ const ANIMS: Record<Mode, { sheet: string; w: number; h: number; ticks: number[]
   walk: { sheet: walkSheet, w: 24, h: 24, ticks: [10, 12, 10, 12], rows: 8, loop: true },
   sleep: { sheet: sleepSheet, w: 24, h: 16, ticks: [30, 35], rows: 8, loop: true },
   wake: { sheet: wakeSheet, w: 24, h: 24, ticks: [8, 6, 14, 4, 10], rows: 8, loop: false },
-  cringe: { sheet: cringeSheet, w: 32, h: 40, ticks: [8, 32], rows: 1, loop: false }, // the sheet says [2, 8]: slowed 4x so it reads as a reaction
+  cringe: { sheet: cringeSheet, w: 32, h: 40, ticks: [4, 16], rows: 1, loop: false }, // the sheet says [2, 8]: slowed 2x so it reads as a reaction
 };
 // the box she lives in is as big as the biggest frame; every animation is drawn bottom-centre in it
 const BOX_W = 32;

@@ -165,7 +165,7 @@ binding, Mimikyu's Disguise) and a fix so Gravity and Iron Ball ground Pokémon 
 
 Damage math by [`@smogon/calc`](https://github.com/smogon/damage-calc) (MIT). Usage data from
 [op.gg](https://op.gg/pokemon-champions/tier). Move, item and ability descriptions from the
-[Smogon Pokémon Champions dex](https://www.smogon.com/dex/champions/pokemon/). Sprites from [Pokémon Showdown](https://play.pokemonshowdown.com). The animated Shaymin mascot uses a fan-made
-Mystery Dungeon-style sprite sheet (`src/assets/shaymin/`); credit its artist(s) here if you know them.
-This is an unofficial fan project and is not affiliated with Nintendo, Game Freak, The Pokémon Company, Smogon or op.gg.
+[Smogon Pokémon Champions dex](https://www.smogon.com/dex/champions/pokemon/). Sprites from [Pokémon Showdown](https://play.pokemonshowdown.com). The animated Shaymin mascot uses sprites from Pokémon Mystery Dungeon (Spike Chunsoft / Nintendo / The Pokémon
+Company), in `src/assets/shaymin/`.
+This is an unofficial fan project and is not affiliated with Nintendo, Game Freak, The Pokémon Company, Spike Chunsoft, Smogon or op.gg.
 Pokémon and related names are trademarks of their owners.

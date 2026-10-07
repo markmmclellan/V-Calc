@@ -177,7 +177,7 @@ button.stale { border-color: var(--warn); color: var(--warn); }
 .to-toggles { display: flex; gap: 4px; flex-wrap: wrap; }
 
 /* Shaymin mascot */
-.mascot { position: fixed; right: 24px; bottom: 16px; image-rendering: pixelated; z-index: 5; user-select: none; touch-action: none; cursor: grab; }
+.mascot { position: fixed; right: 24px; bottom: 16px; background-repeat: no-repeat; image-rendering: pixelated; z-index: 5; user-select: none; touch-action: none; cursor: grab; }
 .mascot.dragging { cursor: grabbing; }
 
 /* mega stone toggle */

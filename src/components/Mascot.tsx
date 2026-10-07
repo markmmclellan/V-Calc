@@ -1,7 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
+import idleSheet from '../assets/shaymin/idle.png';
+import walkSheet from '../assets/shaymin/walk.png';
 
-const SRC = 'https://play.pokemonshowdown.com/sprites/gen5ani/shaymin.gif';
 const KEY = 'vcalc.mascot';
+const FRAME = 24; // px per frame in the sprite sheets (4 frames across, 8 facing directions down)
+
+/** Frame lengths in game ticks (60 per second), from the sheet's AnimData.xml. */
+const ANIMS = {
+  idle: { sheet: idleSheet, ticks: [40, 14, 16, 14] },
+  walk: { sheet: walkSheet, ticks: [10, 12, 10, 12] },
+};
+type Anim = keyof typeof ANIMS;
 
 interface Pos {
   x: number;
@@ -17,19 +26,26 @@ const loadPos = (): Pos | null => {
   }
 };
 
-/** Bigger on wide screens, smaller on narrow ones. */
-const scaleFor = (width: number) => (width >= 1500 ? 5 : width >= 1100 ? 3 : 2);
+/** Pixels per sprite pixel: bigger on wide screens, smaller on narrow ones. */
+const scaleFor = (width: number) => (width >= 1500 ? 6 : width >= 1100 ? 4 : 3);
+
+/** Sheet rows are Down, Down-Right, Right, Up-Right, Up, Up-Left, Left, Down-Left. */
+const rowFor = (dx: number, dy: number) => {
+  const deg = (Math.atan2(dx, dy) * 180) / Math.PI; // 0 = straight down, 90 = right, 180 = up
+  return Math.round(((deg + 360) % 360) / 45) % 8;
+};
 
 /**
- * Shaymin, bottom right by default. Drag her anywhere out of the way (the spot is remembered); double-click sends her
- * back to the corner.
+ * Shaymin, bottom right by default, idling. Drag her anywhere out of the way (she walks while you carry her, and the
+ * spot is remembered); double-click sends her back to the corner.
  */
 export default function Mascot() {
-  const [natural, setNatural] = useState<{ w: number; h: number } | null>(null);
   const [scale, setScale] = useState(() => scaleFor(window.innerWidth));
   const [pos, setPos] = useState<Pos | null>(loadPos);
-  const drag = useRef<{ dx: number; dy: number } | null>(null);
-  const box = useRef<HTMLImageElement>(null);
+  const [anim, setAnim] = useState<Anim>('idle');
+  const [row, setRow] = useState(0);
+  const [frame, setFrame] = useState(0);
+  const drag = useRef<{ dx: number; dy: number; lastX: number; lastY: number } | null>(null);
 
   useEffect(() => {
     const onResize = () => setScale(scaleFor(window.innerWidth));
@@ -37,11 +53,27 @@ export default function Mascot() {
     return () => window.removeEventListener('resize', onResize);
   }, []);
 
-  const w = natural ? natural.w * scale : undefined;
-  const h = natural ? natural.h * scale : undefined;
+  // step through the frames, each held for its own length
+  useEffect(() => {
+    setFrame(0);
+    const ticks = ANIMS[anim].ticks;
+    let i = 0;
+    let timer: number;
+    const next = () => {
+      timer = window.setTimeout(() => {
+        i = (i + 1) % ticks.length;
+        setFrame(i);
+        next();
+      }, (ticks[i] * 1000) / 60);
+    };
+    next();
+    return () => window.clearTimeout(timer);
+  }, [anim]);
+
+  const size = FRAME * scale;
   const clamp = (p: Pos): Pos => ({
-    x: Math.min(Math.max(0, p.x), Math.max(0, window.innerWidth - (w ?? 0))),
-    y: Math.min(Math.max(0, p.y), Math.max(0, window.innerHeight - (h ?? 0))),
+    x: Math.min(Math.max(0, p.x), Math.max(0, window.innerWidth - size)),
+    y: Math.min(Math.max(0, p.y), Math.max(0, window.innerHeight - size)),
   });
   const shown = pos ? clamp(pos) : null; // also pulls her back on screen if the window shrank
 
@@ -55,31 +87,45 @@ export default function Mascot() {
     }
   };
 
+  const sheet = ANIMS[anim].sheet;
   return (
-    <img
-      ref={box}
+    <div
       className={`mascot${drag.current ? ' dragging' : ''}`}
-      src={SRC}
-      alt="Shaymin"
+      role="img"
+      aria-label="Shaymin"
       title="Shaymin! Drag me out of the way (double-click to put me back)"
-      draggable={false}
-      width={w}
-      height={h}
-      style={shown ? { left: shown.x, top: shown.y, right: 'auto', bottom: 'auto' } : undefined}
-      onLoad={(e) => setNatural({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })}
+      style={{
+        width: size,
+        height: size,
+        backgroundImage: `url(${sheet})`,
+        backgroundSize: `${FRAME * 4 * scale}px ${FRAME * 8 * scale}px`,
+        backgroundPosition: `${-frame * size}px ${-row * size}px`,
+        ...(shown ? { left: shown.x, top: shown.y, right: 'auto', bottom: 'auto' } : {}),
+      }}
       onPointerDown={(e) => {
         const r = e.currentTarget.getBoundingClientRect();
-        drag.current = { dx: e.clientX - r.left, dy: e.clientY - r.top };
+        drag.current = { dx: e.clientX - r.left, dy: e.clientY - r.top, lastX: e.clientX, lastY: e.clientY };
         e.currentTarget.setPointerCapture(e.pointerId);
+        setAnim('walk');
       }}
       onPointerMove={(e) => {
-        if (!drag.current) return;
-        setPos(clamp({ x: e.clientX - drag.current.dx, y: e.clientY - drag.current.dy }));
+        const d = drag.current;
+        if (!d) return;
+        const mx = e.clientX - d.lastX;
+        const my = e.clientY - d.lastY;
+        if (Math.hypot(mx, my) >= 4) {
+          setRow(rowFor(mx, my)); // face the way she is being carried
+          d.lastX = e.clientX;
+          d.lastY = e.clientY;
+        }
+        setPos(clamp({ x: e.clientX - d.dx, y: e.clientY - d.dy }));
       }}
       onPointerUp={(e) => {
         if (!drag.current) return;
         drag.current = null;
         e.currentTarget.releasePointerCapture(e.pointerId);
+        setAnim('idle');
+        setRow(0); // back to facing the front
         save(pos ? clamp(pos) : null);
       }}
       onDoubleClick={() => save(null)}

@@ -157,31 +157,32 @@ export default function Mascot() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, scale]);
 
-  // walk toward the target, then stop and idle
+  // walk toward the target, then stop and idle. A plain timer rather than requestAnimationFrame: some browsers hold
+  // animation frames back (hidden or partly covered windows, power saving) and she would walk on the spot.
   useEffect(() => {
     if (!target) return;
-    let id = 0;
     let last = performance.now();
-    const step = (now: number) => {
-      const dt = Math.min(0.1, (now - last) / 1000);
+    let cur = posRef.current ?? target; // tracked here so a slow render can't make her stall
+    const timer = window.setInterval(() => {
+      const now = performance.now();
+      const dt = Math.min(0.25, Math.max(0, (now - last) / 1000));
       last = now;
-      const cur = posRef.current ?? target;
       const dx = target.x - cur.x;
       const dy = target.y - cur.y;
       const dist = Math.hypot(dx, dy);
       const move = WALK_SPEED * scale * dt;
       if (dist <= move) {
+        window.clearInterval(timer);
         setPos(target);
         setTarget(null);
         setRow(0);
         setMode('idle');
         return;
       }
-      setPos({ x: cur.x + (dx / dist) * move, y: cur.y + (dy / dist) * move });
-      id = requestAnimationFrame(step);
-    };
-    id = requestAnimationFrame(step);
-    return () => cancelAnimationFrame(id);
+      cur = { x: cur.x + (dx / dist) * move, y: cur.y + (dy / dist) * move };
+      setPos(cur);
+    }, 16);
+    return () => window.clearInterval(timer);
   }, [target, scale]);
 
   const shown = pos ? clamp(pos) : null; // also pulls her back on screen if the window shrank

@@ -3,11 +3,53 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>V-Calc</title>
+    <title>V-Calc | Pokémon Champions Damage Calculator</title>
+    <meta
+      name="description"
+      content="V-Calc is a free damage and speed calculator for Pokémon Champions. Import Showdown pastes, see KO chances, turn order, usage stats from op.gg, team preview help and move recommendations for Singles and Doubles."
+    />
+    <meta name="keywords" content="Pokémon Champions, damage calculator, speed calculator, VGC, doubles, singles, Showdown, op.gg, Smogon" />
+    <meta name="author" content="Mark McLellan" />
+    <link rel="canonical" href="https://markmmclellan.github.io/V-Calc/" />
     <link rel="icon" type="image/svg+xml" href="victini.svg" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="V-Calc" />
+    <meta property="og:title" content="V-Calc | Pokémon Champions Damage Calculator" />
+    <meta property="og:description" content="Free damage and speed calculator for Pokémon Champions with Showdown paste import, turn order, op.gg usage data and team preview help." />
+    <meta property="og:url" content="https://markmmclellan.github.io/V-Calc/" />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="V-Calc | Pokémon Champions Damage Calculator" />
+    <meta name="twitter:description" content="Free damage and speed calculator for Pokémon Champions with Showdown paste import, turn order, op.gg usage data and team preview help." />
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "name": "V-Calc",
+        "alternateName": "V-Calc Pokémon Champions Damage Calculator",
+        "url": "https://markmmclellan.github.io/V-Calc/",
+        "description": "A free damage and speed calculator for Pokémon Champions, with Showdown paste import, KO chances, turn order, usage data and team preview help.",
+        "applicationCategory": "GameApplication",
+        "operatingSystem": "Any (web browser)",
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+        "author": { "@type": "Person", "name": "Mark McLellan" }
+      }
+    </script>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <!-- Shown to crawlers and before the app loads; React replaces it on start. -->
+      <main style="font-family: system-ui, sans-serif; max-width: 640px; margin: 40px auto; padding: 0 16px; color: #ccd">
+        <h1>V-Calc: Pokémon Champions Damage Calculator</h1>
+        <p>
+          A free damage and speed calculator for Pokémon Champions. Import your team from a Pokémon Showdown paste, pick
+          an opponent from the op.gg usage data, and see damage ranges, KO chances, turn order, type matchups, team
+          preview help and move recommendations for Singles and Doubles.
+        </p>
+        <noscript><p>This calculator needs JavaScript enabled to run.</p></noscript>
+      </main>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

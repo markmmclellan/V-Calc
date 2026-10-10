@@ -267,7 +267,7 @@ export default function App() {
   const theirName = b?.species;
   useEffect(() => {
     document.title =
-      yourName && theirName ? `V-Calc | ${yourName} vs. ${theirName}` : yourName || theirName ? `V-Calc | ${yourName || theirName}` : 'V-Calc';
+      yourName && theirName ? `V-Calc | ${yourName} vs. ${theirName}` : yourName || theirName ? `V-Calc | ${yourName || theirName}` : 'V-Calc | Pokémon Champions Damage Calculator';
   }, [yourName, theirName]);
 
   const lists = useMemo(() => {

@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://markmmclellan.github.io/V-Calc/sitemap.xml

@@ -198,14 +198,15 @@ export default function App() {
     setTeams((old) => old.map((t) => ({ ...t, sets: t.sets.map((s) => ({ ...s, boosts: zeroBoosts(), status: '' as const, hpPercent: 100, abilityOn: false, alliesFainted: undefined })) })) as [Team, Team]);
   };
 
-  // Clearing out both teams ends the battle: reset the field effects too, as if Reset battle had been pressed.
-  const bothEmpty = teams[0].sets.length === 0 && teams[1].sets.length === 0;
-  const wasEmpty = useRef(bothEmpty);
+  // Clearing out the opponent's team ends the battle: reset the field effects and battle state, as if Reset battle had
+  // been pressed. (Your own team is left alone to refill; only emptying theirs triggers it.)
+  const theirsEmpty = teams[1].sets.length === 0;
+  const wasEmpty = useRef(theirsEmpty);
   useEffect(() => {
-    if (bothEmpty && !wasEmpty.current) resetBattle();
-    wasEmpty.current = bothEmpty;
+    if (theirsEmpty && !wasEmpty.current) resetBattle();
+    wasEmpty.current = theirsEmpty;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bothEmpty]);
+  }, [theirsEmpty]);
 
   // 1-6 select your Pokemon, Shift+1-6 the opponent's (ignored while typing in a field)
   useEffect(() => {

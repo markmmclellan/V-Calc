@@ -70,8 +70,8 @@ label.check input { width: auto; }
 .slot { position: relative; display: flex; flex-direction: column; align-items: center; padding: 3px 2px; background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; cursor: pointer; min-width: 0; }
 .slot.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
 .slot-name { font-size: 10px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.slot .x { position: absolute; top: 1px; right: 2px; padding: 0 5px; line-height: 1.2; background: transparent; border: 0; color: var(--muted); }
-.slot .x:hover { color: var(--bad); }
+.slot .x { position: absolute; top: 0; right: 0; width: 24px; height: 24px; padding: 0; display: grid; place-items: center; font-size: 18px; line-height: 1; background: transparent; border: 0; border-radius: 0 7px 0 8px; color: var(--muted); cursor: pointer; }
+.slot .x:hover, .slot .x:focus-visible { color: #fff; background: var(--bad); }
 .sprite, .sprite-ph { object-fit: contain; display: inline-block; }
 .add-meta { position: relative; margin-top: 6px; }
 .add-meta input { width: 100%; }

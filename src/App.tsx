@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { MEGA_STONES, toID } from '@smogon/calc';
 import BringPanel from './components/BringPanel';
 import FieldPanel from './components/FieldPanel';
@@ -197,6 +197,15 @@ export default function App() {
     setField(normalizeField({ gameType: format === 'single' ? 'Singles' : 'Doubles' }));
     setTeams((old) => old.map((t) => ({ ...t, sets: t.sets.map((s) => ({ ...s, boosts: zeroBoosts(), status: '' as const, hpPercent: 100, abilityOn: false, alliesFainted: undefined })) })) as [Team, Team]);
   };
+
+  // Clearing out both teams ends the battle: reset the field effects too, as if Reset battle had been pressed.
+  const bothEmpty = teams[0].sets.length === 0 && teams[1].sets.length === 0;
+  const wasEmpty = useRef(bothEmpty);
+  useEffect(() => {
+    if (bothEmpty && !wasEmpty.current) resetBattle();
+    wasEmpty.current = bothEmpty;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bothEmpty]);
 
   // 1-6 select your Pokemon, Shift+1-6 the opponent's (ignored while typing in a field)
   useEffect(() => {

@@ -123,7 +123,7 @@ export default function BringPanel({ mine, theirs, format, onApply, onClose }: P
             <section className="bring-reco">
               <h3>
                 Recommended
-                <button className="apply" onClick={() => onApply(a.bring, a.leads)} disabled={!a.bring.length} title="Move these to the front of your team and select the leads">
+                <button className="apply" onClick={() => onApply(a.bring, a.leads)} disabled={!a.bring.length} title="Move these to the front of your team, select the leads, and mark the rest as not brought (Best move leaves them out of its switch options)">
                   Move to front
                 </button>
               </h3>

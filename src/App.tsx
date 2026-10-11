@@ -56,6 +56,7 @@ export default function App() {
   const [lookupOpen, setLookupOpen] = useState(false);
   const [bringOpen, setBringOpen] = useState(false);
   const [recOpen, setRecOpen] = useState(false);
+  const [skipped, setSkipped] = useState<string[]>([]); // teammates you didn't bring (not switch options in Best move)
   // null until probed. false = a hosted copy (e.g. GitHub Pages) with no scraper: the button reloads the published data.
   const [canScrape, setCanScrape] = useState<boolean | null>(null);
   useEffect(() => {
@@ -134,6 +135,8 @@ export default function App() {
 
   /** Put the recommended Pokémon first (leads at the front) and select the leads, like arranging a team in preview. */
   const applyBring = (bring: number[], leads: number[]) => {
+    // the ones left at home aren't switch options in Best move
+    setSkipped(teams[0].sets.filter((_, i) => !bring.includes(i)).map((s) => s.species));
     setTeams((old) => {
       const t = old[0];
       const order = [...bring, ...t.sets.map((_, i) => i).filter((i) => !bring.includes(i))];
@@ -400,7 +403,7 @@ export default function App() {
       </main>
 
       {recOpen && (
-        <RecommendPanel mine={yours} theirs={theirs} bench={bench} field={calcField} doubles={doubles} onClose={() => setRecOpen(false)} />
+        <RecommendPanel mine={yours} theirs={theirs} bench={bench} skipped={skipped} onToggleBrought={(sp) => setSkipped((old) => (old.includes(sp) ? old.filter((x) => x !== sp) : [...old, sp]))} field={calcField} doubles={doubles} onClose={() => setRecOpen(false)} />
       )}
 
       {bringOpen && (

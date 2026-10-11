@@ -340,6 +340,8 @@ label.inline select { padding: 1px 4px; }
 .modal.lookup { width: min(780px, 100%); }
 .modal-sub select { flex: none; }
 .lookup-count { padding: 0 12px 6px; }
+.rec-brought { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin: 4px 0 8px; }
+.rec-brought-pick { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; cursor: pointer; }
 .lookup-rows { list-style: none; margin: 0; padding: 0 8px 10px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
 .lookup-rows li { display: grid; padding: 4px 8px; border-radius: 6px; background: var(--panel-2); }
 .lookup-rows li:hover { background: var(--line); }

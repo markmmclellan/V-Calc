@@ -12,12 +12,16 @@ interface Props {
   theirs: PokemonSet[];
   /** Your other Pokémon on the team (candidates to switch in; Singles only). */
   bench?: PokemonSet[];
+  /** Species of teammates you did NOT bring to the battle (left out of the switch analysis). */
+  skipped?: string[];
+  onToggleBrought?: (species: string) => void;
   field: FieldState;
   doubles: boolean;
   onClose: () => void;
 }
 
 const EMPTY: PokemonSet[] = [];
+const NONE: string[] = [];
 const label = (s: PokemonSet) => s.nickname || s.species;
 const pct = (x: number) => `${Math.round(x * 100)}%`;
 const STATUS: Record<string, string> = { brn: 'burned', par: 'paralyzed', psn: 'poisoned', tox: 'badly poisoned', slp: 'asleep', frz: 'frozen' };
@@ -48,7 +52,7 @@ function orderText(first: 'me' | 'them' | 'tie'): string {
   return first === 'me' ? 'you move first' : first === 'them' ? 'they move first' : 'speed tie';
 }
 
-export default function RecommendPanel({ mine, theirs, bench = EMPTY, field, doubles, onClose }: Props) {
+export default function RecommendPanel({ mine, theirs, bench = EMPTY, skipped = NONE, onToggleBrought, field, doubles, onClose }: Props) {
   const [acc, setAcc] = useState<AccuracyOf | null>(null);
   const [accError, setAccError] = useState(false);
 
@@ -72,7 +76,8 @@ export default function RecommendPanel({ mine, theirs, bench = EMPTY, field, dou
   }, [onClose]);
 
   const singles = useMemo(() => (acc && !doubles && mine[0] && theirs[0] ? recommendSingles(mine[0], theirs[0], field, acc) : null), [acc, doubles, mine, theirs, field]);
-  const switches = useMemo(() => (acc && !doubles && mine[0] && theirs[0] && bench.length ? recommendSwitches(mine[0], theirs[0], bench, field, acc) : null), [acc, doubles, mine, theirs, bench, field]);
+  const candidates = useMemo(() => bench.filter((b) => !skipped.includes(b.species)), [bench, skipped]);
+  const switches = useMemo(() => (acc && !doubles && mine[0] && theirs[0] && bench.length ? recommendSwitches(mine[0], theirs[0], candidates, field, acc) : null), [acc, doubles, mine, theirs, bench.length, candidates, field]);
   const dbl = useMemo(() => (acc && doubles ? recommendDoubles(mine, theirs, field, acc) : null), [acc, doubles, mine, theirs, field]);
 
   const targetText = (a: DoublesOption): string =>
@@ -207,14 +212,26 @@ export default function RecommendPanel({ mine, theirs, bench = EMPTY, field, dou
                 <section className="rec-switch">
                   <h3>
                     Switch out?{' '}
-                    {switches.options[0] && switches.options[0].win > switches.stayWin + 0.05 ? (
+                    {!candidates.length ? (
+                      <span className="hint">Tick who you brought below</span>
+                    ) : switches.options[0] && switches.options[0].win > switches.stayWin + 0.05 ? (
                       <span className="rec-win">
-                        Switch to {label(bench[switches.options[0].index])} ({pct(switches.options[0].win)} vs {pct(switches.stayWin)} staying in)
+                        Switch to {label(candidates[switches.options[0].index])} ({pct(switches.options[0].win)} vs {pct(switches.stayWin)} staying in)
                       </span>
                     ) : (
                       <span className="hint">Staying in is best ({pct(switches.stayWin)} to win)</span>
                     )}
                   </h3>
+                  <div className="rec-brought" role="group" aria-label="Which of your other Pokémon did you bring?">
+                    <span className="hint">Brought (tick your back line):</span>
+                    {bench.map((b) => (
+                      <label key={b.species} className="rec-brought-pick" title={`${label(b)}: ${skipped.includes(b.species) ? 'not brought, left out' : 'brought, counted as a switch option'}`}>
+                        <input type="checkbox" checked={!skipped.includes(b.species)} onChange={() => onToggleBrought?.(b.species)} />
+                        <Sprite species={b.species} size={22} /> {label(b)}
+                      </label>
+                    ))}
+                  </div>
+                  {switches.options.length > 0 && (
                   <table className="rec-table">
                     <thead>
                       <tr>
@@ -229,7 +246,7 @@ export default function RecommendPanel({ mine, theirs, bench = EMPTY, field, dou
                       {switches.options.map((o) => (
                         <tr key={o.index} className={o.win > switches.stayWin + 0.05 ? 'best' : ''}>
                           <td className="mv">
-                            <Sprite species={bench[o.index].species} size={22} /> {label(bench[o.index])}
+                            <Sprite species={candidates[o.index].species} size={22} /> {label(candidates[o.index])}
                           </td>
                           <td>{pct(o.win)}</td>
                           <td>{o.hitMove ? `${o.hitMove} · ${Math.round(o.hitPct)}%` : 'no damaging move'}</td>
@@ -242,8 +259,9 @@ export default function RecommendPanel({ mine, theirs, bench = EMPTY, field, dou
                       ))}
                     </tbody>
                   </table>
+                  )}
                   <p className="hint">
-                    Each benched Pokémon takes the opponent's strongest hit as it comes in, then trades blows, compared with your current Pokémon staying in. Ignores hazards, and assumes the opponent keeps attacking
+                    Only the teammates you tick count (What to bring → Move to front sets them for you). Each takes the opponent's strongest hit as it comes in, then trades blows, compared with your current Pokémon staying in. Ignores hazards, and assumes the opponent keeps attacking
                     rather than switching.
                   </p>
                 </section>

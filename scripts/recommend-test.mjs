@@ -1,7 +1,7 @@
 // Dev helper: checks the "best move" engine (src/lib/recommend.ts).
 import { blankField } from '../src/lib/calc.ts';
 import { blankSet } from '../src/lib/model.ts';
-import { HORIZON, killTimes, koProbability, profile, raceResult, recommendDoubles, recommendSingles, recommendSwitches, spreadOf } from '../src/lib/recommend.ts';
+import { HORIZON, chargesFirst, killTimes, koProbability, profile, raceResult, recommendDoubles, recommendSingles, recommendSwitches, spreadOf } from '../src/lib/recommend.ts';
 
 let fails = 0;
 const check = (label, ok, detail = '') => { if (!ok) fails++; console.log(ok ? 'ok  ' : 'FAIL', label, detail); };
@@ -190,6 +190,26 @@ const ms = performance.now() - t0;
   const kill = recommendSwitches(salamence, garchomp, [frail], f, acc1).options[0];
   check('a 1% HP Pokémon is knocked out on entry and cannot win', kill.koOnSwitch > 0.99 && kill.win < 0.01, JSON.stringify(kill));
   check('no bench: no options, no crash', recommendSwitches(pikachu, garchomp, [], f, acc1).options.length === 0);
+}
+
+// ------------------------------------------------------------------ two-turn moves and Mega Sol
+{
+  const mk = (species, moves, ability, sp = {}, extra = {}) => ({ ...blankSet(species), ability, nature: 'Modest', moves: [...moves, '', '', '', ''].slice(0, 4), sp: { hp: 0, atk: 0, def: 0, spa: 0, spd: 0, spe: 0, ...sp }, ...extra });
+  const f = { ...blankField(), gameType: 'Singles' };
+  const sun = { ...f, weather: 'Sun' };
+  check('Solar Beam charges normally, not in sun, not with Mega Sol', chargesFirst('Solar Beam', f) && !chargesFirst('Solar Beam', sun) && !chargesFirst('Solar Beam', f, { ability: 'Mega Sol' }) && chargesFirst('Solar Beam', f, { ability: 'Overgrow' }));
+  check('Mega Sol does not help other two-turn moves', chargesFirst('Fly', f, { ability: 'Mega Sol' }));
+  const prima = mk('Primarina', ['Moonblast'], 'Torrent', { spa: 32 });
+  const meg = (ability) => mk('Meganium-Mega', ['Solar Beam', 'Weather Ball'], ability, { spa: 32, spe: 32 });
+  const run = (ability) => recommendSingles(prima, meg(ability), f, () => 1);
+  const withSol = run('Mega Sol');
+  const without = run('Overgrow');
+  const solarSol = withSol.replies.find((r) => r.move === 'Solar Beam');
+  const solarNo = without.replies.find((r) => r.move === 'Solar Beam');
+  check('Mega Sol: Solar Beam is a one-turn move that can KO right away', solarSol && !solarSol.charges && solarSol.koChance > 0.9, JSON.stringify(solarSol));
+  check('without it: Solar Beam charges and cannot KO this turn', solarNo && solarNo.charges && solarNo.koChance === 0, JSON.stringify(solarNo));
+  check('Mega Sol makes the matchup worse for the defender (it can KO first)', withSol.options[0].win < without.options[0].win || withSol.options[0].win < 0.5, `${withSol.options[0]?.win} vs ${without.options[0]?.win}`);
+  check('the "they move first and KO you" warning appears with Mega Sol but not for a move that must charge', withSol.warnings.some((w) => /Solar Beam/.test(w)) && !without.warnings.some((w) => /Solar Beam/.test(w)), JSON.stringify([withSol.warnings, without.warnings]));
 }
 
 check('a full Singles + Doubles recommendation is fast', ms < 3000, `${Math.round(ms)} ms`);

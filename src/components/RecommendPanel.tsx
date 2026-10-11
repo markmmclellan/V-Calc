@@ -196,7 +196,7 @@ export default function RecommendPanel({ mine, theirs, bench = EMPTY, field, dou
                     {singles.replies.slice(0, 3).map((r) => (
                       <li key={r.move}>
                         <strong>{r.move}</strong> · {Math.round(r.avgPctOfMine * 100) / 100 > 0 ? `${Math.round(r.avgPctOfMine)}%` : '0%'} of your current HP
-                        {r.accuracy < 1 ? ` (${Math.round(r.accuracy * 100)}% accurate)` : ''} · KO chance {pct(r.koChance)}
+                        {r.accuracy < 1 ? ` (${Math.round(r.accuracy * 100)}% accurate)` : ''} · KO chance {pct(r.koChance)}{r.charges ? ' (charges for a turn first)' : ''}
                       </li>
                     ))}
                   </ul>

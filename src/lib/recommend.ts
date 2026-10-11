@@ -36,14 +36,16 @@ export const SITUATIONAL: Record<string, string> = {
 type Mode = 'every' | 'recharge' | 'charge';
 
 /** Whether a two-turn move has to charge first in this weather. */
-export function chargesFirst(move: string, field: FieldState): boolean {
+export function chargesFirst(move: string, field: FieldState, user?: PokemonSet): boolean {
   if (!TWO_TURN.has(move)) return false;
-  if ((move === 'Solar Beam' || move === 'Solar Blade') && (field.weather === 'Sun' || field.weather === 'Harsh Sunshine')) return false;
+  // Mega Sol (Mega Meganium) makes its own moves behave as if the sun were up, so Solar Beam fires straight away
+  const sunny = field.weather === 'Sun' || field.weather === 'Harsh Sunshine' || user?.ability === 'Mega Sol';
+  if ((move === 'Solar Beam' || move === 'Solar Blade') && sunny) return false;
   if (move === 'Electro Shot' && (field.weather === 'Rain' || field.weather === 'Heavy Rain')) return false;
   return true;
 }
 
-const modeOf = (move: string, field: FieldState): Mode => (RECHARGE.has(move) ? 'recharge' : chargesFirst(move, field) ? 'charge' : 'every');
+const modeOf = (move: string, field: FieldState, user?: PokemonSet): Mode => (RECHARGE.has(move) ? 'recharge' : chargesFirst(move, field, user) ? 'charge' : 'every');
 
 /** How many times an attack has been used after `turns` turns (assuming earlier ones landed). */
 function attacksIn(mode: Mode, turns: number): number {
@@ -202,7 +204,7 @@ export function profile(
   defPrior: (turn: number) => number,
 ): Profile | null {
   const { att, def, field, reversed } = ctx;
-  const mode = modeOf(move, field);
+  const mode = modeOf(move, field, att);
   const cache = new Map<string, number[]>();
   const calcAt = (a: PokemonSet, d: PokemonSet) => {
     const k = JSON.stringify([a.boosts, d.boosts]);
@@ -258,6 +260,7 @@ export interface Reply {
   accuracy: number;
   avgPctOfMine: number; // of my CURRENT HP
   koChance: number; // chance that it KOs me in one hit (accuracy included)
+  charges: boolean; // a two-turn move that has to charge first, so it can't hit this turn
 }
 export interface SinglesResult {
   options: SinglesOption[]; // best first
@@ -275,6 +278,7 @@ function pctOfHp(p: Profile, turn = 1): number {
 
 function koOnce(p: Profile): number {
   if (p.disguise || p.sash) return 0; // the first hit is blocked / can't KO
+  if (p.mode === 'charge') return 0; // it spends this turn charging
   const rolls = p.rolls(1);
   return rolls.length ? p.acc * (rolls.filter((r) => r >= p.hp).length / rolls.length) : 0;
 }
@@ -292,12 +296,12 @@ export function recommendSingles(me: PokemonSet, foe: PokemonSet, field: FieldSt
   const replies: Reply[] = theirs.scored
     .map((move) => profile(theirCtx, move, () => 0, null, () => 0))
     .filter((p): p is Profile => !!p)
-    .map((p) => ({ move: p.move, accuracy: p.acc, avgPctOfMine: pctOfHp(p), koChance: koOnce(p) }))
+    .map((p) => ({ move: p.move, accuracy: p.acc, avgPctOfMine: pctOfHp(p), koChance: koOnce(p), charges: p.mode === 'charge' }))
     .sort((a, b) => b.avgPctOfMine * b.accuracy - a.avgPctOfMine * a.accuracy);
 
   const options: SinglesOption[] = [];
   for (const move of mine.scored) {
-    const myMode = modeOf(move, field);
+    const myMode = modeOf(move, field, me);
     const solo = profile(myCtx, move, (t) => attacksIn(myMode, t - 1), null, () => 0);
     if (!solo) continue;
     const koBy = cumulative(killTimes(solo)).slice(0, 3);
@@ -313,7 +317,7 @@ export function recommendSingles(me: PokemonSet, foe: PokemonSet, field: FieldSt
     const rivals = theirs.scored.length ? theirs.scored : [null];
     let worst: { race: Race; first: SinglesOption['first']; reply: string | null } | null = null;
     for (const reply of rivals) {
-      const replyMode = reply ? modeOf(reply, field) : 'every';
+      const replyMode = reply ? modeOf(reply, field, foe) : 'every';
       const myPri = solo.priority;
       const theirPri = reply ? (movePriority(foe, reply, field)?.priority ?? 0) : -99;
       const first: SinglesOption['first'] =
@@ -351,7 +355,7 @@ export function recommendSingles(me: PokemonSet, foe: PokemonSet, field: FieldSt
 
   const warnings: string[] = [];
   const top = options[0];
-  const strongest = replies[0];
+  const strongest = replies.find((r) => !r.charges); // a move that has to charge can't KO before we act
   if (strongest && strongest.koChance >= 0.5) {
     // do they act before my best move does?
     const myPri = top?.priority ?? 0;
@@ -539,7 +543,7 @@ export function recommendDoubles(mine: PokemonSet[], foes: PokemonSet[], field: 
     for (const move of me.moves) {
       if (!move || scored.has(move)) continue;
       const worksOn = foes.map((foe) => calcMove(me, foe, move, false, field, false)).filter((r) => r.ok);
-      if (SITUATIONAL[move] || chargesFirst(move, field) || !worksOn.length) continue;
+      if (SITUATIONAL[move] || chargesFirst(move, field, me) || !worksOn.length) continue;
       scored.add(move);
     }
     classified.push({ ...cls, scored: [...scored], blocked: cls.blocked.filter((b) => !scored.has(b.move)).concat(blocked) });

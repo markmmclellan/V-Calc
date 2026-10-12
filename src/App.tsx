@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { MEGA_STONES, toID } from '@smogon/calc';
 import BotPanel from './components/BotPanel';
+import { pingBot } from './lib/bot';
 import BringPanel from './components/BringPanel';
 import FieldPanel from './components/FieldPanel';
 import LookUp from './components/LookUp';
@@ -58,6 +59,19 @@ export default function App() {
   const [bringOpen, setBringOpen] = useState(false);
   const [recOpen, setRecOpen] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
+  // The AI advice button only exists while the local bot answers, so visitors without it never see a dead button.
+  const [botUp, setBotUp] = useState(false);
+  useEffect(() => {
+    const probe = () => void pingBot().then(setBotUp);
+    probe();
+    const onVisible = () => document.visibilityState === 'visible' && probe();
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', probe);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', probe);
+    };
+  }, []);
   const [skipped, setSkipped] = useState<string[]>([]); // teammates you didn't bring (not switch options in Best move)
   // null until probed. false = a hosted copy (e.g. GitHub Pages) with no scraper: the button reloads the published data.
   const [canScrape, setCanScrape] = useState<boolean | null>(null);
@@ -326,13 +340,15 @@ export default function App() {
         >
           Best move
         </button>
-        <button
-          onClick={() => setAiOpen(true)}
-          disabled={!teams[0].sets.length || !teams[1].sets.length}
-          title="Ask the simulation bot (runs on this computer, Singles only): what to bring, and what to do this turn, from what is entered here"
-        >
-          AI advice
-        </button>
+        {botUp && (
+          <button
+            onClick={() => setAiOpen(true)}
+            disabled={!teams[0].sets.length || !teams[1].sets.length}
+            title="Ask the simulation bot (runs on this computer, Singles only): what to bring, and what to do this turn, from what is entered here"
+          >
+            AI advice
+          </button>
+        )}
         <span className="meta-note">
           {error ? (
             <span className="err">{error}</span>

@@ -151,7 +151,8 @@ export interface BringOption {
 }
 export interface MoveCheck {
   action: string;
-  win: number;
+  win: number; // against a strong opponent who may switch
+  win_stay?: number; // if the opponent stays in and attacks this turn
   games: number;
 }
 

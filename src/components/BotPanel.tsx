@@ -53,7 +53,7 @@ export default function BotPanel({ teams, field, skipped, singles, onApplyBring,
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
   const [bring, setBring] = useState<{ options: BringOption[]; win: number } | null>(null);
-  const [advice, setAdvice] = useState<{ title: string; rows: { label: string; v: number; n?: number }[]; quick?: string; note?: string } | null>(null);
+  const [advice, setAdvice] = useState<{ title: string; rows: { label: string; v: number; stay?: number; n?: number }[]; quick?: string; note?: string } | null>(null);
 
   useEffect(() => {
     pingBot().then(setUp);
@@ -142,7 +142,7 @@ export default function BotPanel({ teams, field, skipped, singles, onApplyBring,
       } catch {
         /* the table is the answer; the quick read is optional */
       }
-      setAdvice({ title: 'Best option by simulation', rows: c.checked.map((x: MoveCheck) => ({ label: x.action, v: x.win, n: x.games })), quick });
+      setAdvice({ title: 'Best option by simulation', rows: c.checked.map((x: MoveCheck) => ({ label: x.action, v: x.win, stay: x.win_stay, n: x.games })), quick });
     });
 
   const flags = (side: 0 | 1, s: PokemonSet) => {
@@ -309,16 +309,32 @@ export default function BotPanel({ teams, field, skipped, singles, onApplyBring,
             {advice && (
               <div className="ai-result">
                 <h4>{advice.title}</h4>
+                {advice.rows.some((r) => r.stay !== undefined) && (
+                  <div className="ai-colhead hint">
+                    <span />
+                    <span />
+                    <span title="Win rate if the opponent stays in and attacks this turn">If they stay in</span>
+                    <span title="Win rate against a strong opponent who may switch to absorb your move">Any reply</span>
+                  </div>
+                )}
                 {advice.rows.map((r, i) => (
-                  <div key={i} className={'ai-opt' + (i === 0 ? ' top' : '')}>
+                  <div key={i} className={'ai-opt2' + (i === 0 ? ' top' : '')}>
                     <div className="ai-opt-main">{r.label}</div>
                     <Bar v={r.v} />
+                    <span className="ai-pct">{r.stay !== undefined ? pct(r.stay) : ''}</span>
                     <span className="ai-pct">{pct(r.v)}</span>
                   </div>
                 ))}
                 {advice.note && <p className="hint">{advice.note}</p>}
                 {advice.quick && <p className="hint">The bot's quick first read was: {advice.quick}. Go with the table above; differences under about 5 points are noise.</p>}
-                {!advice.note && <p className="hint">Each option is forced as your next move and the bot then plays the rest of the game for both sides, with their unseen sets sampled each time.</p>}
+                {!advice.note && (
+                  <p className="hint">
+                    Each option is forced as your next move and the bot then plays the rest of the game for both sides, with their unseen sets sampled each time.
+                    <b> If they stay in</b> assumes they attack rather than switch this turn (what most opponents do); <b>any reply</b> assumes a strong opponent
+                    who may switch into your move. When every option is close, the position is winning whatever you do, so pick the move that does what
+                    you want this turn (a KO, keeping a Pokémon alive).
+                  </p>
+                )}
               </div>
             )}
           </section>

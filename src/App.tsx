@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { MEGA_STONES, toID } from '@smogon/calc';
 import BotPanel from './components/BotPanel';
-import { pingBot } from './lib/bot';
+import { DEFAULT_BOT_URL, getBotUrl, pingBot, setBotUrl } from './lib/bot';
 import BringPanel from './components/BringPanel';
 import FieldPanel from './components/FieldPanel';
 import LookUp from './components/LookUp';
@@ -61,6 +61,12 @@ export default function App() {
   const [aiOpen, setAiOpen] = useState(false);
   // The AI advice button only exists while the local bot answers, so visitors without it never see a dead button.
   const [botUp, setBotUp] = useState(false);
+  const [botUrl, setBotUrlState] = useState(getBotUrl);
+  useEffect(() => {
+    // ?bot=http://192.168.1.20:8765 sets the address once (for the laptop that uses a bot running on another computer)
+    const q = new URLSearchParams(window.location.search).get('bot');
+    if (q) setBotUrlState(setBotUrl(q));
+  }, []);
   useEffect(() => {
     const probe = () => void pingBot().then(setBotUp);
     probe();
@@ -71,7 +77,14 @@ export default function App() {
       document.removeEventListener('visibilitychange', onVisible);
       window.removeEventListener('focus', probe);
     };
-  }, []);
+  }, [botUrl]);
+  const changeBotUrl = () => {
+    const v = window.prompt(
+      `Where is the AI bot? Leave empty for this computer (${DEFAULT_BOT_URL}). To use a bot running on another computer on your network, enter its address, e.g. http://192.168.1.20:8765`,
+      botUrl === DEFAULT_BOT_URL ? '' : botUrl,
+    );
+    if (v !== null) setBotUrlState(setBotUrl(v));
+  };
   const [skipped, setSkipped] = useState<string[]>([]); // teammates you didn't bring (not switch options in Best move)
   // null until probed. false = a hosted copy (e.g. GitHub Pages) with no scraper: the button reloads the published data.
   const [canScrape, setCanScrape] = useState<boolean | null>(null);
@@ -467,7 +480,10 @@ export default function App() {
       )}
 
       <footer className="app-footer">
-        © 2026 Mark McLellan · <span title={`Built ${new Date(__APP_BUILT__).toLocaleString()}`}>v{__APP_VERSION__}{__APP_COMMIT__ ? ` (${__APP_COMMIT__})` : ''} · built {new Date(__APP_BUILT__).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}</span>
+        <button className="linklike" onClick={changeBotUrl} title="Where the optional AI bot runs. The AI advice button appears when it answers.">
+          AI bot: {botUrl === DEFAULT_BOT_URL ? 'this computer' : botUrl}
+        </button>
+        {' · '}© 2026 Mark McLellan · <span title={`Built ${new Date(__APP_BUILT__).toLocaleString()}`}>v{__APP_VERSION__}{__APP_COMMIT__ ? ` (${__APP_COMMIT__})` : ''} · built {new Date(__APP_BUILT__).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}</span>
       </footer>
 
       <Mascot />

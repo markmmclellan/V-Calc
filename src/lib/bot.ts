@@ -6,10 +6,43 @@ import { baseForMega, exportTeam } from './showdown';
  * Client for the local simulation bot (the ChampionsAI project). It runs on this computer; nothing here leaves it.
  * Start it with start_gui.bat in the ChampionsAI folder. Singles only.
  */
-export const BOT_URL = 'http://127.0.0.1:8765';
+export const DEFAULT_BOT_URL = 'http://127.0.0.1:8765';
+const URL_KEY = 'champions-calc:bot-url';
 
-async function call<T>(path: string, body?: unknown): Promise<T> {
-  const res = await fetch(BOT_URL + path, body === undefined ? {} : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+/** Where the bot is: this computer by default, or another computer on your network (set in the footer or with ?bot=). */
+export function getBotUrl(): string {
+  try {
+    return localStorage.getItem(URL_KEY) || DEFAULT_BOT_URL;
+  } catch {
+    return DEFAULT_BOT_URL;
+  }
+}
+
+export function setBotUrl(url: string): string {
+  let v = url.trim().replace(/\/+$/, '');
+  if (v && !/^https?:\/\//i.test(v)) v = 'http://' + v;
+  if (v && !/:\d+$/.test(v) && v.startsWith('http://')) v += ':8765';
+  try {
+    if (!v || v === DEFAULT_BOT_URL) localStorage.removeItem(URL_KEY);
+    else localStorage.setItem(URL_KEY, v);
+  } catch {
+    /* storage unavailable */
+  }
+  return getBotUrl();
+}
+
+async function call<T>(path: string, body?: unknown, timeoutMs = 600_000): Promise<T> {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), timeoutMs);
+  let res: Response;
+  try {
+    res = await fetch(
+      getBotUrl() + path,
+      body === undefined ? { signal: ctl.signal } : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: ctl.signal },
+    );
+  } finally {
+    clearTimeout(timer);
+  }
   const j = await res.json();
   if (j && typeof j === 'object' && 'error' in j) throw new Error(String((j as { error: unknown }).error));
   return j as T;
@@ -17,7 +50,7 @@ async function call<T>(path: string, body?: unknown): Promise<T> {
 
 export const pingBot = async (): Promise<boolean> => {
   try {
-    await call('/api/ping');
+    await call('/api/ping', undefined, 2500); // an unreachable address must not hang the page
     return true;
   } catch {
     return false;

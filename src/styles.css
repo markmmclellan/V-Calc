@@ -475,3 +475,6 @@ td.v-loses, .bg-verdict.v-loses { background: color-mix(in srgb, var(--bad) 38%,
 .ai-ko { opacity: 0.55; }
 .ai-actions { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-top: 6px; }
 .ai-actions input[type='number'] { width: 56px; }
+
+.linklike { background: none; border: 0; padding: 0; color: inherit; text-decoration: underline dotted; font: inherit; cursor: pointer; }
+.linklike:hover:not(:disabled) { color: var(--accent); }

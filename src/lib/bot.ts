@@ -69,10 +69,15 @@ export interface Marks {
   moves: boolean[]; // opposing only: this move slot has been SEEN (otherwise it is just the usage-data default)
   item: boolean; // opposing only: the item is known
   ability: boolean; // opposing only: the ability is known
+  seen?: boolean; // opposing only: has appeared in this battle (unset = worked out: selected, fainted or damaged)
 }
 export const blankMarks = (): Marks => ({ ko: false, mega: false, gone: false, moves: [false, false, false, false], item: false, ability: false });
 
 /** The name the bot uses: a Mega form is the base species holding its stone. */
+/** An opposing Pokémon counts as having appeared if you ticked it, or it is the one out, fainted, or has changed state. */
+export const appeared = (s: PokemonSet, m: Marks, isActive: boolean): boolean =>
+  m.seen ?? (isActive || m.ko || s.hpPercent < 100 || !!s.status || Object.values(s.boosts).some((v) => v));
+
 export const baseName = (s: PokemonSet): string => baseForMega(s.species)?.base ?? s.species;
 
 const WEATHER = new Set(['Sun', 'Rain', 'Sand', 'Snow']);
@@ -113,6 +118,8 @@ export function buildPosition(p: PositionInput) {
         species: baseName(s),
         hp: hpOf(1, s),
         active: baseName(s) === p.theirActive,
+        // the opponent brings 3 of their 6: the ones that have not appeared are only candidates for the other slots
+        seen: appeared(s, m, baseName(s) === p.theirActive),
         status: s.status,
         boosts: boosts(s),
         mega: m.mega,

@@ -153,6 +153,8 @@ export interface MoveCheck {
   action: string;
   win: number; // against a strong opponent who may switch
   win_stay?: number; // if the opponent stays in and attacks this turn
+  win_switch?: number; // if the opponent switches this turn
+  p_switch?: number; // how often the simulated opponent switches here
   games: number;
 }
 

@@ -464,14 +464,15 @@ td.v-loses, .bg-verdict.v-loses { background: color-mix(in srgb, var(--bad) 38%,
 .ai-bar span { display: block; height: 100%; background: var(--accent); }
 .ai-opt.top .ai-bar span { background: var(--good); }
 .ai-pct { text-align: right; font-variant-numeric: tabular-nums; }
-.ai-table { width: 100%; border-collapse: collapse; margin: 6px 0; font-size: 13px; }
-.ai-table th, .ai-table td { padding: 3px 6px; text-align: left; vertical-align: middle; }
-.ai-table thead th { color: var(--muted); font-weight: 500; font-size: 12px; }
-.ai-table tbody th { font-weight: 500; }
-.ai-table th label, .ai-table th > span { display: inline-flex; align-items: center; gap: 6px; }
-.ai-table .ai-sub td { color: var(--muted); font-size: 12px; padding-top: 10px; }
-.ai-known { display: flex; flex-wrap: wrap; gap: 4px 12px; }
-.ai-known label { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.ai-card { border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; margin: 6px 0; display: flex; flex-direction: column; gap: 4px; background: var(--panel-2); }
+.ai-card.ai-off { opacity: 0.6; }
+.ai-who { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.ai-who .check { font-size: 14px; }
+.ai-tag { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #07101f; background: var(--accent); border-radius: 4px; padding: 1px 6px; }
+.ai-flags, .ai-seen { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; font-size: 13px; }
+.ai-body label.check { flex-direction: row; align-items: center; gap: 6px; font-size: 13px; color: var(--text); }
+.ai-body label.check input { width: auto; padding: 0; }
+.ai-seen .chip { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 1px 9px; }
 .ai-ko { opacity: 0.55; }
 .ai-actions { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-top: 6px; }
 .ai-actions input[type='number'] { width: 56px; }

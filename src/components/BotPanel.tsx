@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { FieldState } from '../lib/calc';
 import {
   askBring,
@@ -144,58 +144,50 @@ export default function BotPanel({ teams, field, skipped, singles, onApplyBring,
       setAdvice({ title: 'Best option by simulation', rows: c.checked.map((x: MoveCheck) => ({ label: x.action, v: x.win, n: x.games })), quick });
     });
 
-  const markRow = (side: 0 | 1, s: PokemonSet) => {
+  const flags = (side: 0 | 1, s: PokemonSet) => {
     const m = mark(side, s);
-    return (
-      <tr key={`${side}${baseName(s)}`} className={m.ko ? 'ai-ko' : ''}>
-        <th scope="row">
-          <Sprite species={s.species} size={24} />
-          <span>{baseName(s)}</span>
-          <span className="hint"> {Math.round(s.hpPercent)}%</span>
-        </th>
-        <td>
-          <input type="checkbox" checked={m.ko} onChange={(e) => setMark(side, s, { ko: e.target.checked })} aria-label="Fainted" />
-        </td>
-        <td>
-          <input type="checkbox" checked={m.mega} onChange={(e) => setMark(side, s, { mega: e.target.checked })} aria-label="Mega Evolved" />
-        </td>
-        <td>
-          <input type="checkbox" checked={m.gone} onChange={(e) => setMark(side, s, { gone: e.target.checked })} aria-label="Item used up" />
-        </td>
-        <td className="ai-known">
-          {side === 1 ? (
-            <>
-              {s.moves.map((mv, i) =>
-                mv ? (
-                  <label key={i} title="Tick only moves you have actually seen it use">
-                    <input
-                      type="checkbox"
-                      checked={m.moves[i] ?? false}
-                      onChange={(e) => setMark(side, s, { moves: m.moves.map((x, j) => (j === i ? e.target.checked : x)) })}
-                    />
-                    {mv}
-                  </label>
-                ) : null,
-              )}
-              {s.item && (
-                <label title="Tick if you know it holds this (e.g. you saw it)">
-                  <input type="checkbox" checked={m.item} onChange={(e) => setMark(side, s, { item: e.target.checked })} />
-                  {s.item}
-                </label>
-              )}
-              {s.ability && (
-                <label title="Tick if you know this is its ability">
-                  <input type="checkbox" checked={m.ability} onChange={(e) => setMark(side, s, { ability: e.target.checked })} />
-                  {s.ability}
-                </label>
-              )}
-            </>
-          ) : (
-            <span className="hint">your build from V-Calc</span>
-          )}
-        </td>
-      </tr>
+    const box = (key: 'ko' | 'mega' | 'gone', label: string, title: string) => (
+      <label className="check" title={title}>
+        <input type="checkbox" checked={m[key]} onChange={(e) => setMark(side, s, { [key]: e.target.checked })} />
+        {label}
+      </label>
     );
+    return (
+      <div className="ai-flags">
+        {box('ko', "Fainted", 'This Pokémon has fainted')}
+        {box('mega', 'Mega Evolved', 'Already Mega Evolved this battle')}
+        {box('gone', 'Item used up', 'Held item is gone (berry eaten, Air Balloon popped, knocked off)')}
+      </div>
+    );
+  };
+
+  const seenChips = (s: PokemonSet) => {
+    const m = mark(1, s);
+    const chips: ReactNode[] = [];
+    s.moves.forEach((mv, i) => {
+      if (!mv) return;
+      chips.push(
+        <label key={'m' + i} className="check chip" title="Tick only moves you have actually seen it use">
+          <input type="checkbox" checked={m.moves[i] ?? false} onChange={(e) => setMark(1, s, { moves: m.moves.map((x, j) => (j === i ? e.target.checked : x)) })} />
+          {mv}
+        </label>,
+      );
+    });
+    if (s.item)
+      chips.push(
+        <label key="item" className="check chip" title="Tick if you know it holds this item">
+          <input type="checkbox" checked={m.item} onChange={(e) => setMark(1, s, { item: e.target.checked })} />
+          {s.item}
+        </label>,
+      );
+    if (s.ability)
+      chips.push(
+        <label key="ab" className="check chip" title="Tick if you know this is its ability">
+          <input type="checkbox" checked={m.ability} onChange={(e) => setMark(1, s, { ability: e.target.checked })} />
+          {s.ability}
+        </label>,
+      );
+    return chips;
   };
 
   return (
@@ -253,47 +245,46 @@ export default function BotPanel({ teams, field, skipped, singles, onApplyBring,
               HP, boosts, status, field and which Pokémon is out come from V-Calc. Tick what V-Calc has no place for, and tick only what you have actually seen
               of their sets; the rest is assumed to be the usual build.
             </p>
-            <table className="ai-table">
-              <thead>
-                <tr>
-                  <th>Pokémon</th>
-                  <th title="Fainted">KO'd</th>
-                  <th title="Already Mega Evolved">Mega'd</th>
-                  <th title="Held item used up (berry eaten, Air Balloon popped)">Item used</th>
-                  <th>Seen / known</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr className="ai-sub">
-                  <td colSpan={5}>
-                    Yours: tick the three you brought{' '}
-                    <span className="hint">({brought.length}/3)</span>
-                  </td>
-                </tr>
-                {mineAll.map((s) => (
-                  <tr key={'b' + baseName(s)} className="ai-pick">
-                    <th scope="row">
-                      <label>
-                        <input type="checkbox" checked={brought.includes(baseName(s))} onChange={() => toggleBrought(baseName(s))} />
-                        <Sprite species={s.species} size={22} />
-                        <span>{baseName(s)}</span>
-                      </label>
-                    </th>
-                    <td colSpan={4} className="hint">
-                      {mineActive && baseName(s) === baseName(mineActive) ? '← out now' : ''}
-                    </td>
-                  </tr>
-                ))}
-                <tr className="ai-sub">
-                  <td colSpan={5}>Your brought Pokémon</td>
-                </tr>
-                {mine.map((s) => markRow(0, s))}
-                <tr className="ai-sub">
-                  <td colSpan={5}>Opponent</td>
-                </tr>
-                {theirs.map((s) => markRow(1, s))}
-              </tbody>
-            </table>
+            <h4>Your team</h4>
+            <p className="hint">Tick the three you brought ({brought.length}/3). The one selected in V-Calc is the one that is out.</p>
+            {mineAll.map((s) => {
+              const name = baseName(s);
+              const inBring = brought.includes(name);
+              return (
+                <div key={'y' + name} className={'ai-card' + (inBring ? '' : ' ai-off') + (mark(0, s).ko ? ' ai-ko' : '')}>
+                  <div className="ai-who">
+                    <label className="check">
+                      <input type="checkbox" checked={inBring} onChange={() => toggleBrought(name)} />
+                      <Sprite species={s.species} size={28} />
+                      <strong>{name}</strong>
+                    </label>
+                    <span className="hint">{Math.round(s.hpPercent)}%</span>
+                    {mineActive && name === baseName(mineActive) && <span className="ai-tag">out now</span>}
+                  </div>
+                  {inBring && flags(0, s)}
+                </div>
+              );
+            })}
+            <h4>Opponent</h4>
+            <p className="hint">Tick only what you have actually seen; unticked moves, item and ability are assumed to be the usual ones.</p>
+            {theirs.map((s) => {
+              const name = baseName(s);
+              return (
+                <div key={'t' + name} className={'ai-card' + (mark(1, s).ko ? ' ai-ko' : '')}>
+                  <div className="ai-who">
+                    <Sprite species={s.species} size={28} />
+                    <strong>{name}</strong>
+                    <span className="hint">{Math.round(s.hpPercent)}%</span>
+                    {theirActive && name === baseName(theirActive) && <span className="ai-tag">out now</span>}
+                  </div>
+                  {flags(1, s)}
+                  <div className="ai-seen">
+                    <span className="hint">Seen / known:</span>
+                    {seenChips(s)}
+                  </div>
+                </div>
+              );
+            })}
             <div className="ai-actions">
               <label>
                 Turn{' '}

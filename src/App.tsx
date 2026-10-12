@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { MEGA_STONES, toID } from '@smogon/calc';
+import BotPanel from './components/BotPanel';
 import BringPanel from './components/BringPanel';
 import FieldPanel from './components/FieldPanel';
 import LookUp from './components/LookUp';
@@ -56,6 +57,7 @@ export default function App() {
   const [lookupOpen, setLookupOpen] = useState(false);
   const [bringOpen, setBringOpen] = useState(false);
   const [recOpen, setRecOpen] = useState(false);
+  const [aiOpen, setAiOpen] = useState(false);
   const [skipped, setSkipped] = useState<string[]>([]); // teammates you didn't bring (not switch options in Best move)
   // null until probed. false = a hosted copy (e.g. GitHub Pages) with no scraper: the button reloads the published data.
   const [canScrape, setCanScrape] = useState<boolean | null>(null);
@@ -324,6 +326,13 @@ export default function App() {
         >
           Best move
         </button>
+        <button
+          onClick={() => setAiOpen(true)}
+          disabled={!teams[0].sets.length || !teams[1].sets.length}
+          title="Ask the simulation bot (runs on this computer, Singles only): what to bring, and what to do this turn, from what is entered here"
+        >
+          AI advice
+        </button>
         <span className="meta-note">
           {error ? (
             <span className="err">{error}</span>
@@ -404,6 +413,17 @@ export default function App() {
 
       {recOpen && (
         <RecommendPanel mine={yours} theirs={theirs} bench={bench} skipped={skipped} onToggleBrought={(sp) => setSkipped((old) => (old.includes(sp) ? old.filter((x) => x !== sp) : [...old, sp]))} field={calcField} doubles={doubles} onClose={() => setRecOpen(false)} />
+      )}
+
+      {aiOpen && (
+        <BotPanel
+          teams={teams}
+          field={calcField}
+          skipped={skipped}
+          singles={!doubles}
+          onApplyBring={applyBring}
+          onClose={() => setAiOpen(false)}
+        />
       )}
 
       {bringOpen && (

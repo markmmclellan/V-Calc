@@ -449,3 +449,29 @@ td.v-loses, .bg-verdict.v-loses { background: color-mix(in srgb, var(--bad) 38%,
 .stat-move:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 28%, transparent); }
 .stat-move.done { color: var(--good); border-color: var(--good); background: color-mix(in srgb, var(--good) 15%, transparent); }
 .stat-move.failed { color: var(--warn); border-color: var(--warn); background: color-mix(in srgb, var(--warn) 14%, transparent); max-width: 260px; }
+
+/* AI advice panel (local simulation bot) */
+.modal.ai { width: min(820px, 100%); }
+.ai-body { padding: 0 14px 14px; overflow: auto; }
+.ai-body section { margin-top: 12px; }
+.ai-body h3 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 0 0 4px; }
+.ai-body h4 { margin: 10px 0 4px; font-size: 14px; }
+.ai-warn { border: 1px solid var(--warn); color: var(--warn); border-radius: 8px; padding: 8px 10px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.ai-result { margin-top: 8px; }
+.ai-opt { display: grid; grid-template-columns: minmax(140px, 1.6fr) minmax(80px, 1fr) 48px auto; gap: 8px; align-items: center; padding: 3px 0; }
+.ai-opt.top .ai-opt-main { font-weight: 600; }
+.ai-bar { height: 8px; background: var(--border, #2a3550); border-radius: 4px; overflow: hidden; }
+.ai-bar span { display: block; height: 100%; background: var(--accent); }
+.ai-opt.top .ai-bar span { background: var(--good); }
+.ai-pct { text-align: right; font-variant-numeric: tabular-nums; }
+.ai-table { width: 100%; border-collapse: collapse; margin: 6px 0; font-size: 13px; }
+.ai-table th, .ai-table td { padding: 3px 6px; text-align: left; vertical-align: middle; }
+.ai-table thead th { color: var(--muted); font-weight: 500; font-size: 12px; }
+.ai-table tbody th { font-weight: 500; }
+.ai-table th label, .ai-table th > span { display: inline-flex; align-items: center; gap: 6px; }
+.ai-table .ai-sub td { color: var(--muted); font-size: 12px; padding-top: 10px; }
+.ai-known { display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.ai-known label { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.ai-ko { opacity: 0.55; }
+.ai-actions { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-top: 6px; }
+.ai-actions input[type='number'] { width: 56px; }

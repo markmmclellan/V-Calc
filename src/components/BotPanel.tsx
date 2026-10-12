@@ -318,15 +318,28 @@ export default function BotPanel({ teams, field, skipped, singles, onApplyBring,
                     <span title="Win rate against the simulated opponent's own mix of staying and switching">Bot's guess</span>
                   </div>
                 )}
-                {advice.rows.map((r, i) => (
-                  <div key={i} className={'ai-opt2' + (i === 0 ? ' top' : '')}>
-                    <div className="ai-opt-main">{r.label}</div>
-                    <Bar v={r.v} />
-                    <span className="ai-pct">{r.stay !== undefined ? pct(r.stay) : ''}</span>
-                    <span className="ai-pct">{r.sw !== undefined ? pct(r.sw) : ''}</span>
-                    <span className="ai-pct">{pct(r.v)}</span>
-                  </div>
-                ))}
+                {(() => {
+                  // the safest option is the one whose WORSE outcome (they stay in / they switch) is best: no guess needed
+                  const floor = (r: { stay?: number; sw?: number; v: number }) => Math.min(r.stay ?? r.v, r.sw ?? r.v);
+                  const best = Math.max(...advice.rows.map(floor));
+                  const safeLabels = new Set(advice.rows.filter((r) => floor(r) >= best - 0.01).map((r) => r.label));
+                  return advice.rows.map((r, i) => (
+                    <div key={i} className={'ai-opt2' + (i === 0 ? ' top' : '')}>
+                      <div className="ai-opt-main">
+                        {r.label}
+                        {r.stay !== undefined && safeLabels.has(r.label) && (
+                          <span className="ai-tag safe" title="Its worse case (they stay in, or they switch) is the best of all options, so it needs no prediction">
+                            safe
+                          </span>
+                        )}
+                      </div>
+                      <Bar v={r.v} />
+                      <span className="ai-pct">{r.stay !== undefined ? pct(r.stay) : ''}</span>
+                      <span className="ai-pct">{r.sw !== undefined ? pct(r.sw) : ''}</span>
+                      <span className="ai-pct">{pct(r.v)}</span>
+                    </div>
+                  ));
+                })()}
                 {advice.note && <p className="hint">{advice.note}</p>}
                 {advice.quick && <p className="hint">The bot's quick first read was: {advice.quick}. Go with the table above; differences under about 5 points are noise.</p>}
                 {!advice.note && (

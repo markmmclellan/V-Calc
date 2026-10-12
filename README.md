@@ -175,3 +175,10 @@ Damage math by [`@smogon/calc`](https://github.com/smogon/damage-calc) (MIT). Us
 Company), in `src/assets/shaymin/`.
 This is an unofficial fan project and is not affiliated with Nintendo, Game Freak, The Pokémon Company, Spike Chunsoft, Smogon or op.gg.
 Pokémon and related names are trademarks of their owners.
+
+## AI advice (optional, local)
+
+The **AI advice** button asks a local simulation bot (the separate ChampionsAI project) what to bring and what to do this turn,
+using the teams, HP, boosts, status and field already entered here. Singles only. It talks to `http://127.0.0.1:8765`, so nothing
+leaves your computer; when the bot isn't running the panel says so and everything else works as before. Tick only what you have
+actually seen of the opponent's set: usage-data defaults are not treated as known.

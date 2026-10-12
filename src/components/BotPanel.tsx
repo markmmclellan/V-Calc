@@ -5,6 +5,7 @@ import {
   askCheck,
   askQuick,
   askReplace,
+  appeared,
   baseName,
   blankMarks,
   buildPosition,
@@ -276,6 +277,16 @@ export default function BotPanel({ teams, field, skipped, singles, onApplyBring,
                     <strong>{name}</strong>
                     <span className="hint">{Math.round(s.hpPercent)}%</span>
                     {theirActive && name === baseName(theirActive) && <span className="ai-tag">out now</span>}
+                  </div>
+                  <div className="ai-flags">
+                    <label className="check" title="Has this one been sent out in this battle? The opponent only brings three of their six, so ones that haven't appeared are treated as possible picks for the remaining slots.">
+                      <input
+                        type="checkbox"
+                        checked={appeared(s, mark(1, s), !!theirActive && name === baseName(theirActive))}
+                        onChange={(e) => setMark(1, s, { seen: e.target.checked })}
+                      />
+                      Has appeared
+                    </label>
                   </div>
                   {flags(1, s)}
                   <div className="ai-seen">

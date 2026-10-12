@@ -12,10 +12,14 @@ const URL_KEY = 'champions-calc:bot-url';
 /** Where the bot is: this computer by default, or another computer on your network (set in the footer or with ?bot=). */
 export function getBotUrl(): string {
   try {
-    return localStorage.getItem(URL_KEY) || DEFAULT_BOT_URL;
+    const saved = localStorage.getItem(URL_KEY);
+    if (saved) return saved;
   } catch {
-    return DEFAULT_BOT_URL;
+    /* storage unavailable */
   }
+  // Served by the bot itself (http://<computer>:8765/vcalc/): the bot is the page's own origin.
+  if (window.location.pathname.startsWith('/vcalc/') && !window.location.hostname.endsWith('github.io')) return window.location.origin;
+  return DEFAULT_BOT_URL;
 }
 
 export function setBotUrl(url: string): string {

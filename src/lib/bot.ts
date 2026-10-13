@@ -140,6 +140,11 @@ export function buildPosition(p: PositionInput) {
         f.attackerSide.isReflect || f.attackerSide.isLightScreen || f.attackerSide.isAuroraVeil,
         f.defenderSide.isReflect || f.defenderSide.isLightScreen || f.defenderSide.isAuroraVeil,
       ],
+      // which screens: [Reflect, Light Screen, Aurora Veil] for you, then for them
+      screens_detail: [
+        [f.attackerSide.isReflect, f.attackerSide.isLightScreen, f.attackerSide.isAuroraVeil],
+        [f.defenderSide.isReflect, f.defenderSide.isLightScreen, f.defenderSide.isAuroraVeil],
+      ],
     },
   };
 }

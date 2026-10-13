@@ -124,7 +124,8 @@ export function buildPosition(p: PositionInput) {
         boosts: boosts(s),
         mega: m.mega,
         moves: s.moves.filter((mv, i) => mv && m.moves[i]),
-        item: m.item ? s.item : '',
+        // a Mega form in V-Calc is a Pokémon holding its Mega Stone: send the stone when you mark it Mega Evolved
+        item: m.item ? s.item : m.mega && baseForMega(s.species) ? baseForMega(s.species)!.stone : '',
         ability: m.ability ? s.ability : '',
         item_gone: m.gone,
       };
@@ -160,6 +161,8 @@ export interface MoveCheck {
   win_stay?: number; // if the opponent stays in and attacks this turn
   win_switch?: number; // if the opponent switches this turn
   p_switch?: number; // how often the simulated opponent switches here
+  win_net?: number; // against the learned opponent
+  win_heur?: number; // against the damage-based opponent (plays unusual sets sensibly)
   games: number;
 }
 

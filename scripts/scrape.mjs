@@ -5,7 +5,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { rscPayload, grabObject } from './rsc.mjs';
+import { rscPayload, grabObject, grabArray } from './rsc.mjs';
 import { scrapeSmogon } from './smogon.mjs';
 
 const BASE = 'https://op.gg/pokemon-champions';
@@ -56,6 +56,26 @@ function pickFormat(detail, L) {
   };
 }
 
+/**
+ * The tier page's own "Updated ..." label and its current-season rankings. op.gg refreshes the tier list more often than
+ * the per-Pokemon detail pages (which carry their own, older, "updatedAt"), and it is the tier page's label that people
+ * compare against on the site, so that is the one shown.
+ */
+function tierInfo(html) {
+  const label = html.match(/Updated<!-- --> <!-- -->([^<]+)<!--/)?.[1]?.trim() ?? null;
+  const ranks = { single: {}, double: {} };
+  try {
+    const seasons = grabArray(rscPayload(html), 'seasons');
+    for (const f of seasons?.[0]?.formats ?? []) {
+      if (f.id !== 'single' && f.id !== 'double') continue;
+      for (const r of f.rankings ?? []) if (r?.key && Number.isFinite(r.rank)) ranks[f.id][r.key] = r.rank;
+    }
+  } catch {
+    /* layout changed: fall back to the detail pages' ranks */
+  }
+  return { label, ranks };
+}
+
 const titleCase = (slug) => slug.split('-').map((w) => w[0].toUpperCase() + w.slice(1)).join(' ');
 
 /** Every form's ability names, from the roster op.gg embeds in each pokedex page (same on all pages). */
@@ -97,8 +117,9 @@ async function scrapeOne(key) {
 
 /** Scrape everything (or a subset of keys) and write public/data/champions.json. */
 export async function scrape({ keys, onProgress = () => {} } = {}) {
+  const tier = await get(`${BASE}/tier`);
+  const tierData = tierInfo(tier ?? '');
   if (!keys?.length) {
-    const tier = await get(`${BASE}/tier`);
     keys = [...new Set([...tier.matchAll(/href="\/pokemon-champions\/pokedex\/([^"#?\/]+)"/g)].map((m) => m[1]))];
   }
   onProgress(0, keys.length);
@@ -133,7 +154,23 @@ export async function scrape({ keys, onProgress = () => {} } = {}) {
   );
 
   if (!Object.keys(pokemon).length) throw new Error('No data scraped; leaving existing file untouched');
-  const out = { updatedAt: new Date().toISOString(), opggUpdatedAt, abilitiesByForm: rosterCache ?? {}, source: `${BASE}/tier`, names, images, pokemon };
+  // rankings from the tier page are newer than the ones embedded in each Pokemon's page
+  for (const [key, p] of Object.entries(pokemon)) {
+    for (const f of ['single', 'double']) {
+      const r = tierData.ranks[f][key];
+      if (r != null) p.rank[f] = r;
+    }
+  }
+  const out = {
+    updatedAt: new Date().toISOString(),
+    opggUpdatedAt: tierData.label ?? opggUpdatedAt, // as shown on op.gg's tier page
+    opggDetailUpdatedAt: opggUpdatedAt, // the per-Pokemon pages' own stamp (moves, items, spreads)
+    abilitiesByForm: rosterCache ?? {},
+    source: `${BASE}/tier`,
+    names,
+    images,
+    pokemon,
+  };
   fs.mkdirSync(path.dirname(OUT), { recursive: true });
   const tmp = OUT + '.tmp';
   fs.writeFileSync(tmp, JSON.stringify(out));

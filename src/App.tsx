@@ -369,6 +369,9 @@ export default function App() {
             <>
               op.gg data · {meta.entries.length} Pokémon
               {meta.opggUpdatedAt && <> · op.gg updated {meta.opggUpdatedAt} (updates every 30 min)</>}
+              {meta.opggDetailUpdatedAt && meta.opggDetailUpdatedAt !== meta.opggUpdatedAt && (
+                <span title="op.gg refreshes the tier list more often than each Pokémon's own page (moves, items, spreads)"> · usage details from {meta.opggDetailUpdatedAt}</span>
+              )}
               {' · '}fetched {new Date(meta.updatedAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}
             </>
           ) : (

@@ -30,3 +30,25 @@ export function grabObject(payload, key) {
   }
   return null;
 }
+
+/** Return the balanced [...] JSON array that follows `"key":` (first occurrence whose value is an array). */
+export function grabArray(payload, key) {
+  const needle = `"${key}":[`;
+  const i = payload.indexOf(needle);
+  if (i < 0) return null;
+  const start = i + needle.length - 1;
+  let depth = 0;
+  let inStr = false;
+  for (let j = start; j < payload.length; j++) {
+    const c = payload[j];
+    if (inStr) {
+      if (c === '\\') j++;
+      else if (c === '"') inStr = false;
+      continue;
+    }
+    if (c === '"') inStr = true;
+    else if (c === '[') depth++;
+    else if (c === ']' && --depth === 0) return JSON.parse(payload.slice(start, j + 1));
+  }
+  return null;
+}

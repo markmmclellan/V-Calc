@@ -32,6 +32,7 @@ interface RawFile {
   abilitiesByForm?: Record<string, string[]>;
   updatedAt: string;
   opggUpdatedAt?: string | null;
+  opggDetailUpdatedAt?: string | null;
   source: string;
   names: Record<string, string>;
   images?: Record<string, string>;
@@ -48,7 +49,8 @@ export interface MetaEntry {
 
 export interface Meta {
   updatedAt: string; // when we scraped
-  opggUpdatedAt: string | null; // op.gg's own "Updated" label, as displayed on their site
+  opggUpdatedAt: string | null; // op.gg's own "Updated" label, as displayed on their tier page
+  opggDetailUpdatedAt: string | null; // the per-Pokemon pages' own stamp (moves / items / spreads), when it differs
   entries: MetaEntry[];
   bySpecies: Map<string, MetaEntry>; // keyed by toID(species)
 }
@@ -129,7 +131,7 @@ export async function loadMeta(): Promise<Meta> {
   }
   entries.sort((a, b) => (a.rank.single ?? 999) - (b.rank.single ?? 999));
   const bySpecies = new Map(entries.map((e) => [toID(e.species), e]));
-  return { updatedAt: raw.updatedAt, opggUpdatedAt: raw.opggUpdatedAt ?? null, entries, bySpecies };
+  return { updatedAt: raw.updatedAt, opggUpdatedAt: raw.opggUpdatedAt ?? null, opggDetailUpdatedAt: raw.opggDetailUpdatedAt ?? null, entries, bySpecies };
 }
 
 /** Find the meta entry for a species, falling back from Mega forms to their base. */

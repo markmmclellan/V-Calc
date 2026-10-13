@@ -53,7 +53,7 @@ export default function BotPanel({ teams, field, skipped, singles, onApplyBring,
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
   const [bring, setBring] = useState<{ options: BringOption[]; win: number } | null>(null);
-  const [advice, setAdvice] = useState<{ pSwitch?: number; title: string; rows: { label: string; v: number; stay?: number; sw?: number; n?: number }[]; quick?: string; note?: string } | null>(null);
+  const [advice, setAdvice] = useState<{ pSwitch?: number; title: string; rows: { label: string; v: number; stay?: number; sw?: number; net?: number; heur?: number; n?: number }[]; quick?: string; note?: string } | null>(null);
 
   useEffect(() => {
     pingBot().then(setUp);
@@ -142,7 +142,7 @@ export default function BotPanel({ teams, field, skipped, singles, onApplyBring,
       } catch {
         /* the table is the answer; the quick read is optional */
       }
-      setAdvice({ title: 'Best option by simulation', pSwitch: c.checked[0]?.p_switch, rows: c.checked.map((x: MoveCheck) => ({ label: x.action, v: x.win, stay: x.win_stay, sw: x.win_switch, n: x.games })), quick });
+      setAdvice({ title: 'Best option by simulation', pSwitch: c.checked[0]?.p_switch, rows: c.checked.map((x: MoveCheck) => ({ label: x.action, v: x.win, stay: x.win_stay, sw: x.win_switch, net: x.win_net, heur: x.win_heur, n: x.games })), quick });
     });
 
   const flags = (side: 0 | 1, s: PokemonSet) => {
@@ -327,6 +327,14 @@ export default function BotPanel({ teams, field, skipped, singles, onApplyBring,
                     <div key={i} className={'ai-opt2' + (i === 0 ? ' top' : '')}>
                       <div className="ai-opt-main">
                         {r.label}
+                        {r.net !== undefined && r.heur !== undefined && Math.abs(r.net - r.heur) >= 0.25 && (
+                          <span
+                            className="ai-tag warn"
+                            title={`The two simulated opponents disagree: ${pct(r.net)} against the learned one, ${pct(r.heur)} against the damage-based one. The learned opponent plays unusual sets badly, so the lower number is the safer one to believe.`}
+                          >
+                            ⚠ {pct(Math.min(r.net, r.heur))}
+                          </span>
+                        )}
                         {r.stay !== undefined && safeLabels.has(r.label) && (
                           <span className="ai-tag safe" title="Its worse case (they stay in, or they switch) is the best of all options, so it needs no prediction">
                             safe

@@ -488,3 +488,5 @@ td.v-loses, .bg-verdict.v-loses { background: color-mix(in srgb, var(--bad) 38%,
 .ai-tag.safe { margin-left: 8px; background: var(--good); }
 
 .ai-tag.warn { margin-left: 8px; background: var(--warn); }
+
+.ai-tag.ko { margin-left: 8px; background: var(--accent); }

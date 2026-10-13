@@ -163,6 +163,7 @@ export interface MoveCheck {
   p_switch?: number; // how often the simulated opponent switches here
   win_net?: number; // against the learned opponent
   win_heur?: number; // against the damage-based opponent (plays unusual sets sensibly)
+  ko_now?: number; // share of simulated games where this move knocks a Pokémon out this turn
   games: number;
 }
 

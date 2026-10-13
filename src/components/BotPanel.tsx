@@ -53,7 +53,7 @@ export default function BotPanel({ teams, field, skipped, singles, onApplyBring,
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
   const [bring, setBring] = useState<{ options: BringOption[]; win: number } | null>(null);
-  const [advice, setAdvice] = useState<{ pSwitch?: number; title: string; rows: { label: string; v: number; stay?: number; sw?: number; net?: number; heur?: number; n?: number }[]; quick?: string; note?: string } | null>(null);
+  const [advice, setAdvice] = useState<{ pSwitch?: number; title: string; rows: { label: string; v: number; stay?: number; sw?: number; net?: number; heur?: number; ko?: number; n?: number }[]; quick?: string; note?: string } | null>(null);
 
   useEffect(() => {
     pingBot().then(setUp);
@@ -142,7 +142,7 @@ export default function BotPanel({ teams, field, skipped, singles, onApplyBring,
       } catch {
         /* the table is the answer; the quick read is optional */
       }
-      setAdvice({ title: 'Best option by simulation', pSwitch: c.checked[0]?.p_switch, rows: c.checked.map((x: MoveCheck) => ({ label: x.action, v: x.win, stay: x.win_stay, sw: x.win_switch, net: x.win_net, heur: x.win_heur, n: x.games })), quick });
+      setAdvice({ title: 'Best option by simulation', pSwitch: c.checked[0]?.p_switch, rows: c.checked.map((x: MoveCheck) => ({ label: x.action, v: x.win, stay: x.win_stay, sw: x.win_switch, net: x.win_net, heur: x.win_heur, ko: x.ko_now, n: x.games })), quick });
     });
 
   const flags = (side: 0 | 1, s: PokemonSet) => {
@@ -327,6 +327,11 @@ export default function BotPanel({ teams, field, skipped, singles, onApplyBring,
                     <div key={i} className={'ai-opt2' + (i === 0 ? ' top' : '')}>
                       <div className="ai-opt-main">
                         {r.label}
+                        {r.ko !== undefined && r.ko >= 0.5 && (
+                          <span className="ai-tag ko" title={`Knocks a Pokémon out this turn in ${pct(r.ko)} of the simulated games`}>
+                            KO {pct(r.ko)}
+                          </span>
+                        )}
                         {r.net !== undefined && r.heur !== undefined && Math.abs(r.net - r.heur) >= 0.25 && (
                           <span
                             className="ai-tag warn"
@@ -353,7 +358,8 @@ export default function BotPanel({ teams, field, skipped, singles, onApplyBring,
                 {!advice.note && (
                   <p className="hint">
                     Each option is forced as your next move and the bot then plays the rest of the game for both sides, with their unseen sets sampled each time.
-                    The first two columns are the two reads: they attack, or they switch. <b>Bot's guess</b> is how the simulated opponent mixes them
+                    Options within a couple of points of each other are ordered by whether they knock something out this turn, then by how fast they win
+                    (a winning position gives every sensible move about the same win rate). The first two columns are the two reads: they attack, or they switch. <b>Bot's guess</b> is how the simulated opponent mixes them
                     {advice.pSwitch !== undefined ? ` (it switched ${pct(advice.pSwitch)} of the time here)` : ''}. Pick by your read of this opponent; if the
                     rows are all close, the position is winning whatever you do, so choose the move that does what you want this turn (a KO, keeping a
                     Pokémon alive).

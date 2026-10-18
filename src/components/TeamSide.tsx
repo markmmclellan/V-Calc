@@ -118,7 +118,8 @@ export default function TeamSide({ title, team, onChange, meta, format, side }: 
   const addFromMeta = (i: number) => {
     const entry = matches[i];
     if (!entry || team.sets.length >= 6) return;
-    const set = setFromMeta(entry, format);
+    // item clause: your own team can't repeat an item (the opponent's holdings are unknown, so it isn't applied there)
+    const set = setFromMeta(entry, format, undefined, side === 0 ? team.sets.map((s) => s.item).filter(Boolean) : undefined);
     onChange({ ...team, sets: [...team.sets, set], active: team.sets.length });
     setSearch('');
     setWarnings([]);

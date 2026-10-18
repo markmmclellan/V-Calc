@@ -158,7 +158,8 @@ export default function App() {
       const t = old[side];
       if (t.sets.length >= 6) return old;
       const next: [Team, Team] = [old[0], old[1]];
-      next[side] = { ...t, sets: [...t.sets, setFromMeta(entry, format)], active: t.sets.length };
+      const taken = side === 0 ? t.sets.map((s) => s.item).filter(Boolean) : undefined; // item clause, your team only
+      next[side] = { ...t, sets: [...t.sets, setFromMeta(entry, format, undefined, taken)], active: t.sets.length };
       return next;
     });
 
@@ -422,6 +423,7 @@ export default function App() {
         <div className="col center">
           <TurnOrder
             teams={teams}
+            doubles={doubles}
             field={field}
             onSelect={(team, index) => setTeam(team)({ ...teams[team], active: index })}
             onTrickRoom={(on) => setField((f) => ({ ...f, isTrickRoom: on }))}

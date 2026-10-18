@@ -143,12 +143,18 @@ export function metaFor(meta: Meta, species: string): MetaEntry | undefined {
 }
 
 /** Build a full set from the most-used op.gg choices for a Pokemon. */
-export function setFromMeta(entry: MetaEntry, format: BattleFormat, itemOverride?: string): PokemonSet {
+/**
+ * A starting set from the usage data. `taken` are items your teammates already hold: Champions has an item clause
+ * (one of each item per team), so the most used item that is still free is used instead. Leave it out for the
+ * opponent's team, where we can't know who holds what.
+ */
+export function setFromMeta(entry: MetaEntry, format: BattleFormat, itemOverride?: string, taken?: string[]): PokemonSet {
   const d = entry.data[format] ?? entry.data[format === 'single' ? 'double' : 'single'];
   const set = blankSet(entry.species);
   if (!d) return set;
   // Top item (skip mega stones so the default set isn't auto-mega unless it is the most used)
-  const item = itemOverride ?? d.items[0]?.name ?? '';
+  const free = taken?.length ? d.items.find((i) => !taken.includes(i.name)) : d.items[0];
+  const item = itemOverride ?? free?.name ?? '';
   set.item = item;
   const mega = item ? megaFor(entry.species, item) : undefined;
   if (mega && gen.species.get(toID(mega))) set.species = mega;

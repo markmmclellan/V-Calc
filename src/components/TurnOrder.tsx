@@ -3,10 +3,12 @@ import type { FieldState } from '../lib/calc';
 import { compareSpeed, effectiveSpeed, movePriority, type PriorityInfo } from '../lib/speed';
 import type { PokemonSet } from '../lib/model';
 import Sprite from './Sprite';
-import type { Team } from './TeamSide';
+import { onFieldCount, type Team } from './TeamSide';
 
 interface Props {
   teams: [Team, Team];
+  /** Doubles: list only the Pokémon on the field (up to 4) instead of both whole teams. */
+  doubles: boolean;
   field: FieldState;
   onSelect: (team: 0 | 1, index: number) => void;
   onTrickRoom: (on: boolean) => void;
@@ -34,21 +36,24 @@ function priorityMoves(set: PokemonSet, field: FieldState): PriorityInfo[] {
 
 const signed = (n: number) => (n > 0 ? `+${n}` : `${n}`);
 
-export default function TurnOrder({ teams, field, onSelect, onTrickRoom, onTailwind }: Props) {
+export default function TurnOrder({ teams, doubles, field, onSelect, onTrickRoom, onTailwind }: Props) {
   const tr = !!field.isTrickRoom;
 
   const rows = useMemo(() => {
     const out: Row[] = [];
     teams.forEach((t, team) => {
       const side = team === 0 ? field.attackerSide : field.defenderSide;
+      const pair = doubles && onFieldCount(t, true) === 2;
       t.sets.forEach((set, index) => {
+        // in Doubles only the selected Pokémon and the picked partner are out there
+        if (doubles && index !== t.active && !(pair && index === t.partner)) return;
         const info = effectiveSpeed(set, field, side);
         if (info) out.push({ team: team as 0 | 1, index, set, ...info, active: index === t.active });
       });
     });
     // Fastest first (slowest first under Trick Room). Stable sort keeps "You" ahead on ties.
     return out.sort((x, y) => (tr ? x.speed - y.speed : y.speed - x.speed));
-  }, [teams, field, tr]);
+  }, [teams, doubles, field, tr]);
 
   const a = rows.find((r) => r.team === 0 && r.active);
   const b = rows.find((r) => r.team === 1 && r.active);
@@ -128,7 +133,7 @@ export default function TurnOrder({ teams, field, onSelect, onTrickRoom, onTailw
 
       {rows.length === 0 ? (
         <p className="hint">Add Pokémon to see speed order.</p>
-      ) : (
+      ) : (<>
         <ol className="to-list">
           {rows.map((r, i) => (
             <li
@@ -148,6 +153,10 @@ export default function TurnOrder({ teams, field, onSelect, onTrickRoom, onTailw
             </li>
           ))}
         </ol>
+        {doubles && teams.some((t) => t.sets.length > 1 && onFieldCount(t, true) === 1) && (
+          <p className="hint">Showing only the Pokémon on the field. Use ＋ on a team slot to put a second one out.</p>
+        )}
+      </>
       )}
     </section>
   );

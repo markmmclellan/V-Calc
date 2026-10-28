@@ -175,5 +175,22 @@ const withTeam = (team: PokemonSet[], pos: Position) => ({ ...pos, team_text: ex
 
 export const askCheck = (team: PokemonSet[], pos: Position) => call<{ checked: MoveCheck[] }>('/api/check', withTeam(team, pos));
 export const askQuick = (team: PokemonSet[], pos: Position) => call<{ actions: { action: string; p: number }[]; win: number }>('/api/position', withTeam(team, pos));
-export const askReplace = (team: PokemonSet[], pos: Position) =>
+/** One of my options in the solved turn. */
+export interface SolveRow {
+  action: string;
+  mix: number; // how often to pick it (the game's mixed strategy)
+  vs_their_play: number; // win chance against the opponent's predicted mix
+  worst: number; // win chance against their best reply to this option
+}
+export interface SolveResult {
+  value: number;
+  mine: SolveRow[];
+  theirs: { their_action: string; prob: number }[];
+  endgame?: boolean; // two or fewer a side: every chance outcome of two turns listed exactly
+  depth?: number;
+  cut_short?: boolean;
+}
+/** This turn solved as a simultaneous guessing game (or exactly, in an endgame). */
+export const askSolve = (team: PokemonSet[], pos: Position) => call<SolveResult>('/api/solve', withTeam(team, pos));
+export const askReplace =(team: PokemonSet[], pos: Position) =>
   call<{ replace: { action: string; win: number; games: number }[]; note?: string }>('/api/replace', withTeam(team, pos));

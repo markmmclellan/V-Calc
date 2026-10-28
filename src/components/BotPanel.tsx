@@ -5,6 +5,7 @@ import {
   askCheck,
   askQuick,
   askReplace,
+  askSolve,
   appeared,
   baseName,
   blankMarks,
@@ -13,6 +14,7 @@ import {
   type BringOption,
   type Marks,
   type MoveCheck,
+  type SolveResult,
 } from '../lib/bot';
 import type { PokemonSet } from '../lib/model';
 import type { Team } from './TeamSide';
@@ -53,6 +55,7 @@ export default function BotPanel({ teams, field, skipped, singles, onApplyBring,
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
   const [bring, setBring] = useState<{ options: BringOption[]; win: number } | null>(null);
+  const [solved, setSolved] = useState<SolveResult | null>(null);
   const [advice, setAdvice] = useState<{ pSwitch?: number; title: string; rows: { label: string; v: number; stay?: number; sw?: number; net?: number; heur?: number; ko?: number; n?: number }[]; quick?: string; note?: string } | null>(null);
 
   useEffect(() => {
@@ -116,15 +119,26 @@ export default function BotPanel({ teams, field, skipped, singles, onApplyBring,
     setPicked(null);
   };
 
+  /** The battle as the bot sees it, after checking that V-Calc has what it needs. */
+  const position = () => {
+    if (mine.length !== 3) throw new Error('Tick the three Pokémon you brought.');
+    if (!mineActive || !mine.some((s) => baseName(s) === baseName(mineActive))) throw new Error('Select (in V-Calc) the Pokémon of yours that is out, and make sure it is one of the three brought.');
+    if (!theirActive) throw new Error("Add the opposing Pokémon that is out and select it in V-Calc.");
+    if (mark(1, theirActive).ko) throw new Error("The opponent's selected Pokémon is marked fainted: select the one they sent out.");
+    return buildPosition({ mine, mineActive: baseName(mineActive), theirs, theirActive: baseName(theirActive), marks, field, turn });
+  };
+
+  const doSolve = () =>
+    run('Solving the turn as a guessing game (about 15–30 s)…', async () => {
+      const pos = position();
+      if (mark(0, mineActive!).ko) throw new Error('Your Pokémon is fainted: use “What should I do this turn?” to pick the replacement.');
+      setSolved(await askSolve(mineAll, pos));
+    });
+
   const doAdvice = () =>
     run('Simulating each option…', async () => {
-      if (mine.length !== 3) throw new Error('Tick the three Pokémon you brought.');
-      if (!mineActive || !mine.some((s) => baseName(s) === baseName(mineActive))) throw new Error('Select (in V-Calc) the Pokémon of yours that is out, and make sure it is one of the three brought.');
-      if (!theirActive) throw new Error("Add the opposing Pokémon that is out and select it in V-Calc.");
-      const theirKo = mark(1, theirActive).ko;
-      if (theirKo) throw new Error("The opponent's selected Pokémon is marked fainted: select the one they sent out.");
-      const pos = buildPosition({ mine, mineActive: baseName(mineActive), theirs, theirActive: baseName(theirActive), marks, field, turn });
-      if (mark(0, mineActive).ko) {
+      const pos = position();
+      if (mark(0, mineActive!).ko) {
         const r = await askReplace(mineAll, pos);
         setAdvice({
           title: 'Best replacement',
@@ -304,8 +318,54 @@ export default function BotPanel({ teams, field, skipped, singles, onApplyBring,
               <button className="primary" onClick={doAdvice} disabled={!ready || !!busy}>
                 What should I do this turn?
               </button>
+              <button
+                onClick={doSolve}
+                disabled={!ready || !!busy}
+                title="Treats the turn as a guessing game: you and the opponent pick at the same time. Gives how often to pick each option and what they are likely to do. With two or fewer Pokémon a side it works out every damage roll, crit and miss of the next two turns exactly."
+              >
+                Solve as a guessing game
+              </button>
               {busy && <span className="hint">{busy}</span>}
             </div>
+            {solved && (
+              <div className="ai-result">
+                <h4>
+                  {solved.endgame ? `Endgame, worked out exactly (${solved.depth} turn${solved.depth === 1 ? '' : 's'} ahead)` : 'Turn solved as a guessing game'}
+                  <span className="hint"> · win chance {pct(solved.value)}</span>
+                </h4>
+                <div className="ai-colhead hint">
+                  <span />
+                  <span />
+                  <span title="How often to pick this option. A mix means no single choice is best against a smart opponent: roll for it, don't always pick the top one.">Pick</span>
+                  <span title="Win chance against the opponent's predicted play (listed below)">Vs their play</span>
+                  <span title="Win chance if they make the best reply to this option">Worst case</span>
+                </div>
+                {solved.mine.map((r, i) => (
+                  <div key={i} className={'ai-opt2' + (i === 0 ? ' top' : '')}>
+                    <div className="ai-opt-main">{r.action}</div>
+                    <Bar v={r.vs_their_play} />
+                    <span className="ai-pct">{r.mix >= 0.005 ? pct(r.mix) : '–'}</span>
+                    <span className="ai-pct">{pct(r.vs_their_play)}</span>
+                    <span className="ai-pct">{pct(r.worst)}</span>
+                  </div>
+                ))}
+                <p className="hint">
+                  <b>Their likely play:</b>{' '}
+                  {solved.theirs
+                    .filter((c) => c.prob >= 0.05)
+                    .slice(0, 4)
+                    .map((c) => `${c.their_action} ${pct(c.prob)}`)
+                    .join(' · ') || '–'}
+                </p>
+                <p className="hint">
+                  {solved.endgame
+                    ? 'Every damage roll, crit, miss and added effect of this turn and the next is counted with its real chance (later rolls are grouped), and both turns are solved as guessing games; positions still open after that are scored by HP left. '
+                    : 'Each pairing of your option and their reply is played out by the bot for both sides, then the table is solved as a guessing game. '}
+                  Their sets are sampled from usage data, using what you ticked as seen. Their predicted play is what a smart opponent would do, not a read on this player.
+                  {solved.cut_short ? ' The time limit cut the search short, so treat close numbers as ties.' : ''}
+                </p>
+              </div>
+            )}
             {advice && (
               <div className="ai-result">
                 <h4>{advice.title}</h4>

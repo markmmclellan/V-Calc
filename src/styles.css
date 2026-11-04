@@ -220,8 +220,8 @@ label.inline select { padding: 1px 4px; }
 .hp-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 6px; height: 18px; margin-top: -3px; border-radius: 3px; background: var(--text); border: 1px solid #0d1016; }
 .hp-slider::-moz-range-thumb { width: 4px; height: 16px; border-radius: 3px; background: var(--text); border: 1px solid #0d1016; }
 .hp-edit { display: flex; align-items: center; gap: 4px; flex: none; }
-.hp-edit input { width: 52px; padding: 2px 4px; }
-.hp-edit .hp-pct { width: 46px; margin-left: 6px; }
+.hp-edit input { width: calc(3ch + 14px); padding: 2px 4px; text-align: center; }
+.hp-edit .hp-pct { margin-left: 6px; }
 
 /* slot shortcut badge */
 .slot-num { position: absolute; top: 1px; left: 4px; font-size: 10px; font-weight: 700; color: var(--muted); }

@@ -53,6 +53,3 @@ jobs:
     steps:
       - id: deployment
         uses: actions/deploy-pages@v5
-        with:
-          # GitHub Pages has been slow to finish deployments; the default 10 minutes keeps running out
-          timeout: 1800000

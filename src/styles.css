@@ -207,6 +207,9 @@ label.inline select { padding: 1px 4px; }
 
 /* HP bar / slider */
 .hp-row { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+/* the HP boxes are for typing a value; no up/down arrows */
+.hp-edit input[type='number'] { -moz-appearance: textfield; appearance: textfield; }
+.hp-edit input[type='number']::-webkit-inner-spin-button, .hp-edit input[type='number']::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 .hp-label { font-size: 11px; font-weight: 700; color: var(--muted); letter-spacing: 0.06em; }
 .hp-slider { flex: 1; min-width: 0; height: 14px; padding: 0; margin: 0; border: 1px solid var(--line); border-radius: 7px; cursor: pointer;
   -webkit-appearance: none; appearance: none;

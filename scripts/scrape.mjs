@@ -119,8 +119,19 @@ async function scrapeOne(key) {
 export async function scrape({ keys, onProgress = () => {} } = {}) {
   const tier = await get(`${BASE}/tier`);
   const tierData = tierInfo(tier ?? '');
-  if (!keys?.length) {
-    keys = [...new Set([...tier.matchAll(/href="\/pokemon-champions\/pokedex\/([^"#?\/]+)"/g)].map((m) => m[1]))];
+  // What we saved last time. op.gg's tier page only links the Pokemon currently ranked there (171 of them in Oct
+  // 2026, down from 262), and a page can fail to download, so anything we can't refresh keeps its previous data
+  // instead of disappearing from the calculator.
+  let prev = null;
+  try {
+    prev = JSON.parse(fs.readFileSync(OUT, 'utf8'));
+  } catch {
+    /* first run */
+  }
+  const subset = !!keys?.length;
+  if (!subset) {
+    const onTier = [...(tier ?? '').matchAll(/href="\/pokemon-champions\/pokedex\/([^"#?\/]+)"/g)].map((m) => m[1]);
+    keys = [...new Set([...onTier, ...Object.keys(prev?.pokemon ?? {})])];
   }
   onProgress(0, keys.length);
 
@@ -154,18 +165,30 @@ export async function scrape({ keys, onProgress = () => {} } = {}) {
   );
 
   if (!Object.keys(pokemon).length) throw new Error('No data scraped; leaving existing file untouched');
+  // keep last time's data for anything that failed this time (and, for a subset run, for everything else)
+  let kept = 0;
+  for (const [key, old] of Object.entries(prev?.pokemon ?? {})) {
+    if (pokemon[key] || (!subset && !keys.includes(key))) continue;
+    pokemon[key] = old;
+    if (!subset) kept++;
+  }
+  if (kept) console.warn(`  ! kept the previous data for ${kept} Pokemon that couldn't be refreshed`);
+  for (const [k, v] of Object.entries(prev?.names ?? {})) names[k] ??= v;
+  for (const [k, v] of Object.entries(prev?.images ?? {})) images[k] ??= v;
   // rankings from the tier page are newer than the ones embedded in each Pokemon's page
   for (const [key, p] of Object.entries(pokemon)) {
     for (const f of ['single', 'double']) {
       const r = tierData.ranks[f][key];
       if (r != null) p.rank[f] = r;
+      // off the tier page op.gg sends "$undefined" (its encoding of no value): treat it as unranked
+      else if (typeof p.rank[f] !== 'number') p.rank[f] = null;
     }
   }
   const out = {
     updatedAt: new Date().toISOString(),
     opggUpdatedAt: tierData.label ?? opggUpdatedAt, // as shown on op.gg's tier page
     opggDetailUpdatedAt: opggUpdatedAt, // the per-Pokemon pages' own stamp (moves, items, spreads)
-    abilitiesByForm: rosterCache ?? {},
+    abilitiesByForm: rosterCache ?? prev?.abilitiesByForm ?? {},
     source: `${BASE}/tier`,
     names,
     images,

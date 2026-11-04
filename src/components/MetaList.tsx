@@ -29,13 +29,19 @@ export default function MetaList({ meta, format, teamSizes, onAdd, onClose }: Pr
     return () => document.removeEventListener('keydown', onKey);
   }, [onClose]);
 
+  // ranked first (op.gg's order), then the ones op.gg no longer ranks, A-Z, so they can still be found and added
   const ranked = useMemo(
     () =>
-      meta.entries
-        .filter((e) => e.rank[fmt] != null)
-        .sort((a, b) => (a.rank[fmt] as number) - (b.rank[fmt] as number)),
+      [...meta.entries].sort((a, b) => {
+        const ra = a.rank[fmt];
+        const rb = b.rank[fmt];
+        if (ra != null && rb != null) return ra - rb;
+        if (ra != null || rb != null) return ra != null ? -1 : 1;
+        return a.displayName.localeCompare(b.displayName);
+      }),
     [meta, fmt],
   );
+  const rankedCount = useMemo(() => ranked.filter((e) => e.rank[fmt] != null).length, [ranked, fmt]);
 
   const rows = useMemo(() => {
     const q = filter.trim().toLowerCase();
@@ -68,7 +74,7 @@ export default function MetaList({ meta, format, teamSizes, onAdd, onClose }: Pr
             onChange={(e) => setFilter(e.target.value)}
           />
           <span className="hint">
-            {rows.length === ranked.length ? `${ranked.length} ranked` : `${rows.length} of ${ranked.length}`} · op.gg rank
+            {rows.length === ranked.length ? `${rankedCount} ranked, ${ranked.length - rankedCount} unranked` : `${rows.length} of ${ranked.length}`} · op.gg rank
             {meta.opggUpdatedAt ? ` · updated ${meta.opggUpdatedAt}` : ''}
           </span>
         </div>
@@ -76,7 +82,11 @@ export default function MetaList({ meta, format, teamSizes, onAdd, onClose }: Pr
         <ol className="meta-rows">
           {rows.map((e) => (
             <li key={e.key}>
-              <span className="mr-rank">#{e.rank[fmt]}</span>
+              {e.rank[fmt] != null ? (
+                <span className="mr-rank">#{e.rank[fmt]}</span>
+              ) : (
+                <span className="mr-rank hint" title="Not ranked on op.gg's tier list right now (usage data is from its own page)">–</span>
+              )}
               <Sprite species={e.species} size={30} />
               <span className="mr-name" title={e.displayName}>
                 {e.displayName}

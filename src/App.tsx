@@ -59,6 +59,7 @@ export default function App() {
   const [bringOpen, setBringOpen] = useState(false);
   const [recOpen, setRecOpen] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
+  const [battleId, setBattleId] = useState(0); // goes up on every battle reset: the AI panel starts a new game
   // The AI advice button only exists while the local bot answers, so visitors without it never see a dead button.
   const [botUp, setBotUp] = useState(false);
   const [botUrl, setBotUrlState] = useState(getBotUrl);
@@ -227,6 +228,7 @@ export default function App() {
 
   /** Clear every field effect plus each Pokemon's battle state (boosts, status, HP, "ability active", fainted allies). */
   const resetBattle = () => {
+    setBattleId((n) => n + 1);
     setField(normalizeField({ gameType: format === 'single' ? 'Singles' : 'Doubles' }));
     setTeams((old) => old.map((t) => ({ ...t, sets: t.sets.map((s) => ({ ...s, boosts: zeroBoosts(), status: '' as const, hpPercent: 100, abilityOn: false, alliesFainted: undefined })) })) as [Team, Team]);
   };
@@ -314,7 +316,7 @@ export default function App() {
   }, [meta]);
 
   return (
-    <div className="app">
+    <div className={'app' + (botUp && aiOpen ? ' ai-docked' : '')}>
       <header className="top">
         <h1 className="brand">
           <img src={victini} alt="" width={40} height={40} />
@@ -356,7 +358,8 @@ export default function App() {
         </button>
         {botUp && (
           <button
-            onClick={() => setAiOpen(true)}
+            className={aiOpen ? 'ai-on' : ''}
+            onClick={() => setAiOpen((o) => !o)}
             disabled={!teams[0].sets.length || !teams[1].sets.length}
             title="Ask the simulation bot (runs on this computer, Singles only): what to bring, and what to do this turn, from what is entered here"
           >
@@ -449,15 +452,24 @@ export default function App() {
         <RecommendPanel mine={yours} theirs={theirs} bench={bench} skipped={skipped} onToggleBrought={(sp) => setSkipped((old) => (old.includes(sp) ? old.filter((x) => x !== sp) : [...old, sp]))} field={calcField} doubles={doubles} onClose={() => setRecOpen(false)} />
       )}
 
-      {aiOpen && (
+      {botUp && (
         <BotPanel
+          open={aiOpen}
           teams={teams}
+          setTeams={setTeams}
           field={calcField}
           skipped={skipped}
           singles={!doubles}
+          battleId={battleId}
           onApplyBring={applyBring}
+          onResetBattle={resetBattle}
           onClose={() => setAiOpen(false)}
         />
+      )}
+      {botUp && !aiOpen && (
+        <button className="ai-fab primary" onClick={() => setAiOpen(true)} title="Open AI advice">
+          AI
+        </button>
       )}
 
       {bringOpen && (

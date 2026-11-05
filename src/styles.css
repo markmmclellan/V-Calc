@@ -503,6 +503,7 @@ td.v-loses, .bg-verdict.v-loses { background: color-mix(in srgb, var(--bad) 38%,
 .ai-dock-head .close { padding: 1px 8px; }
 .ai-dock .ai-body { flex: 1; padding: 0 10px 16px; }
 .ai-auto { font-size: 13px; }
+.ai-secs { width: auto; padding: 1px 4px; }
 .ai-auto input { width: auto; }
 .ai-turn { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; color: var(--muted); }
 .ai-turn button { padding: 0 8px; }

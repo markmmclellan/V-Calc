@@ -38,6 +38,7 @@ interface Props {
 
 const MARKS_KEY = 'champions-calc:ai-marks:v1';
 const AUTO_KEY = 'champions-calc:ai-auto:v1';
+const SECS_KEY = 'champions-calc:ai-seconds:v1';
 const load = <T,>(key: string, fallback: T): T => {
   try {
     const raw = localStorage.getItem(key);
@@ -105,6 +106,7 @@ export default function BotPanel({ open, teams, setTeams, field, skipped, single
   const [up, setUp] = useState<boolean | null>(null);
   const [marks, setMarks] = useState<Record<string, Marks>>(() => load(MARKS_KEY, {}));
   const [auto, setAuto] = useState<boolean>(() => load(AUTO_KEY, true));
+  const [secs, setSecs] = useState<number>(() => load(SECS_KEY, 8)); // time the bot may think per answer
   const [picked, setPicked] = useState<string[] | null>(null); // base names; null = follow What to bring
   const [turn, setTurnRaw] = useState(1);
   const [busy, setBusy] = useState('');
@@ -120,6 +122,7 @@ export default function BotPanel({ open, teams, setTeams, field, skipped, single
   }, [open]);
   useEffect(() => save(MARKS_KEY, marks), [marks]);
   useEffect(() => save(AUTO_KEY, auto), [auto]);
+  useEffect(() => save(SECS_KEY, secs), [secs]);
 
   // A new game: forget the last one's marks, results and turn count.
   const firstBattle = useRef(battleId);
@@ -255,8 +258,8 @@ export default function BotPanel({ open, teams, setTeams, field, skipped, single
           note: r.replace.length ? 'Each replacement is played out from the new board.' : r.note,
         });
       });
-    return run('Solving this turn (up to about a minute; seconds near the end)…', async () => {
-      const r = await askSolve(mineAll, pos);
+    return run(`Solving this turn (about ${secs} s)…`, async () => {
+      const r = await askSolve(mineAll, pos, secs);
       setAdvice(null);
       setSolved({ ...r, key: k });
     });
@@ -411,6 +414,13 @@ export default function BotPanel({ open, teams, setTeams, field, skipped, single
             +
           </button>
         </span>
+        <select className="ai-secs" value={secs} onChange={(e) => setSecs(+e.target.value)} title="How long the bot may think per answer. Longer is a little sharper.">
+          {[4, 8, 15, 30].map((v) => (
+            <option key={v} value={v}>
+              {v} s
+            </option>
+          ))}
+        </select>
         <button onClick={newGame} title="New game: resets HP, boosts, status, the field and the marks here (same as Reset battle)">
           New game
         </button>

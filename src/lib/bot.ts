@@ -191,6 +191,6 @@ export interface SolveResult {
   cut_short?: boolean;
 }
 /** This turn solved as a simultaneous guessing game (or exactly, in an endgame). */
-export const askSolve = (team: PokemonSet[], pos: Position) => call<SolveResult>('/api/solve', withTeam(team, pos));
+export const askSolve = (team: PokemonSet[], pos: Position, seconds = 8) => call<SolveResult>('/api/solve', { ...withTeam(team, pos), seconds });
 export const askReplace =(team: PokemonSet[], pos: Position) =>
   call<{ replace: { action: string; win: number; games: number }[]; note?: string }>('/api/replace', withTeam(team, pos));

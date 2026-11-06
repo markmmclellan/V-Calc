@@ -567,7 +567,8 @@ td.v-loses, .bg-verdict.v-loses { background: color-mix(in srgb, var(--bad) 38%,
 .bv-stat { position: absolute; z-index: 3; width: min(330px, 56%); padding: 6px 8px; border-radius: 8px; font-size: 12px;
   background: color-mix(in srgb, var(--panel) 90%, transparent); border: 1px solid var(--line); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25); }
 .bv-stat.opp { left: 10px; top: 44px; }
-.bv-stat.me { right: 10px; bottom: 52px; }
+.bv-stat.raised { z-index: 12; }
+.bv-stat.me { right: 10px; bottom: 8px; }
 .bv-name { display: flex; align-items: center; gap: 6px; }
 .bv-name strong { font-size: 14px; margin-right: auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .bv-flags { display: flex; gap: 3px; }
@@ -614,3 +615,49 @@ td.v-loses, .bg-verdict.v-loses { background: color-mix(in srgb, var(--bad) 38%,
 .bv-move { font-size: 12px; padding: 2px 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .bv-move.seen { border-style: dashed; border-color: var(--accent); }
 .bv-move.on { background: var(--accent); border-color: var(--accent); color: #07101f; font-weight: 600; }
+
+/* battle view: timers and what is on the field */
+.bv-timer { display: inline-block; margin-left: 4px; min-width: 15px; padding: 0 4px; border-radius: 7px; font-size: 10px; line-height: 14px; font-weight: 700;
+  background: color-mix(in srgb, var(--accent) 25%, transparent); color: var(--text); cursor: pointer; text-align: center; }
+.bv-field .bv-tag > span + span { margin-left: 8px; }
+.bv-weather, .bv-terrain, .bv-tr { position: absolute; inset: 0; border-radius: 10px; pointer-events: none; z-index: 1; }
+.bv-weather.sun, .bv-weather.harsh { background: radial-gradient(circle at 12% 8%, rgba(255, 214, 102, 0.55), rgba(255, 170, 60, 0.18) 35%, transparent 65%); }
+.bv-weather.rain, .bv-weather.heavy { background: repeating-linear-gradient(105deg, rgba(190, 215, 255, 0.35) 0 1px, transparent 1px 14px), rgba(40, 70, 120, 0.22);
+  background-size: 28px 28px, auto; animation: bv-rain 0.5s linear infinite; }
+.bv-weather.sand { background: repeating-radial-gradient(circle at 30% 40%, rgba(214, 178, 110, 0.35) 0 1px, transparent 1px 6px), rgba(196, 150, 80, 0.25);
+  background-size: 40px 40px, auto; animation: bv-sand 1.2s linear infinite; }
+.bv-weather.snow { background: radial-gradient(circle, rgba(255, 255, 255, 0.85) 0 1.5px, transparent 2px) 0 0 / 22px 22px,
+  radial-gradient(circle, rgba(255, 255, 255, 0.6) 0 1px, transparent 1.5px) 11px 9px / 22px 22px, rgba(220, 235, 255, 0.15); animation: bv-snow 3s linear infinite; }
+@keyframes bv-rain { to { background-position: -8px 28px, 0 0; } }
+@keyframes bv-sand { to { background-position: 40px 4px, 0 0; } }
+@keyframes bv-snow { to { background-position: 0 22px, 11px 31px, 0 0; } }
+.bv-terrain { top: 43%; border-radius: 0 0 10px 10px; }
+.bv-terrain.electric { background: linear-gradient(180deg, rgba(255, 230, 60, 0.45), rgba(255, 210, 0, 0.15)); }
+.bv-terrain.grassy { background: linear-gradient(180deg, rgba(90, 220, 90, 0.5), rgba(40, 160, 60, 0.15)); }
+.bv-terrain.misty { background: linear-gradient(180deg, rgba(255, 170, 230, 0.5), rgba(255, 190, 240, 0.15)); }
+.bv-terrain.psychic { background: linear-gradient(180deg, rgba(200, 110, 255, 0.5), rgba(160, 80, 230, 0.15)); }
+.bv-tr { background: repeating-linear-gradient(0deg, rgba(200, 120, 255, 0.18) 0 2px, transparent 2px 34px),
+  repeating-linear-gradient(90deg, rgba(200, 120, 255, 0.18) 0 2px, transparent 2px 34px); box-shadow: inset 0 0 40px rgba(170, 90, 255, 0.35); }
+.bv-rocks { position: absolute; z-index: 2; width: 150px; height: 26px; pointer-events: none; }
+.bv-rocks.opp { right: 70px; top: 182px; }
+.bv-rocks.me { left: 60px; bottom: 40px; }
+.bv-rocks i { position: absolute; bottom: 0; width: 16px; height: 18px; background: linear-gradient(160deg, #b9b2a6, #6f685d);
+  clip-path: polygon(20% 100%, 0 45%, 35% 0, 75% 10%, 100% 60%, 85% 100%); filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.5)); }
+.bv-rocks i:nth-child(1) { left: 0; transform: scale(0.8); }
+.bv-rocks i:nth-child(2) { left: 40px; height: 22px; }
+.bv-rocks i:nth-child(3) { left: 86px; transform: scale(0.9) rotate(12deg); }
+.bv-rocks i:nth-child(4) { left: 126px; transform: scale(0.7); }
+.bv-screen { position: absolute; z-index: 2; width: 150px; height: 120px; border-radius: 12px; pointer-events: none; opacity: 0.55; }
+.bv-screen.opp { right: 70px; top: 76px; }
+.bv-screen.me { left: 70px; bottom: 48px; height: 140px; }
+.bv-screen.reflect { background: linear-gradient(135deg, rgba(255, 140, 200, 0.35), rgba(255, 140, 200, 0.08)); border: 2px solid rgba(255, 150, 210, 0.7); }
+.bv-screen.light { background: linear-gradient(135deg, rgba(255, 240, 120, 0.35), rgba(255, 240, 120, 0.08)); border: 2px solid rgba(255, 235, 120, 0.75); margin: 6px; }
+.bv-screen.veil { background: linear-gradient(135deg, rgba(140, 220, 255, 0.35), rgba(220, 160, 255, 0.2), rgba(140, 255, 210, 0.15)); border: 2px solid rgba(170, 220, 255, 0.75); margin: -6px; }
+.bv-wind { position: absolute; z-index: 1; width: 220px; height: 80px; pointer-events: none;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.5), transparent) 0 30% / 60px 2px repeat-x,
+    linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent) 0 70% / 90px 2px repeat-x;
+  animation: bv-wind 0.9s linear infinite; }
+.bv-wind.opp { right: 40px; top: 100px; animation-direction: reverse; }
+.bv-wind.me { left: 30px; bottom: 70px; }
+@keyframes bv-wind { to { background-position: 60px 30%, 90px 70%; } }
+@media (prefers-reduced-motion: reduce) { .bv-weather, .bv-wind { animation: none; } }

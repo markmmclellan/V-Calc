@@ -62,6 +62,10 @@ const save = (key: string, v: unknown) => {
 
 
 const pct = (x: number) => `${Math.round(x * 100)}%`;
+/** Turns left, counting the turn it started, when a timed effect starts (core-series lengths; not yet checked in Champions).
+ * Taunt, Encore and Yawn count from the turn after (Yawn: asleep at the end of the next turn). */
+const TIMED: Record<string, number> = { weather: 5, terrain: 5, tr: 5, isTailwind: 4, isReflect: 5, isLightScreen: 5, isAuroraVeil: 5, taunt: 4, encore: 4, yawn: 2 };
+const timerStart = (key: string) => TIMED[key.split(':').pop()!] ?? 5;
 /** Options this close (win chance against their likely play) are a toss-up: the simulation cannot tell them apart. */
 const CLOSE = 0.02;
 const Bar = ({ v }: { v: number }) => (
@@ -91,6 +95,9 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
   const [turn, setTurnRaw] = useState(1);
   // effects on the two Pokémon that are out (yours, theirs); a side's are cleared when its Pokémon switches out
   const [vol, setVol] = useState<[Vol, Vol]>([{}, {}]);
+  // Turns left of timed effects, counted down as the turn number goes up (see TIMED). Keys: 'weather', 'terrain', 'tr',
+  // '<side>:<field flag>' (Tailwind, screens), 'v<side>:<effect>' (Taunt, Encore, Yawn).
+  const [timers, setTimers] = useState<Record<string, number>>({});
   const patchVol = (side: 0 | 1, patch: Partial<Vol>) =>
     setVol((old) => {
       const next: [Vol, Vol] = [old[0], old[1]];
@@ -132,6 +139,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     setError('');
     setLive(false);
     setVol([{}, {}]);
+    setTimers({});
     last.current = null;
     gameId.current = new Date().toISOString();
   }, [battleId]);
@@ -215,6 +223,97 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
   const ready = up === true && singles;
 
   /** The battle as the bot sees it, after checking that V-Calc has what it needs. Throws a plain-language reason. */
+  // ---- timed effects: start when turned on (from here or the calc), count down with the turn number, end at 0 ----
+  const timedNow = (): Record<string, string> => {
+    const out: Record<string, string> = {};
+    if (field.weather) out.weather = field.weather;
+    if (field.terrain) out.terrain = field.terrain;
+    if (field.isTrickRoom) out.tr = 'on';
+    ([0, 1] as const).forEach((sd) => {
+      const fs = sd === 0 ? field.attackerSide : field.defenderSide;
+      for (const k of ['isTailwind', 'isReflect', 'isLightScreen', 'isAuroraVeil'] as const) if (fs[k]) out[`${sd}:${k}`] = 'on';
+      if (vol[sd].taunt) out[`v${sd}:taunt`] = 'on';
+      if (vol[sd].encore) out[`v${sd}:encore`] = vol[sd].encore!;
+      if (vol[sd].yawn) out[`v${sd}:yawn`] = 'on';
+    });
+    return out;
+  };
+  const timed = timedNow();
+  const timedSig = JSON.stringify(timed);
+  const prevTimed = useRef<Record<string, string>>({});
+  useEffect(() => {
+    const prev = prevTimed.current;
+    prevTimed.current = timed;
+    setTimers((old) => {
+      const next: Record<string, number> = {};
+      for (const [k, v] of Object.entries(timed)) next[k] = prev[k] === v && old[k] !== undefined ? old[k] : timerStart(k);
+      return next;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [timedSig]);
+  // the turn number went up: count down, and end what ran out (a drowsy Pokemon falls asleep)
+  const prevTurn = useRef(turn);
+  useEffect(() => {
+    const d = turn - prevTurn.current;
+    prevTurn.current = turn;
+    if (!d) return;
+    const ended = d > 0 ? Object.keys(timers).filter((k) => timers[k] - d <= 0) : [];
+    setTimers((old) => {
+      const next: Record<string, number> = {};
+      for (const [k, v] of Object.entries(old)) if (!ended.includes(k)) next[k] = Math.max(1, v - d);
+      return next;
+    });
+    window.setTimeout(() => {
+      if (!ended.length) return;
+      setField((f) => {
+        const g = { ...f, attackerSide: { ...f.attackerSide }, defenderSide: { ...f.defenderSide } };
+        for (const k of ended) {
+          if (k === 'weather') g.weather = '';
+          else if (k === 'terrain') g.terrain = '';
+          else if (k === 'tr') g.isTrickRoom = false;
+          else if (/^[01]:/.test(k)) {
+            const [sd, flag] = k.split(':');
+            (sd === '0' ? g.attackerSide : g.defenderSide)[flag as 'isTailwind'] = false;
+          }
+        }
+        return g;
+      });
+      for (const k of ended) {
+        const m = /^v([01]):(\w+)$/.exec(k);
+        if (!m) continue;
+        const sd = +m[1] as 0 | 1;
+        patchVol(sd, { [m[2]]: undefined });
+        const out = sd === 0 ? mineActive : theirActive;
+        if (m[2] === 'yawn' && out && !out.status) patchSet(sd, out, { status: 'slp' });
+      }
+    }, 0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [turn]);
+  /** Tap a timer: one turn less (wraps from 1 to 8, for Light Clay, Damp Rock and the like). */
+  const tapTimer = (k: string) => setTimers((old) => (old[k] === undefined ? old : { ...old, [k]: old[k] <= 1 ? 8 : old[k] - 1 }));
+  /** Turns left as the bot reads them, `ahead` turns from now. */
+  // read when a solve actually runs (auto-solve is scheduled a moment earlier, possibly before a new timer exists)
+  const timersNow = useRef(timers);
+  timersNow.current = timers;
+  const turnsFor = (ahead: number) => {
+    const t = (k: string) => Math.max(0, (timersNow.current[k] ?? 0) - ahead);
+    const pair = (k: string) => [t(`0:${k}`), t(`1:${k}`)];
+    return {
+      field: { weather: t('weather'), terrain: t('terrain'), trick_room: t('tr'), tailwind: pair('isTailwind'), reflect: pair('isReflect'), light_screen: pair('isLightScreen'), aurora_veil: pair('isAuroraVeil') },
+      vol: [0, 1].map((sd) => ({ taunt_turns: t(`v${sd}:taunt`), encore_turns: t(`v${sd}:encore`) })),
+    };
+  };
+  /** The board as sent: with turns left of timed effects (kept out of `key`, so counting down does not re-solve). */
+  const withTimers = <B extends NonNullable<typeof board>>(b: B, ahead: number) => {
+    const tt = turnsFor(ahead);
+    return {
+      ...b,
+      field: { ...b.field, turns: tt.field },
+      me: { ...b.me, volatile: { ...b.me.volatile, ...tt.vol[0] } },
+      opp: b.opp.map((o) => (o.active ? { ...o, volatile: { ...o.volatile, ...tt.vol[1] } } : o)),
+    };
+  };
+
   const position = () => {
     if (mine.length !== 3) throw new Error('Tick the three Pokémon you brought (Setup, below).');
     if (!mineActive || !mine.some((s) => baseName(s) === baseName(mineActive))) throw new Error('Pick which of your three is out.');
@@ -274,7 +373,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     const l = last.current;
     if (l && l.kind === 'solve' && l.turn === turn && l.turnKey !== turnKey && l.bring === bringKey && now - l.at > SAME_TURN_MS) t = turn + 1;
     if (t !== turn) setTurnRaw(t);
-    const pos = { ...board, turn: t, game: gameId.current };
+    const pos = { ...withTimers(board, t - turn), turn: t, game: gameId.current };
     const kind = myKo ? 'replace' : 'solve';
     last.current = { key, turnKey, bring: bringKey, turn: t, kind, at: now };
     const k = key;
@@ -335,7 +434,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     run('Simulating each option…', async () => {
       if (!board) throw new Error(boardProblem);
       if (myKo) return solveNow();
-      const pos = { ...board, turn, game: gameId.current };
+      const pos = { ...withTimers(board, 0), turn, game: gameId.current };
       const c = await askCheck(mineAll, pos);
       let quick = '';
       try {
@@ -454,6 +553,8 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
             sendOut={sendOut}
             field={field}
             setField={setField}
+            timers={timers}
+            onTimer={tapTimer}
           />
           <p className="hint">
             Tap a team icon when it comes in, drag an HP bar (or type the number), tap the move it just used. Changes here are the calc's own HP,

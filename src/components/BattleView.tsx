@@ -25,6 +25,9 @@ interface Props {
   sendOut: (side: 0 | 1, s: PokemonSet) => void;
   field: FieldState;
   setField: (f: (old: FieldState) => FieldState) => void;
+  /** Turns left of timed effects (weather, terrain, 'tr', '<side>:isReflect', 'v<side>:taunt'…) */
+  timers: Record<string, number>;
+  onTimer: (key: string) => void;
 }
 
 const STATUS: [Status, string, string][] = [
@@ -137,6 +140,20 @@ export default function BattleView(p: Props) {
     return () => document.removeEventListener('mousedown', close);
   }, [menu]);
   const toggle = (m: string) => setMenu((o) => (o === m ? '' : m));
+  /** Turns left on a timed effect; tap for one less (wraps 1 → 8 for Light Clay, Damp Rock…). */
+  const tm = (k: string) =>
+    p.timers[k] !== undefined ? (
+      <span
+        className="bv-timer"
+        title="Turns left (counts down with the turn number). Tap for one less."
+        onClick={(e) => {
+          e.stopPropagation();
+          p.onTimer(k);
+        }}
+      >
+        {p.timers[k]}
+      </span>
+    ) : null;
 
   const sideKey = (side: 0 | 1) => (side === 0 ? 'attackerSide' : 'defenderSide');
   const setSide = (side: 0 | 1, k: keyof SideState, v: boolean) =>
@@ -157,6 +174,7 @@ export default function BattleView(p: Props) {
         tags.push(
           <button key={k} className="bv-tag fx" title="Tap to remove" onClick={() => setSide(side, k, false)}>
             {l}
+            {tm(`${side}:${k}`)}
           </button>,
         );
     for (const [k, l] of VOL_FX)
@@ -164,16 +182,18 @@ export default function BattleView(p: Props) {
         tags.push(
           <button key={k} className="bv-tag fx" title="Tap to remove" onClick={() => p.patchVol(side, { [k]: false })}>
             {l}
+            {tm(`v${side}:${k}`)}
           </button>,
         );
     if (p.vol[side].encore)
       tags.push(
         <button key="enc" className="bv-tag fx" title="Tap to remove" onClick={() => p.patchVol(side, { encore: undefined })}>
           Encore: {p.vol[side].encore}
+          {tm(`v${side}:encore`)}
         </button>,
       );
     return (
-      <div className={`bv-stat ${side ? 'opp' : 'me'}`}>
+      <div className={`bv-stat ${side ? 'opp' : 'me'}${menu.endsWith(`-${side}`) ? ' raised' : ''}`}>
         <div className="bv-name">
           <strong>{s.species}</strong>
           <span className="bv-flags">
@@ -326,15 +346,60 @@ export default function BattleView(p: Props) {
   };
 
   const f = p.field;
-  const fieldText = [f.weather, f.terrain && `${f.terrain} Terrain`, f.isTrickRoom && 'Trick Room'].filter(Boolean).join(' · ');
+  const fieldBits: ReactNode[] = [];
+  if (f.weather)
+    fieldBits.push(
+      <span key="w">
+        {f.weather}
+        {tm('weather')}
+      </span>,
+    );
+  if (f.terrain)
+    fieldBits.push(
+      <span key="t">
+        {f.terrain} Terrain{tm('terrain')}
+      </span>,
+    );
+  if (f.isTrickRoom)
+    fieldBits.push(
+      <span key="r">
+        Trick Room{tm('tr')}
+      </span>,
+    );
+  /** What is on each side of the field, drawn: rocks, screens, wind. */
+  const sideArt = (side: 0 | 1) => {
+    const sd = f[sideKey(side)];
+    const at = side ? 'opp' : 'me';
+    return (
+      <>
+        {sd.isSR && (
+          <div className={`bv-rocks ${at}`} aria-hidden>
+            <i />
+            <i />
+            <i />
+            <i />
+          </div>
+        )}
+        {sd.isReflect && <div className={`bv-screen reflect ${at}`} aria-hidden />}
+        {sd.isLightScreen && <div className={`bv-screen light ${at}`} aria-hidden />}
+        {sd.isAuroraVeil && <div className={`bv-screen veil ${at}`} aria-hidden />}
+        {sd.isTailwind && <div className={`bv-wind ${at}`} aria-hidden />}
+      </>
+    );
+  };
 
   return (
     <div className="bv-wrap" ref={root}>
       <div className="bv">
+        {f.terrain && <div className={`bv-terrain ${f.terrain.toLowerCase()}`} aria-hidden />}
+        {f.weather && <div className={`bv-weather ${f.weather.toLowerCase().split(' ')[0]}`} aria-hidden />}
+        {f.isTrickRoom && <div className="bv-tr" aria-hidden />}
+        {sideArt(1)}
+        {sideArt(0)}
         <div className="bv-field">
           <span className="bv-anchor">
             <button className="bv-tag bv-open" onClick={() => toggle('field')} title="Weather, terrain, Trick Room">
-              {fieldText || '+ field'}
+              {fieldBits.length ? fieldBits : '+ field'}
             </button>
             {menu === 'field' && (
               <div className="bv-menu bv-fieldmenu">

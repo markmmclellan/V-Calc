@@ -10,6 +10,7 @@ import {
   baseName,
   blankMarks,
   buildPosition,
+  getBotUrl,
   pingBot,
   type BringOption,
   type Marks,
@@ -513,13 +514,9 @@ export default function BotPanel({ open, teams, setTeams, field, skipped, single
   };
 
   const resultStale = (k: string) => k !== key;
-  /** The options within CLOSE of the best, when there is more than one. */
-  const closeCall = (r: SolveResult) => {
-    if (!r.mine.length) return [];
-    const best = Math.max(...r.mine.map((x) => x.vs_their_play));
-    const near = r.mine.filter((x) => x.vs_their_play >= best - CLOSE);
-    return near.length > 1 ? near : [];
-  };
+  /** Options the bot left out of its pick that do almost as well (within CLOSE) against their likely play. (The options
+   * inside a mixed pick always score the same against it: that is what makes it a mix.) */
+  const closeCall = (r: SolveResult) => r.mine.filter((x) => x.mix < 0.05 && x.vs_their_play >= r.value - CLOSE);
   const headline = (r: SolveResult) => {
     const picks = r.mine.filter((x) => x.mix >= 0.05).sort((a, b) => b.mix - a.mix);
     if (!picks.length) return '';
@@ -553,6 +550,9 @@ export default function BotPanel({ open, teams, setTeams, field, skipped, single
             </option>
           ))}
         </select>
+        <a className="ai-review" href={getBotUrl() + '/review'} target="_blank" rel="noreferrer" title="Your games turn by turn: the board, what the bot said, and how the win chance moved">
+          Review
+        </a>
         <button onClick={newGame} title="New game: resets HP, boosts, status, the field and the marks here (same as Reset battle)">
           New game
         </button>
@@ -602,8 +602,8 @@ export default function BotPanel({ open, teams, setTeams, field, skipped, single
                 <span className="hint">win chance {pct(solved.value)}</span>
                 {closeCall(solved).length > 0 && (
                   <span className="hint ai-close">
-                    {closeCall(solved).length} options are within {pct(CLOSE)} of each other ({closeCall(solved).map((x) => x.action).join(', ')}): the
-                    simulation can't separate them, so go with what you know about this player.
+                    Almost as good (within {pct(CLOSE)}): {closeCall(solved).map((x) => x.action).join(', ')}. The simulation can't separate these, so go
+                    with what you know about this player.
                   </span>
                 )}
               </div>

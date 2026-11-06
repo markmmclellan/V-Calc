@@ -530,6 +530,8 @@ td.v-loses, .bg-verdict.v-loses { background: color-mix(in srgb, var(--bad) 38%,
 .ai-vol { gap: 4px; }
 .ai-vol .ai-toggle:disabled { opacity: 0.45; }
 .ai-close { flex-basis: 100%; }
+.ai-review { font-size: 13px; color: var(--accent); text-decoration: none; }
+.ai-review:hover { text-decoration: underline; }
 .ai-inline { flex-direction: row; align-items: center; gap: 4px; font-size: 13px; color: var(--text); }
 .ai-hp { width: 52px; }
 .ai-toggle { padding: 1px 8px; font-size: 12px; border-radius: 12px; }

@@ -316,7 +316,7 @@ export default function App() {
   }, [meta]);
 
   return (
-    <div className={'app' + (botUp && aiOpen ? ' ai-docked' : '')}>
+    <div className="app">
       <header className="top">
         <h1 className="brand">
           <img src={victini} alt="" width={40} height={40} />
@@ -465,11 +465,6 @@ export default function App() {
           onResetBattle={resetBattle}
           onClose={() => setAiOpen(false)}
         />
-      )}
-      {botUp && !aiOpen && (
-        <button className="ai-fab primary" onClick={() => setAiOpen(true)} title="Open AI advice">
-          AI
-        </button>
       )}
 
       {bringOpen && (

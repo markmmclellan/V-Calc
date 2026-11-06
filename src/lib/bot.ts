@@ -135,7 +135,8 @@ export function buildPosition(p: PositionInput) {
       mega_used: mineMega.length > 0,
       mega_evolved: mineMega,
       item_gone: p.mine.filter((s) => mk(0, s).gone).map(baseName),
-      volatile: p.vol?.[0] ?? {},
+      // Leech Seed and binding are set in the calc's field (per side); the rest in the AI panel
+      volatile: { ...(p.vol?.[0] ?? {}), leech_seed: !!f.attackerSide.isSeeded, bound: !!f.attackerSide.isBound },
     },
     opp: p.theirs.map((s) => {
       const m = mk(1, s);
@@ -153,7 +154,7 @@ export function buildPosition(p: PositionInput) {
         item: m.item ? s.item : m.mega && baseForMega(s.species) ? baseForMega(s.species)!.stone : '',
         ability: m.ability ? s.ability : '',
         item_gone: m.gone,
-        volatile: baseName(s) === p.theirActive ? (p.vol?.[1] ?? {}) : {},
+        volatile: baseName(s) === p.theirActive ? { ...(p.vol?.[1] ?? {}), leech_seed: !!f.defenderSide.isSeeded, bound: !!f.defenderSide.isBound } : {},
       };
     }),
     opp_mega_used: p.theirs.some((s) => mk(1, s).mega),

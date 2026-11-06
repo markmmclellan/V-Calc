@@ -503,13 +503,15 @@ td.v-loses, .bg-verdict.v-loses { background: color-mix(in srgb, var(--bad) 38%,
 .ai-tag.ko { margin-left: 8px; background: var(--accent); }
 
 /* AI advice, docked beside the calc so both stay usable */
-.ai-dock { position: fixed; top: 0; right: 0; bottom: 0; z-index: 90; width: 420px; display: flex; flex-direction: column; background: var(--panel); border-left: 1px solid var(--accent); box-shadow: -8px 0 24px rgba(0, 0, 0, 0.4); }
-.app.ai-docked { margin-right: 420px; }
-@media (max-width: 1500px) { .app.ai-docked .layout { grid-template-columns: 1fr; } .app.ai-docked .col.center { order: -1; } }
+.ai-wide { margin-top: 8px; background: var(--panel); border: 1px solid var(--accent); border-radius: 10px; scroll-margin-top: 8px; }
+.ai-grid { display: grid; grid-template-columns: minmax(300px, 1fr) minmax(360px, 1.3fr) minmax(300px, 1fr); gap: 18px; align-items: start; }
+.ai-col { min-width: 0; }
+.ai-col > .ai-setup:first-child { margin-top: 12px; border-top: 0; padding-top: 0; }
+@media (max-width: 1100px) { .ai-grid { grid-template-columns: 1fr; gap: 0; } }
 .ai-dock-head { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
 .ai-dock-head h2 { font-size: 15px; margin-right: auto; }
 .ai-dock-head .close { padding: 1px 8px; }
-.ai-dock .ai-body { flex: 1; padding: 0 10px 16px; }
+.ai-wide .ai-body { padding: 0 14px 16px; }
 .ai-auto { font-size: 13px; }
 .ai-secs { width: auto; padding: 1px 4px; }
 .ai-auto input { width: auto; }
@@ -527,7 +529,6 @@ td.v-loses, .bg-verdict.v-loses { background: color-mix(in srgb, var(--bad) 38%,
 .ai-vol { gap: 4px; }
 .ai-vol .ai-toggle:disabled { opacity: 0.45; }
 .ai-close { flex-basis: 100%; }
-.ai-more { margin-left: auto; }
 .ai-bring { display: grid; grid-template-columns: 1fr 70px 40px auto; align-items: center; gap: 8px; padding: 5px 0; border-top: 1px solid var(--line, #2b354a); }
 .ai-bring.top .ai-opt-main strong { color: var(--good); }
 .ai-bad { color: var(--bad); }
@@ -548,10 +549,4 @@ td.v-loses, .bg-verdict.v-loses { background: color-mix(in srgb, var(--bad) 38%,
 .ai-setup { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 8px; }
 .ai-setup summary { cursor: pointer; font-size: 13px; color: var(--muted); }
 .ai-setup .ai-flags { gap: 4px 12px; }
-.ai-fab { position: fixed; right: 16px; bottom: 16px; z-index: 80; width: 52px; height: 52px; border-radius: 50%; font-size: 15px; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5); }
 .top button.ai-on { border-color: var(--accent); color: var(--accent); }
-/* phones and narrow windows: the panel takes the whole screen; close it to reach the calc */
-@media (max-width: 900px) {
-  .ai-dock { width: 100%; border-left: 0; }
-  .app.ai-docked { margin-right: 0; }
-}

@@ -65,8 +65,6 @@ const CLOSE = 0.02;
 const VOL_TOGGLES: [keyof Vol, string, string][] = [
   ['yawn', 'Drowsy', 'Hit by Yawn last turn: falls asleep at the end of this turn'],
   ['taunt', 'Taunted', 'Cannot use status moves'],
-  ['leech_seed', 'Seeded', 'Leech Seed: loses 1/8 a turn to the other side'],
-  ['bound', 'Bound', 'Infestation, Fire Spin, Whirlpool, Sand Tomb, Snap Trap…: loses 1/8 a turn and cannot switch'],
   ['trapped', 'Trapped', 'Mean Look, Block, Spirit Shackle, Anchor Shot, Jaw Lock: cannot switch'],
   ['substitute', 'Sub', 'Behind a Substitute'],
   ['confused', 'Confused', 'Confused'],
@@ -107,8 +105,6 @@ export default function BotPanel({ open, teams, setTeams, field, skipped, single
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
   const [bring, setBring] = useState<BringCheck | null>(null);
-  // boosts and battle effects are tucked away until needed (the turn timer is short)
-  const [more, setMore] = useState<[boolean, boolean]>([false, false]);
   const [solved, setSolved] = useState<(SolveResult & { key: string }) | null>(null);
   const [advice, setAdvice] = useState<(Advice & { key: string }) | null>(null);
   // the last call to the bot: its board and turn, to tell a new turn from the same one
@@ -118,6 +114,11 @@ export default function BotPanel({ open, teams, setTeams, field, skipped, single
 
   useEffect(() => {
     if (open) pingBot().then(setUp);
+  }, [open]);
+  // opening the panel brings it into view (it sits under the calc)
+  const rootRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (open) window.setTimeout(() => rootRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
   }, [open]);
   useEffect(() => save(MARKS_KEY, marks), [marks]);
   useEffect(() => save(AUTO_KEY, auto), [auto]);
@@ -372,21 +373,9 @@ export default function BotPanel({ open, teams, setTeams, field, skipped, single
             <button className={'ai-toggle' + (m.gone ? ' on' : '')} onClick={() => setMark(side, out, { gone: !m.gone })} title="Its held item is gone (berry eaten, Air Balloon popped, knocked off)">
               Item gone
             </button>
-            {(() => {
-              const busyRow = Object.values(vol[side]).some(Boolean);
-              return (
-                <button
-                  className={'ai-toggle ai-more' + (busyRow ? ' on' : '')}
-                  onClick={() => setMore((o) => (side === 0 ? [!o[0], o[1]] : [o[0], !o[1]]))}
-                  title="Last move, and effects like Yawn, Encore, Leech Seed or trapping"
-                >
-                  {more[side] ? 'Less' : busyRow ? 'More •' : 'More'}
-                </button>
-              );
-            })()}
           </div>
         )}
-        {out && m && more[side] && (
+        {out && m && (
           <div className="ai-out ai-vol">
             <label className="ai-inline" title="The move it used last turn. Encore locks it into this one.">
               Last move
@@ -466,7 +455,7 @@ export default function BotPanel({ open, teams, setTeams, field, skipped, single
   const theirSeen = theirs.filter((s) => appeared(s, mark(1, s), !!theirActive && baseName(s) === baseName(theirActive)));
 
   return (
-    <aside className="ai-dock" aria-label="AI advice">
+    <section className="ai-wide" aria-label="AI advice" ref={rootRef}>
       <header className="ai-dock-head">
         <h2>AI advice</h2>
         <label className="check ai-auto" title="Solve again by itself a moment after you change the board">
@@ -510,13 +499,20 @@ export default function BotPanel({ open, teams, setTeams, field, skipped, single
           </p>
         )}
 
+        <div className="ai-grid">
+        <div className="ai-col">
         <section className="ai-board">
           <h3>You</h3>
           {sideRow(0, mine, mineActive)}
           <h3>Them</h3>
           {sideRow(1, theirs, theirActive)}
-          <p className="hint">Tap a Pokémon when it comes in. HP, status, boosts and the field are set in the calc; the AI reads them from there.</p>
+          <p className="hint">
+            Tap a Pokémon when it comes in. HP, status, boosts and the field (including Leech Seed and Infestation-type binding) are set in the calc;
+            the AI reads them from there.
+          </p>
         </section>
+        </div>
+        <div className="ai-col">
 
         <section className="ai-answer">
           <div className="ai-actions">
@@ -612,7 +608,8 @@ export default function BotPanel({ open, teams, setTeams, field, skipped, single
             </p>
           )}
         </section>
-
+        </div>
+        <div className="ai-col">
         {theirSeen.length > 0 && (
           <section>
             <h3>Their sets: tap what you've seen</h3>
@@ -625,7 +622,6 @@ export default function BotPanel({ open, teams, setTeams, field, skipped, single
             ))}
           </section>
         )}
-
         <details className="ai-setup" open={turn === 1 && !solved && !advice}>
           <summary>Team preview and setup</summary>
           <h4>What should I bring?</h4>
@@ -691,7 +687,9 @@ export default function BotPanel({ open, teams, setTeams, field, skipped, single
             })}
           </div>
         </details>
+        </div>
+        </div>
       </div>
-    </aside>
+    </section>
   );
 }

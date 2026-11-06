@@ -271,6 +271,7 @@ export default function BattleView(p: Props) {
             )}
           </span>
         </div>
+        {moves(side, s)}
       </div>
     );
   };
@@ -304,7 +305,7 @@ export default function BattleView(p: Props) {
     const m = p.mark(side, s);
     return (
       <div className="bv-moves">
-        <span className="hint">{side ? 'Their last move' : 'Your last move'}</span>
+        <span className="hint">Last move</span>
         {s.moves.map((mv, k) =>
           mv ? (
             <button
@@ -365,8 +366,6 @@ export default function BattleView(p: Props) {
         {statBox(0, p.mineActive)}
         {party(0, p.mine, p.mineActive)}
       </div>
-      {moves(1, p.theirActive)}
-      {moves(0, p.mineActive)}
     </div>
   );
 }

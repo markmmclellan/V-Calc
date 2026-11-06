@@ -553,14 +553,14 @@ td.v-loses, .bg-verdict.v-loses { background: color-mix(in srgb, var(--bad) 38%,
 
 /* ---- AI panel: the battle view ---- */
 .bv-wrap { --bv-green: #3ecf6a; --bv-yellow: #e8c33a; --bv-red: #e85a4a; }
-.bv { position: relative; height: 360px; border-radius: 10px; border: 1px solid var(--line);
+.bv { position: relative; height: 430px; border-radius: 10px; border: 1px solid var(--line);
   background: linear-gradient(180deg, color-mix(in srgb, #5b8fc7 55%, var(--panel)) 0%, color-mix(in srgb, #8fbfe6 40%, var(--panel)) 42%,
     color-mix(in srgb, #6fae6a 55%, var(--panel)) 43%, color-mix(in srgb, #4f8a4c 60%, var(--panel)) 100%); }
 .bv-pad { position: absolute; border-radius: 50%; background: radial-gradient(closest-side, rgba(0, 0, 0, 0.28), rgba(0, 0, 0, 0.08) 70%, transparent); }
-.bv-pad.opp { right: 46px; top: 150px; width: 200px; height: 44px; }
+.bv-pad.opp { right: 46px; top: 170px; width: 200px; height: 44px; }
 .bv-pad.me { left: 24px; bottom: 34px; width: 250px; height: 56px; }
 .bv-mon { position: absolute; pointer-events: none; }
-.bv-mon.opp { right: 92px; top: 66px; }
+.bv-mon.opp { right: 92px; top: 86px; }
 .bv-mon.me { left: 70px; bottom: 50px; }
 .bv-mon .sprite, .bv-sprite { image-rendering: auto; object-fit: contain; }
 .bv-field { position: absolute; top: 8px; left: 50%; transform: translateX(-50%); z-index: 4; }
@@ -609,8 +609,8 @@ td.v-loses, .bg-verdict.v-loses { background: color-mix(in srgb, var(--bad) 38%,
 .bv-icon.out { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
 .bv-icon.ko { opacity: 0.4; filter: grayscale(1); }
 .bv-icon.unseen { opacity: 0.55; }
-.bv-moves { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 6px; }
-.bv-moves .hint { width: 96px; }
-.bv-move { font-size: 12px; padding: 2px 9px; }
+.bv-moves { display: grid; grid-template-columns: 1fr 1fr; gap: 3px; margin-top: 5px; padding-top: 5px; border-top: 1px solid var(--line); }
+.bv-moves .hint { grid-column: 1 / -1; font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; }
+.bv-move { font-size: 12px; padding: 2px 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .bv-move.seen { border-style: dashed; border-color: var(--accent); }
 .bv-move.on { background: var(--accent); border-color: var(--accent); color: #07101f; font-weight: 600; }

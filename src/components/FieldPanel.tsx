@@ -24,7 +24,7 @@ const INFO: Record<Flag, [string, string]> = {
   isSaltCured: ['Salt Cure', 'Loses 1/16 max HP each turn (1/8 if Water or Steel)'],
   isSeeded: ['Leech Seed', 'Loses 1/8 max HP each turn'],
   isCurse: ['Curse', 'Cursed: loses 1/4 max HP each turn'],
-  isBound: ['Bound', 'Trapped by Bind/Wrap/Fire Spin etc.: loses 1/8 max HP each turn'],
+  isBound: ['Bound (Infestation etc.)', 'Trapped by Infestation, Fire Spin, Whirlpool, Sand Tomb, Bind, Wrap etc.: loses 1/8 max HP each turn'],
   hasBindingBand: ['Binding Band', 'The binder holds a Binding Band: binding damage is 1/6 instead of 1/8'],
   isIngrain: ['Ingrain', 'Recovers 1/16 max HP each turn'],
   isAquaRing: ['Aqua Ring', 'Recovers 1/16 max HP each turn'],

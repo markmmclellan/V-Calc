@@ -140,6 +140,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     setLive(false);
     setVol([{}, {}]);
     setTimers({});
+    outFor.current = { names: ['', ''], n: [0, 0] };
     last.current = null;
     gameId.current = new Date().toISOString();
   }, [battleId]);
@@ -304,13 +305,23 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     };
   };
   /** The board as sent: with turns left of timed effects (kept out of `key`, so counting down does not re-solve). */
-  const withTimers = <B extends NonNullable<typeof board>>(b: B, ahead: number) => {
+  // How long each Pokémon that is out has been out, counted at each solve: the same one as at the last solve gets the
+  // turns that went by; a new one starts at 0 (First Impression and Fake Out only work then; a Choice Scarf locks after).
+  const outFor = useRef<{ names: [string, string]; n: [number, number] }>({ names: ['', ''], n: [0, 0] });
+  const countOut = (turnsPassed: number): [number, number] => {
+    const names: [string, string] = [mineActive ? baseName(mineActive) : '', theirActive ? baseName(theirActive) : ''];
+    const o = outFor.current;
+    const n: [number, number] = [0, 1].map((sd) => (o.names[sd] === names[sd] ? o.n[sd] + Math.max(0, turnsPassed) : 0)) as [number, number];
+    outFor.current = { names, n };
+    return n;
+  };
+  const withTimers = <B extends NonNullable<typeof board>>(b: B, ahead: number, out: [number, number] = [0, 0]) => {
     const tt = turnsFor(ahead);
     return {
       ...b,
       field: { ...b.field, turns: tt.field },
-      me: { ...b.me, volatile: { ...b.me.volatile, ...tt.vol[0] } },
-      opp: b.opp.map((o) => (o.active ? { ...o, volatile: { ...o.volatile, ...tt.vol[1] } } : o)),
+      me: { ...b.me, volatile: { ...b.me.volatile, ...tt.vol[0], turns_out: out[0] } },
+      opp: b.opp.map((o) => (o.active ? { ...o, volatile: { ...o.volatile, ...tt.vol[1], turns_out: out[1] } } : o)),
     };
   };
 
@@ -373,7 +384,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     const l = last.current;
     if (l && l.kind === 'solve' && l.turn === turn && l.turnKey !== turnKey && l.bring === bringKey && now - l.at > SAME_TURN_MS) t = turn + 1;
     if (t !== turn) setTurnRaw(t);
-    const pos = { ...withTimers(board, t - turn), turn: t, game: gameId.current };
+    const pos = { ...withTimers(board, t - turn, countOut(t - turn)), turn: t, game: gameId.current };
     const kind = myKo ? 'replace' : 'solve';
     last.current = { key, turnKey, bring: bringKey, turn: t, kind, at: now };
     const k = key;
@@ -434,7 +445,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     run('Simulating each option…', async () => {
       if (!board) throw new Error(boardProblem);
       if (myKo) return solveNow();
-      const pos = { ...withTimers(board, 0), turn, game: gameId.current };
+      const pos = { ...withTimers(board, 0, outFor.current.n), turn, game: gameId.current };
       const c = await askCheck(mineAll, pos);
       let quick = '';
       try {

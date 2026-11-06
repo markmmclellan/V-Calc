@@ -238,15 +238,6 @@ export default function BotPanel({ open, teams, setTeams, field, skipped, single
         field: board.field,
       })
     : '';
-  // Nothing has happened yet (everyone at full HP, no status, boosts or field): still the first turn, whatever the leads.
-  const pristine =
-    !!board &&
-    Object.values(board.me.hp).every((h) => h === 100) &&
-    board.opp.every((o) => o.hp === 100 && !o.status && !Object.keys(o.boosts).length) &&
-    !Object.keys(board.me.status).length &&
-    Object.values(board.me.boosts).every((b) => !Object.keys(b).length) &&
-    !board.field.weather && !board.field.terrain && !board.field.trick_room &&
-    !board.field.stealth_rock.some(Boolean) && !board.field.tailwind.some(Boolean) && !board.field.screens.some(Boolean);
 
   const run = async (label: string, fn: () => Promise<void>) => {
     setBusy(label);
@@ -271,13 +262,13 @@ export default function BotPanel({ open, teams, setTeams, field, skipped, single
     // The board changed since the last answer for this turn number: a turn has gone by. (A replacement after a faint
     // belongs to the turn that follows, so the turn after a replacement is not counted again.)
     // Not counted: edits soon after the last answer (you are still entering this turn: your HP, then theirs, then a
-    // fix), a change of the three brought (setup), changes that are only revealed info, and a board where nothing
-    // has happened yet. The - / + buttons put it right if it still goes wrong.
+    // fix), a change of the three brought (setup), and changes that are only revealed info. A switch with no damage
+    // still counts. The - / + buttons put it right if it still goes wrong.
     const now = Date.now();
     const bringKey = board.bring.join(',');
     let t = turn;
     const l = last.current;
-    if (l && l.kind === 'solve' && l.turn === turn && l.turnKey !== turnKey && l.bring === bringKey && !pristine && now - l.at > SAME_TURN_MS) t = turn + 1;
+    if (l && l.kind === 'solve' && l.turn === turn && l.turnKey !== turnKey && l.bring === bringKey && now - l.at > SAME_TURN_MS) t = turn + 1;
     if (t !== turn) setTurnRaw(t);
     const pos = { ...board, turn: t, game: gameId.current };
     const kind = myKo ? 'replace' : 'solve';
@@ -399,7 +390,16 @@ export default function BotPanel({ open, teams, setTeams, field, skipped, single
           <div className="ai-out ai-vol">
             <label className="ai-inline" title="The move it used last turn. Encore locks it into this one.">
               Last move
-              <select value={vol[side].last_move ?? ''} onChange={(e) => patchVol(side, { last_move: e.target.value || undefined })}>
+              <select
+                value={vol[side].last_move ?? ''}
+                onChange={(e) => {
+                  const mv = e.target.value;
+                  patchVol(side, { last_move: mv || undefined });
+                  // a move it used is a move you have seen
+                  const k = out.moves.indexOf(mv);
+                  if (side === 1 && mv && k >= 0 && !m.moves[k]) setMark(1, out, { moves: m.moves.map((x, j) => (j === k ? true : x)) });
+                }}
+              >
                 <option value="">?</option>
                 {out.moves.filter(Boolean).map((mv) => (
                   <option key={mv} value={mv}>
@@ -638,9 +638,11 @@ export default function BotPanel({ open, teams, setTeams, field, skipped, single
               {bring.options
                 .filter((o, i) => i < 4 || o.rank > 8)
                 .map((o, i) => (
-                  <div key={i} className={'ai-bring' + (i === 0 ? ' top' : '')}>
+                  <div key={i} className={'ai-bring' + (i === 0 ? ' top' : '') + (o.rank > 8 ? ' ai-guess' : '')}>
                     <div className="ai-opt-main">
-                      {o.rank > 8 && <span className="hint">Quick guess (#{o.rank} of 60 when simulated): </span>}
+                      {o.rank > 8 && (
+                        <div className="hint">For comparison, the bot's old instant guess (not simulated). Simulated, it ranks #{o.rank} of 60:</div>
+                      )}
                       <strong>Lead {o.lead}</strong>
                       <span className="hint"> + {o.bring.filter((n) => n !== o.lead).join(', ')}</span>
                       {o.worst != null && o.worst_vs && (

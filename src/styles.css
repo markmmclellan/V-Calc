@@ -524,13 +524,9 @@ td.v-loses, .bg-verdict.v-loses { background: color-mix(in srgb, var(--bad) 38%,
 .ai-mon.ko { opacity: 0.4; }
 .ai-out { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; font-size: 13px; }
 .ai-out select { width: auto; }
-.ai-boosts { gap: 4px 8px; font-size: 12px; }
-.ai-boosts select { padding: 0 2px; font-size: 12px; }
-.ai-boosts select.boosted { border-color: var(--accent); color: var(--accent); font-weight: 600; }
 .ai-vol { gap: 4px; }
 .ai-vol .ai-toggle:disabled { opacity: 0.45; }
 .ai-close { flex-basis: 100%; }
-.ai-hp-abs { width: 4.2em; }
 .ai-more { margin-left: auto; }
 .ai-bring { display: grid; grid-template-columns: 1fr 70px 40px auto; align-items: center; gap: 8px; padding: 5px 0; border-top: 1px solid var(--line, #2b354a); }
 .ai-bring.top .ai-opt-main strong { color: var(--good); }

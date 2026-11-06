@@ -11,7 +11,6 @@ import {
   blankMarks,
   buildPosition,
   getBotUrl,
-  maxHpOf,
   pingBot,
   type BringCheck,
   type Marks,
@@ -19,7 +18,7 @@ import {
   type SolveResult,
   type Vol,
 } from '../lib/bot';
-import type { PokemonSet, Status } from '../lib/model';
+import type { PokemonSet } from '../lib/model';
 import type { Team } from './TeamSide';
 import Sprite from './Sprite';
 
@@ -58,26 +57,10 @@ const save = (key: string, v: unknown) => {
   }
 };
 
-const STATUSES: [Status, string][] = [
-  ['', 'Healthy'],
-  ['brn', 'Burned'],
-  ['par', 'Paralyzed'],
-  ['psn', 'Poisoned'],
-  ['tox', 'Badly poisoned'],
-  ['slp', 'Asleep'],
-  ['frz', 'Frozen'],
-];
 
 const pct = (x: number) => `${Math.round(x * 100)}%`;
 /** Options this close (win chance against their likely play) are a toss-up: the simulation cannot tell them apart. */
 const CLOSE = 0.02;
-const BOOST_KEYS = [
-  ['atk', 'Atk'],
-  ['def', 'Def'],
-  ['spa', 'SpA'],
-  ['spd', 'SpD'],
-  ['spe', 'Spe'],
-] as const;
 /** Battle-text effects on the Pokémon that is out: [field, label, what it means]. */
 const VOL_TOGGLES: [keyof Vol, string, string][] = [
   ['yawn', 'Drowsy', 'Hit by Yawn last turn: falls asleep at the end of this turn'],
@@ -93,56 +76,6 @@ const Bar = ({ v }: { v: number }) => (
     <span style={{ width: `${Math.max(0, Math.min(1, v)) * 100}%` }} />
   </div>
 );
-
-/** A number box that lets you clear it while typing. */
-function HpBox({ value, onCommit }: { value: number; onCommit: (n: number) => void }) {
-  const [draft, setDraft] = useState<string | null>(null);
-  return (
-    <input
-      type="number"
-      inputMode="numeric"
-      className="ai-hp"
-      min={1}
-      max={100}
-      aria-label="HP percent"
-      value={draft ?? String(Math.round(value))}
-      onFocus={(e) => e.target.select()}
-      onChange={(e) => {
-        setDraft(e.target.value);
-        const n = parseFloat(e.target.value);
-        if (Number.isFinite(n)) onCommit(Math.max(1, Math.min(100, Math.round(n))));
-      }}
-      onBlur={() => setDraft(null)}
-    />
-  );
-}
-
-/** Your own HP as the game shows it: current / max. */
-function HpAbsBox({ value, max, onCommit }: { value: number; max: number; onCommit: (pct: number) => void }) {
-  const [draft, setDraft] = useState<string | null>(null);
-  const cur = Math.max(1, Math.round((value * max) / 100));
-  return (
-    <>
-      <input
-        type="number"
-        inputMode="numeric"
-        className="ai-hp ai-hp-abs"
-        min={1}
-        max={max}
-        aria-label="HP"
-        value={draft ?? String(cur)}
-        onFocus={(e) => e.target.select()}
-        onChange={(e) => {
-          setDraft(e.target.value);
-          const n = parseFloat(e.target.value);
-          if (Number.isFinite(n)) onCommit((Math.max(1, Math.min(max, Math.round(n))) / max) * 100);
-        }}
-        onBlur={() => setDraft(null)}
-      />
-      <span className="hint">/ {max}</span>
-    </>
-  );
-}
 
 type Advice = { pSwitch?: number; title: string; rows: { label: string; v: number; stay?: number; sw?: number; net?: number; heur?: number; ko?: number; n?: number }[]; quick?: string; note?: string };
 
@@ -263,13 +196,6 @@ export default function BotPanel({ open, teams, setTeams, field, skipped, single
     setMarks((old) => (old[k]?.seen ? old : { ...old, [k]: { ...(old[k] ?? blankMarks()), seen: true } }));
   };
 
-  /** Change one Pokémon's battle state (side 0 yours, 1 theirs). */
-  const patchSet = (side: 0 | 1, s: PokemonSet, patch: Partial<PokemonSet>) =>
-    setTeams((old) => {
-      const next: [Team, Team] = [old[0], old[1]];
-      next[side] = { ...old[side], sets: old[side].sets.map((x) => (x === s ? { ...x, ...patch } : x)) };
-      return next;
-    });
   /** Make this Pokémon the one that is out. */
   const sendOut = (side: 0 | 1, s: PokemonSet) => {
     setLive(true);
@@ -446,23 +372,6 @@ export default function BotPanel({ open, teams, setTeams, field, skipped, single
         {out && m && (
           <div className="ai-out">
             <strong>{out.species}</strong>
-            <label className="ai-inline">
-              HP{' '}
-              {side === 0 && maxHpOf(out) ? (
-                <HpAbsBox value={out.hpPercent} max={maxHpOf(out)!} onCommit={(n) => patchSet(side, out, { hpPercent: n })} />
-              ) : (
-                <>
-                  <HpBox value={out.hpPercent} onCommit={(n) => patchSet(side, out, { hpPercent: n })} />%
-                </>
-              )}
-            </label>
-            <select value={out.status} onChange={(e) => patchSet(side, out, { status: e.target.value as Status })} aria-label="Status">
-              {STATUSES.map(([v, l]) => (
-                <option key={v} value={v}>
-                  {l}
-                </option>
-              ))}
-            </select>
             <button className={'ai-toggle' + (m.ko ? ' on bad' : '')} onClick={() => setMark(side, out, { ko: !m.ko })} title="It fainted">
               Fainted
             </button>
@@ -473,37 +382,17 @@ export default function BotPanel({ open, teams, setTeams, field, skipped, single
               Item gone
             </button>
             {(() => {
-              const busyRow = Object.values(out.boosts).some(Boolean) || Object.values(vol[side]).some(Boolean);
+              const busyRow = Object.values(vol[side]).some(Boolean);
               return (
                 <button
                   className={'ai-toggle ai-more' + (busyRow ? ' on' : '')}
                   onClick={() => setMore((o) => (side === 0 ? [!o[0], o[1]] : [o[0], !o[1]]))}
-                  title="Stat stages, last move, and effects like Yawn, Encore, Leech Seed or trapping"
+                  title="Last move, and effects like Yawn, Encore, Leech Seed or trapping"
                 >
                   {more[side] ? 'Less' : busyRow ? 'More •' : 'More'}
                 </button>
               );
             })()}
-          </div>
-        )}
-        {out && m && more[side] && (
-          <div className="ai-out ai-boosts" title="Stat stages (Iron Defense, Swords Dance, Intimidate…)">
-            {BOOST_KEYS.map(([k, l]) => (
-              <label key={k} className="ai-inline">
-                {l}
-                <select
-                  value={out.boosts[k]}
-                  className={out.boosts[k] ? 'boosted' : ''}
-                  onChange={(e) => patchSet(side, out, { boosts: { ...out.boosts, [k]: +e.target.value } })}
-                >
-                  {[6, 5, 4, 3, 2, 1, 0, -1, -2, -3, -4, -5, -6].map((v) => (
-                    <option key={v} value={v}>
-                      {v > 0 ? `+${v}` : v}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            ))}
           </div>
         )}
         {out && m && more[side] && (
@@ -626,7 +515,7 @@ export default function BotPanel({ open, teams, setTeams, field, skipped, single
           {sideRow(0, mine, mineActive)}
           <h3>Them</h3>
           {sideRow(1, theirs, theirActive)}
-          <p className="hint">Tap a Pokémon when it comes in. Boosts and the field (weather, hazards, screens) are set in the calc.</p>
+          <p className="hint">Tap a Pokémon when it comes in. HP, status, boosts and the field are set in the calc; the AI reads them from there.</p>
         </section>
 
         <section className="ai-answer">

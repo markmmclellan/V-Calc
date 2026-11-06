@@ -8,7 +8,6 @@ import LookUp from './components/LookUp';
 import Mascot from './components/Mascot';
 import MetaList from './components/MetaList';
 import RecommendPanel from './components/RecommendPanel';
-import SpreadCheck from './components/SpreadCheck';
 import PokemonEditor from './components/PokemonEditor';
 import Results from './components/Results';
 import TurnOrder from './components/TurnOrder';
@@ -59,7 +58,6 @@ export default function App() {
   const [lookupOpen, setLookupOpen] = useState(false);
   const [bringOpen, setBringOpen] = useState(false);
   const [recOpen, setRecOpen] = useState(false);
-  const [spreadOpen, setSpreadOpen] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
   const [battleId, setBattleId] = useState(0); // goes up on every battle reset: the AI panel starts a new game
   // The AI advice button only exists while the local bot answers, so visitors without it never see a dead button.
@@ -358,13 +356,6 @@ export default function App() {
         >
           Best move
         </button>
-        <button
-          onClick={() => setSpreadOpen(true)}
-          disabled={!yours.length || !theirs.length}
-          title="Work out the opponent's spread (Stat Points and nature) from the damage you saw in battle"
-        >
-          Spread check
-        </button>
         {botUp && (
           <button
             className={aiOpen ? 'ai-on' : ''}
@@ -459,20 +450,6 @@ export default function App() {
 
       {recOpen && (
         <RecommendPanel mine={yours} theirs={theirs} bench={bench} skipped={skipped} onToggleBrought={(sp) => setSkipped((old) => (old.includes(sp) ? old.filter((x) => x !== sp) : [...old, sp]))} field={calcField} doubles={doubles} onClose={() => setRecOpen(false)} />
-      )}
-
-      {spreadOpen && (
-        <SpreadCheck
-          yours={yours}
-          theirs={theirs}
-          field={calcField}
-          meta={meta}
-          format={format}
-          onApply={(target, patch) =>
-            setTeams((old) => [old[0], { ...old[1], sets: old[1].sets.map((s) => (s === target ? { ...s, ...patch } : s)) }])
-          }
-          onClose={() => setSpreadOpen(false)}
-        />
       )}
 
       {botUp && (

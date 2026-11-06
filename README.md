@@ -53,13 +53,9 @@ npm run dev        # http://localhost:5173
   moves included), and shows what each opposing Pokémon can do to yours. Status moves, Fake Out and similar situational
   moves are listed but not scored; switching, Protect, Focus Sash and residual damage are not modeled. Logic lives in
   `src/lib/recommend.ts` (`npx tsx scripts/recommend-test.mjs` checks it).
-- **Spread check** (mid-battle): works out the opponent's spread from damage you saw. **They hit me**: enter their move
-  and the exact HP you lost; it lists which op.gg spread + nature combinations produce that roll, ranked by usage, and
-  every Atk/SpA Stat Point amount that fits for a +, neutral or − nature. **I hit them**: enter your move and the % of
-  HP they lost; whole op.gg spreads are tested, so it doesn't matter whether they invested in HP or Def/SpD (1% leeway
-  for the rounded HP bar). Add more hits to narrow it down; tick **Item unknown** to also try their common items.
-  **Use** applies the spread and nature to their Pokémon. Logic in `src/lib/spreadcheck.ts`
-  (`npx tsx scripts/spreadcheck-test.mjs`).
+- **Spread check** (parked, no button): works out the opponent's spread from damage seen in battle, by testing their
+  op.gg spreads and natures against one or more hits. The panel (`src/components/SpreadCheck.tsx`) and logic
+  (`src/lib/spreadcheck.ts`, `npx tsx scripts/spreadcheck-test.mjs`) are kept for later; nothing in the app opens it.
 - **Look up**: the header's **Look up** button opens one search box over every Champions move, item and ability, with
   Smogon's descriptions. Search by name *or by what it does* ("lowers speed", "1.5x", "flinch"); no tabs or filters to
   click, each result is labelled Move / Item / Ability.

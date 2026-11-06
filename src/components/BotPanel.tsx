@@ -20,6 +20,7 @@ import {
 } from '../lib/bot';
 import type { PokemonSet } from '../lib/model';
 import type { Team } from './TeamSide';
+import BattleView from './BattleView';
 import Sprite from './Sprite';
 
 interface Props {
@@ -28,6 +29,8 @@ interface Props {
   /** Edit the battle from the panel (who is out, HP, status), so the main calc can stay as it is. */
   setTeams: (f: (old: [Team, Team]) => [Team, Team]) => void;
   field: FieldState;
+  /** The calc's field (weather, hazards, screens, Leech Seed…), set from the battle view. */
+  setField: (f: (old: FieldState) => FieldState) => void;
   skipped: string[]; // species of yours left at home (set by What to bring)
   singles: boolean;
   /** Goes up each time the battle is reset (Reset battle, or the opponent's team cleared): a new game. */
@@ -61,14 +64,6 @@ const save = (key: string, v: unknown) => {
 const pct = (x: number) => `${Math.round(x * 100)}%`;
 /** Options this close (win chance against their likely play) are a toss-up: the simulation cannot tell them apart. */
 const CLOSE = 0.02;
-/** Battle-text effects on the Pokémon that is out: [field, label, what it means]. */
-const VOL_TOGGLES: [keyof Vol, string, string][] = [
-  ['yawn', 'Drowsy', 'Hit by Yawn last turn: falls asleep at the end of this turn'],
-  ['taunt', 'Taunted', 'Cannot use status moves'],
-  ['trapped', 'Trapped', 'Mean Look, Block, Spirit Shackle, Anchor Shot, Jaw Lock: cannot switch'],
-  ['substitute', 'Sub', 'Behind a Substitute'],
-  ['confused', 'Confused', 'Confused'],
-];
 const Bar = ({ v }: { v: number }) => (
   <div className="ai-bar">
     <span style={{ width: `${Math.max(0, Math.min(1, v)) * 100}%` }} />
@@ -87,7 +82,7 @@ const SAME_TURN_MS = 20_000;
 /** Time the bring check may take at team preview. */
 const BRING_SECS = 20;
 
-export default function BotPanel({ open, teams, setTeams, field, skipped, singles, battleId, onApplyBring, onResetBattle, onClose }: Props) {
+export default function BotPanel({ open, teams, setTeams, field, setField, skipped, singles, battleId, onApplyBring, onResetBattle, onClose }: Props) {
   const [up, setUp] = useState<boolean | null>(null);
   const [marks, setMarks] = useState<Record<string, Marks>>(() => load(MARKS_KEY, {}));
   const [auto, setAuto] = useState<boolean>(() => load(AUTO_KEY, true));
@@ -198,6 +193,13 @@ export default function BotPanel({ open, teams, setTeams, field, skipped, single
   };
 
   /** Make this Pokémon the one that is out. */
+  /** Change one Pokémon's battle state (side 0 yours, 1 theirs): V-Calc's own HP, status and stat stages. */
+  const patchSet = (side: 0 | 1, s: PokemonSet, patch: Partial<PokemonSet>) =>
+    setTeams((old) => {
+      const next: [Team, Team] = [old[0], old[1]];
+      next[side] = { ...old[side], sets: old[side].sets.map((x) => (x === s ? { ...x, ...patch } : x)) };
+      return next;
+    });
   const sendOut = (side: 0 | 1, s: PokemonSet) => {
     setLive(true);
     if (side === 1) markAppeared(s);
@@ -352,84 +354,6 @@ export default function BotPanel({ open, teams, setTeams, field, skipped, single
 
   if (!open) return null;
 
-  // ---- the board: who is out, HP, status, fainted ----
-  const sideRow = (side: 0 | 1, list: PokemonSet[], out: PokemonSet | undefined) => {
-    const m = out ? mark(side, out) : null;
-    return (
-      <div className="ai-side">
-        <div className="ai-mons">
-          {list.map((s) => {
-            const mk = mark(side, s);
-            const isOut = !!out && baseName(s) === baseName(out);
-            const shown = side === 1 && !isOut && appeared(s, mk, false);
-            return (
-              <button
-                key={baseName(s)}
-                className={'ai-mon' + (isOut ? ' out' : '') + (mk.ko ? ' ko' : '') + (shown ? ' seen' : '')}
-                onClick={() => sendOut(side, s)}
-                title={`${s.species}${mk.ko ? ' (fainted)' : ''}: click when it comes in`}
-              >
-                <Sprite species={s.species} size={side === 1 ? 30 : 34} />
-                <span>{mk.ko ? 'KO' : `${Math.round(s.hpPercent)}%`}</span>
-              </button>
-            );
-          })}
-        </div>
-        {out && m && (
-          <div className="ai-out">
-            <strong>{out.species}</strong>
-            <button className={'ai-toggle' + (m.ko ? ' on bad' : '')} onClick={() => setMark(side, out, { ko: !m.ko })} title="It fainted">
-              Fainted
-            </button>
-            <button className={'ai-toggle' + (m.mega ? ' on' : '')} onClick={() => setMark(side, out, { mega: !m.mega })} title="It has Mega Evolved">
-              Mega
-            </button>
-            <button className={'ai-toggle' + (m.gone ? ' on' : '')} onClick={() => setMark(side, out, { gone: !m.gone })} title="Its held item is gone (berry eaten, Air Balloon popped, knocked off)">
-              Item gone
-            </button>
-          </div>
-        )}
-        {out && m && (
-          <div className="ai-out ai-vol">
-            <label className="ai-inline" title="The move it used last turn. Encore locks it into this one.">
-              Last move
-              <select
-                value={vol[side].last_move ?? ''}
-                onChange={(e) => {
-                  const mv = e.target.value;
-                  patchVol(side, { last_move: mv || undefined });
-                  // a move it used is a move you have seen
-                  const k = out.moves.indexOf(mv);
-                  if (side === 1 && mv && k >= 0 && !m.moves[k]) setMark(1, out, { moves: m.moves.map((x, j) => (j === k ? true : x)) });
-                }}
-              >
-                <option value="">?</option>
-                {out.moves.filter(Boolean).map((mv) => (
-                  <option key={mv} value={mv}>
-                    {mv}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <button
-              className={'ai-toggle' + (vol[side].encore ? ' on' : '')}
-              disabled={!vol[side].encore && !vol[side].last_move}
-              onClick={() => patchVol(side, { encore: vol[side].encore ? undefined : vol[side].last_move })}
-              title={vol[side].encore ? `Encored into ${vol[side].encore}` : 'Encored into its last move (pick the last move first)'}
-            >
-              {vol[side].encore ? `Encore: ${vol[side].encore}` : 'Encored'}
-            </button>
-            {VOL_TOGGLES.map(([k, l, t]) => (
-              <button key={k} className={'ai-toggle' + (vol[side][k] ? ' on' : '')} title={t} onClick={() => patchVol(side, { [k]: !vol[side][k] })}>
-                {l}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-    );
-  };
-
   const seenChips = (s: PokemonSet) => {
     const m = mark(1, s);
     const chips: ReactNode[] = [];
@@ -516,13 +440,24 @@ export default function BotPanel({ open, teams, setTeams, field, skipped, single
         <div className="ai-grid">
         <div className="ai-col">
         <section className="ai-board">
-          <h3>You</h3>
-          {sideRow(0, mine, mineActive)}
-          <h3>Them</h3>
-          {sideRow(1, theirs, theirActive)}
+          <BattleView
+            mine={mine}
+            theirs={theirs}
+            mineActive={mine.some((s) => mineActive && baseName(s) === baseName(mineActive)) ? mineActive : undefined}
+            theirActive={theirActive?.species ? theirActive : undefined}
+            mark={mark}
+            setMark={setMark}
+            isAppeared={(s) => appeared(s, mark(1, s), !!theirActive && baseName(s) === baseName(theirActive))}
+            vol={vol}
+            patchVol={patchVol}
+            patchSet={patchSet}
+            sendOut={sendOut}
+            field={field}
+            setField={setField}
+          />
           <p className="hint">
-            Tap a Pokémon when it comes in. HP, status, boosts and the field (including Leech Seed and Infestation-type binding) are set in the calc;
-            the AI reads them from there.
+            Tap a team icon when it comes in, drag an HP bar (or type the number), tap the move it just used. Changes here are the calc's own HP,
+            status, stats and field.
           </p>
         </section>
         </div>

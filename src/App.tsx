@@ -458,6 +458,7 @@ export default function App() {
           teams={teams}
           setTeams={setTeams}
           field={calcField}
+          setField={setField}
           skipped={skipped}
           singles={!doubles}
           battleId={battleId}

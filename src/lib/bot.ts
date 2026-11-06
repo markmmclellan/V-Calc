@@ -71,6 +71,19 @@ export interface Marks {
   ability: boolean; // opposing only: the ability is known
   seen?: boolean; // opposing only: has appeared in this battle (unset = worked out: selected, fainted or damaged)
 }
+/** What the battle text says about the Pokémon that is out (cleared when it switches out). */
+export interface Vol {
+  last_move?: string; // the move it used last turn (Encore locks it into this)
+  encore?: string; // Encored into this move
+  yawn?: boolean; // drowsy: falls asleep at the end of this turn
+  taunt?: boolean;
+  leech_seed?: boolean;
+  substitute?: boolean;
+  bound?: boolean; // Infestation, Fire Spin, Whirlpool...: 1/8 a turn, cannot switch
+  trapped?: boolean; // Mean Look, Block, Spirit Shackle, Jaw Lock: cannot switch
+  confused?: boolean;
+}
+
 export const blankMarks = (): Marks => ({ ko: false, mega: false, gone: false, moves: [false, false, false, false], item: false, ability: false });
 
 /** The name the bot uses: a Mega form is the base species holding its stone. */
@@ -90,6 +103,7 @@ export interface PositionInput {
   marks: Record<string, Marks>; // key "0:<base name>" (yours) / "1:<base name>" (theirs)
   field: FieldState;
   turn: number;
+  vol?: [Vol, Vol]; // the two Pokémon that are out: yours, theirs
 }
 
 /** V-Calc's battle state as the bot's position description (hp as percent; the bot converts using your max HP). */
@@ -111,6 +125,7 @@ export function buildPosition(p: PositionInput) {
       mega_used: mineMega.length > 0,
       mega_evolved: mineMega,
       item_gone: p.mine.filter((s) => mk(0, s).gone).map(baseName),
+      volatile: p.vol?.[0] ?? {},
     },
     opp: p.theirs.map((s) => {
       const m = mk(1, s);
@@ -128,6 +143,7 @@ export function buildPosition(p: PositionInput) {
         item: m.item ? s.item : m.mega && baseForMega(s.species) ? baseForMega(s.species)!.stone : '',
         ability: m.ability ? s.ability : '',
         item_gone: m.gone,
+        volatile: baseName(s) === p.theirActive ? (p.vol?.[1] ?? {}) : {},
       };
     }),
     opp_mega_used: p.theirs.some((s) => mk(1, s).mega),

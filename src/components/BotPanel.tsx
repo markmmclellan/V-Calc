@@ -15,6 +15,7 @@ import {
   type Marks,
   type MoveCheck,
   type SolveResult,
+  type Vol,
 } from '../lib/bot';
 import type { PokemonSet, Status } from '../lib/model';
 import type { Team } from './TeamSide';
@@ -66,6 +67,25 @@ const STATUSES: [Status, string][] = [
 ];
 
 const pct = (x: number) => `${Math.round(x * 100)}%`;
+/** Options this close (win chance against their likely play) are a toss-up: the simulation cannot tell them apart. */
+const CLOSE = 0.02;
+const BOOST_KEYS = [
+  ['atk', 'Atk'],
+  ['def', 'Def'],
+  ['spa', 'SpA'],
+  ['spd', 'SpD'],
+  ['spe', 'Spe'],
+] as const;
+/** Battle-text effects on the Pokémon that is out: [field, label, what it means]. */
+const VOL_TOGGLES: [keyof Vol, string, string][] = [
+  ['yawn', 'Drowsy', 'Hit by Yawn last turn: falls asleep at the end of this turn'],
+  ['taunt', 'Taunted', 'Cannot use status moves'],
+  ['leech_seed', 'Seeded', 'Leech Seed: loses 1/8 a turn to the other side'],
+  ['bound', 'Bound', 'Infestation, Fire Spin, Whirlpool, Sand Tomb, Snap Trap…: loses 1/8 a turn and cannot switch'],
+  ['trapped', 'Trapped', 'Mean Look, Block, Spirit Shackle, Anchor Shot, Jaw Lock: cannot switch'],
+  ['substitute', 'Sub', 'Behind a Substitute'],
+  ['confused', 'Confused', 'Confused'],
+];
 const Bar = ({ v }: { v: number }) => (
   <div className="ai-bar">
     <span style={{ width: `${Math.max(0, Math.min(1, v)) * 100}%` }} />
@@ -112,6 +132,14 @@ export default function BotPanel({ open, teams, setTeams, field, skipped, single
   const [secs, setSecs] = useState<number>(() => load(SECS_KEY, 8)); // time the bot may think per answer
   const [picked, setPicked] = useState<string[] | null>(null); // base names; null = follow What to bring
   const [turn, setTurnRaw] = useState(1);
+  // effects on the two Pokémon that are out (yours, theirs); a side's are cleared when its Pokémon switches out
+  const [vol, setVol] = useState<[Vol, Vol]>([{}, {}]);
+  const patchVol = (side: 0 | 1, patch: Partial<Vol>) =>
+    setVol((old) => {
+      const next: [Vol, Vol] = [old[0], old[1]];
+      next[side] = { ...old[side], ...patch };
+      return next;
+    });
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
   const [bring, setBring] = useState<{ options: BringOption[]; win: number } | null>(null);
@@ -141,6 +169,7 @@ export default function BotPanel({ open, teams, setTeams, field, skipped, single
     setPicked(null);
     setError('');
     setLive(false);
+    setVol([{}, {}]);
     last.current = null;
     gameId.current = new Date().toISOString();
   }, [battleId]);
@@ -160,6 +189,24 @@ export default function BotPanel({ open, teams, setTeams, field, skipped, single
   const mine = brought.map((n) => mineAll.find((s) => baseName(s) === n)).filter((s): s is PokemonSet => !!s);
   const mineActive = teams[0].sets[teams[0].active];
   const theirActive = teams[1].sets[teams[1].active];
+  // A Pokémon that switches out loses its effects, and frees the other side from its trap.
+  const outNames = [mineActive ? baseName(mineActive) : '', theirActive ? baseName(theirActive) : ''];
+  const prevOut = useRef(outNames);
+  useEffect(() => {
+    const [a, b] = prevOut.current;
+    prevOut.current = outNames;
+    const changed = [a !== outNames[0], b !== outNames[1]];
+    if (!changed[0] && !changed[1]) return;
+    setVol((old) => {
+      const next: [Vol, Vol] = [old[0], old[1]];
+      for (const sd of [0, 1] as const) {
+        if (changed[sd]) next[sd] = {};
+        else if (changed[1 - sd]) next[sd] = { ...old[sd], bound: false, trapped: false };
+      }
+      return next;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [outNames[0], outNames[1]]);
 
   const mark = (side: 0 | 1, s: PokemonSet): Marks => marks[`${side}:${baseName(s)}`] ?? blankMarks();
   const setMark = (side: 0 | 1, s: PokemonSet, patch: Partial<Marks>) =>
@@ -211,7 +258,7 @@ export default function BotPanel({ open, teams, setTeams, field, skipped, single
     if (!mineActive || !mine.some((s) => baseName(s) === baseName(mineActive))) throw new Error('Pick which of your three is out.');
     if (!theirActive) throw new Error("Add the opposing Pokémon that is out and pick it.");
     if (mark(1, theirActive).ko) throw new Error('Their Pokémon is marked fainted: pick the one they sent out.');
-    return buildPosition({ mine, mineActive: baseName(mineActive), theirs, theirActive: baseName(theirActive), marks, field, turn });
+    return buildPosition({ mine, mineActive: baseName(mineActive), theirs, theirActive: baseName(theirActive), marks, field, turn, vol });
   };
   let board: ReturnType<typeof buildPosition> | null = null;
   let boardProblem = '';
@@ -387,6 +434,54 @@ export default function BotPanel({ open, teams, setTeams, field, skipped, single
             </button>
           </div>
         )}
+        {out && m && (
+          <div className="ai-out ai-boosts" title="Stat stages (Iron Defense, Swords Dance, Intimidate…)">
+            {BOOST_KEYS.map(([k, l]) => (
+              <label key={k} className="ai-inline">
+                {l}
+                <select
+                  value={out.boosts[k]}
+                  className={out.boosts[k] ? 'boosted' : ''}
+                  onChange={(e) => patchSet(side, out, { boosts: { ...out.boosts, [k]: +e.target.value } })}
+                >
+                  {[6, 5, 4, 3, 2, 1, 0, -1, -2, -3, -4, -5, -6].map((v) => (
+                    <option key={v} value={v}>
+                      {v > 0 ? `+${v}` : v}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ))}
+          </div>
+        )}
+        {out && m && (
+          <div className="ai-out ai-vol">
+            <label className="ai-inline" title="The move it used last turn. Encore locks it into this one.">
+              Last move
+              <select value={vol[side].last_move ?? ''} onChange={(e) => patchVol(side, { last_move: e.target.value || undefined })}>
+                <option value="">?</option>
+                {out.moves.filter(Boolean).map((mv) => (
+                  <option key={mv} value={mv}>
+                    {mv}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              className={'ai-toggle' + (vol[side].encore ? ' on' : '')}
+              disabled={!vol[side].encore && !vol[side].last_move}
+              onClick={() => patchVol(side, { encore: vol[side].encore ? undefined : vol[side].last_move })}
+              title={vol[side].encore ? `Encored into ${vol[side].encore}` : 'Encored into its last move (pick the last move first)'}
+            >
+              {vol[side].encore ? `Encore: ${vol[side].encore}` : 'Encored'}
+            </button>
+            {VOL_TOGGLES.map(([k, l, t]) => (
+              <button key={k} className={'ai-toggle' + (vol[side][k] ? ' on' : '')} title={t} onClick={() => patchVol(side, { [k]: !vol[side][k] })}>
+                {l}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
     );
   };
@@ -418,6 +513,13 @@ export default function BotPanel({ open, teams, setTeams, field, skipped, single
   };
 
   const resultStale = (k: string) => k !== key;
+  /** The options within CLOSE of the best, when there is more than one. */
+  const closeCall = (r: SolveResult) => {
+    if (!r.mine.length) return [];
+    const best = Math.max(...r.mine.map((x) => x.vs_their_play));
+    const near = r.mine.filter((x) => x.vs_their_play >= best - CLOSE);
+    return near.length > 1 ? near : [];
+  };
   const headline = (r: SolveResult) => {
     const picks = r.mine.filter((x) => x.mix >= 0.05).sort((a, b) => b.mix - a.mix);
     if (!picks.length) return '';
@@ -496,8 +598,14 @@ export default function BotPanel({ open, teams, setTeams, field, skipped, single
               {resultStale(solved.key) && <p className="hint">For the board before your last change{auto ? '; updating…' : '.'}</p>}
               <div className="ai-do">
                 <span className="hint">{solved.endgame ? `Endgame, worked out exactly · ` : ''}Do</span>
-                <strong>{headline(solved)}</strong>
+                <strong>{closeCall(solved).length ? `Close call: ${headline(solved)}` : headline(solved)}</strong>
                 <span className="hint">win chance {pct(solved.value)}</span>
+                {closeCall(solved).length > 0 && (
+                  <span className="hint ai-close">
+                    {closeCall(solved).length} options are within {pct(CLOSE)} of each other ({closeCall(solved).map((x) => x.action).join(', ')}): the
+                    simulation can't separate them, so go with what you know about this player.
+                  </span>
+                )}
               </div>
               <div className="ai-colhead hint">
                 <span />

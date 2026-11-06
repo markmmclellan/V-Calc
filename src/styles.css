@@ -208,8 +208,8 @@ label.inline select { padding: 1px 4px; }
 /* HP bar / slider */
 .hp-row { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
 /* the HP boxes are for typing a value; no up/down arrows */
-.hp-edit input[type='number'] { -moz-appearance: textfield; appearance: textfield; }
-.hp-edit input[type='number']::-webkit-inner-spin-button, .hp-edit input[type='number']::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.hp-edit input[type='number'], input.sc-num { -moz-appearance: textfield; appearance: textfield; }
+.hp-edit input[type='number']::-webkit-inner-spin-button, .hp-edit input[type='number']::-webkit-outer-spin-button, input.sc-num::-webkit-inner-spin-button, input.sc-num::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 .hp-label { font-size: 11px; font-weight: 700; color: var(--muted); letter-spacing: 0.06em; }
 .hp-slider { flex: 1; min-width: 0; height: 14px; padding: 0; margin: 0; border: 1px solid var(--line); border-radius: 7px; cursor: pointer;
   -webkit-appearance: none; appearance: none;
@@ -446,6 +446,14 @@ td.v-loses, .bg-verdict.v-loses { background: color-mix(in srgb, var(--bad) 38%,
 .winbar .w { background: var(--good); }
 .winbar .l { background: var(--bad); margin-left: auto; }
 .rec-skipped { margin: 0; }
+
+/* "Spread check" panel */
+.modal.spread { width: min(860px, 100%); }
+.sc-controls { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.sc-controls .sc-check { display: inline-flex; flex-direction: row; align-items: center; gap: 4px; margin: 0; }
+.sc-hits input:not([type='checkbox']) { width: 100%; min-width: 120px; }
+.sc-hits input.sc-num { width: 90px; min-width: 0; }
+.sc-current, .sc-invest { margin: 0; }
 
 /* stat-move button on status moves */
 .stat-move { flex: none; max-width: 190px; padding: 0 8px; line-height: 1.5; font-size: 11px; font-weight: 600; border-radius: 10px; color: var(--accent); border-color: color-mix(in srgb, var(--accent) 55%, transparent); background: color-mix(in srgb, var(--accent) 12%, transparent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

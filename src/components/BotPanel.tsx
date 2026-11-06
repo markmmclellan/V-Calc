@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { FieldState } from '../lib/calc';
 import {
-  askBring,
+  askBringCheck,
   askCheck,
   askQuick,
   askReplace,
@@ -11,8 +11,9 @@ import {
   blankMarks,
   buildPosition,
   getBotUrl,
+  maxHpOf,
   pingBot,
-  type BringOption,
+  type BringCheck,
   type Marks,
   type MoveCheck,
   type SolveResult,
@@ -116,6 +117,33 @@ function HpBox({ value, onCommit }: { value: number; onCommit: (n: number) => vo
   );
 }
 
+/** Your own HP as the game shows it: current / max. */
+function HpAbsBox({ value, max, onCommit }: { value: number; max: number; onCommit: (pct: number) => void }) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const cur = Math.max(1, Math.round((value * max) / 100));
+  return (
+    <>
+      <input
+        type="number"
+        inputMode="numeric"
+        className="ai-hp ai-hp-abs"
+        min={1}
+        max={max}
+        aria-label="HP"
+        value={draft ?? String(cur)}
+        onFocus={(e) => e.target.select()}
+        onChange={(e) => {
+          setDraft(e.target.value);
+          const n = parseFloat(e.target.value);
+          if (Number.isFinite(n)) onCommit((Math.max(1, Math.min(max, Math.round(n))) / max) * 100);
+        }}
+        onBlur={() => setDraft(null)}
+      />
+      <span className="hint">/ {max}</span>
+    </>
+  );
+}
+
 type Advice = { pSwitch?: number; title: string; rows: { label: string; v: number; stay?: number; sw?: number; net?: number; heur?: number; ko?: number; n?: number }[]; quick?: string; note?: string };
 
 /**
@@ -125,6 +153,8 @@ type Advice = { pSwitch?: number; title: string; rows: { label: string; v: numbe
  */
 /** Board changes within this long of the last answer are you still entering the same turn. */
 const SAME_TURN_MS = 20_000;
+/** Time the bring check may take at team preview. */
+const BRING_SECS = 20;
 
 export default function BotPanel({ open, teams, setTeams, field, skipped, singles, battleId, onApplyBring, onResetBattle, onClose }: Props) {
   const [up, setUp] = useState<boolean | null>(null);
@@ -143,7 +173,9 @@ export default function BotPanel({ open, teams, setTeams, field, skipped, single
     });
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
-  const [bring, setBring] = useState<{ options: BringOption[]; win: number } | null>(null);
+  const [bring, setBring] = useState<BringCheck | null>(null);
+  // boosts and battle effects are tucked away until needed (the turn timer is short)
+  const [more, setMore] = useState<[boolean, boolean]>([false, false]);
   const [solved, setSolved] = useState<(SolveResult & { key: string }) | null>(null);
   const [advice, setAdvice] = useState<(Advice & { key: string }) | null>(null);
   // the last call to the bot: its board and turn, to tell a new turn from the same one
@@ -352,13 +384,13 @@ export default function BotPanel({ open, teams, setTeams, field, skipped, single
   }, [open, auto, live, ready, busy, key]);
 
   const doBring = () =>
-    run('Choosing a bring…', async () => {
+    run(`Simulating every bring (about ${BRING_SECS} s)…`, async () => {
       if (theirs.length < 6) throw new Error(`Enter all six of the opponent's Pokémon first (${theirs.length} so far).`);
       if (mineAll.length < 6) throw new Error(`The bot picks 3 from your six; you have ${mineAll.length} entered.`);
-      setBring(await askBring(mineAll, theirs));
+      setBring(await askBringCheck(mineAll, theirs, BRING_SECS));
     });
 
-  const useBring = (o: BringOption) => {
+  const useBring = (o: { bring: string[] }) => {
     const idx = o.bring.map((n) => mineAll.findIndex((s) => baseName(s) === n)).filter((i) => i >= 0);
     onApplyBring(idx, [0]);
     setPicked(null);
@@ -415,7 +447,14 @@ export default function BotPanel({ open, teams, setTeams, field, skipped, single
           <div className="ai-out">
             <strong>{out.species}</strong>
             <label className="ai-inline">
-              HP <HpBox value={out.hpPercent} onCommit={(n) => patchSet(side, out, { hpPercent: n })} />%
+              HP{' '}
+              {side === 0 && maxHpOf(out) ? (
+                <HpAbsBox value={out.hpPercent} max={maxHpOf(out)!} onCommit={(n) => patchSet(side, out, { hpPercent: n })} />
+              ) : (
+                <>
+                  <HpBox value={out.hpPercent} onCommit={(n) => patchSet(side, out, { hpPercent: n })} />%
+                </>
+              )}
             </label>
             <select value={out.status} onChange={(e) => patchSet(side, out, { status: e.target.value as Status })} aria-label="Status">
               {STATUSES.map(([v, l]) => (
@@ -433,9 +472,21 @@ export default function BotPanel({ open, teams, setTeams, field, skipped, single
             <button className={'ai-toggle' + (m.gone ? ' on' : '')} onClick={() => setMark(side, out, { gone: !m.gone })} title="Its held item is gone (berry eaten, Air Balloon popped, knocked off)">
               Item gone
             </button>
+            {(() => {
+              const busyRow = Object.values(out.boosts).some(Boolean) || Object.values(vol[side]).some(Boolean);
+              return (
+                <button
+                  className={'ai-toggle ai-more' + (busyRow ? ' on' : '')}
+                  onClick={() => setMore((o) => (side === 0 ? [!o[0], o[1]] : [o[0], !o[1]]))}
+                  title="Stat stages, last move, and effects like Yawn, Encore, Leech Seed or trapping"
+                >
+                  {more[side] ? 'Less' : busyRow ? 'More •' : 'More'}
+                </button>
+              );
+            })()}
           </div>
         )}
-        {out && m && (
+        {out && m && more[side] && (
           <div className="ai-out ai-boosts" title="Stat stages (Iron Defense, Swords Dance, Intimidate…)">
             {BOOST_KEYS.map(([k, l]) => (
               <label key={k} className="ai-inline">
@@ -455,7 +506,7 @@ export default function BotPanel({ open, teams, setTeams, field, skipped, single
             ))}
           </div>
         )}
-        {out && m && (
+        {out && m && more[side] && (
           <div className="ai-out ai-vol">
             <label className="ai-inline" title="The move it used last turn. Encore locks it into this one.">
               Last move
@@ -695,20 +746,32 @@ export default function BotPanel({ open, teams, setTeams, field, skipped, single
           </button>
           {bring && (
             <div className="ai-result">
-              {bring.options.slice(0, 4).map((o, i) => (
-                <div key={i} className={'ai-opt' + (i === 0 ? ' top' : '')}>
-                  <div className="ai-opt-main">
-                    <strong>Lead {o.lead}</strong>
-                    <span className="hint"> + {o.bring.filter((n) => n !== o.lead).join(', ')}</span>
+              {bring.options
+                .filter((o, i) => i < 4 || o.rank > 8)
+                .map((o, i) => (
+                  <div key={i} className={'ai-bring' + (i === 0 ? ' top' : '')}>
+                    <div className="ai-opt-main">
+                      {o.rank > 8 && <span className="hint">Quick guess (#{o.rank} of 60 when simulated): </span>}
+                      <strong>Lead {o.lead}</strong>
+                      <span className="hint"> + {o.bring.filter((n) => n !== o.lead).join(', ')}</span>
+                      {o.worst != null && o.worst_vs && (
+                        <div className={'hint' + (o.worst < 0.35 ? ' ai-bad' : '')}>
+                          Worst: {pct(o.worst)} if they bring {o.worst_vs.join(', ')}
+                        </div>
+                      )}
+                    </div>
+                    <Bar v={o.win} />
+                    <span className="ai-pct">{pct(o.win)}</span>
+                    <button onClick={() => useBring(o)} title="Put these first in your team, select the lead, and mark the rest as not brought">
+                      Use this
+                    </button>
                   </div>
-                  <Bar v={o.p} />
-                  <span className="ai-pct">{pct(o.p)}</span>
-                  <button onClick={() => useBring(o)} title="Put these first in your team, select the lead, and mark the rest as not brought">
-                    Use this
-                  </button>
-                </div>
-              ))}
-              <p className="hint">Estimated win chance {pct(bring.win)}. The percentages are how strongly the bot prefers each option.</p>
+                ))}
+              <p className="hint">
+                Win chance from {bring.games.toLocaleString()} simulated games against what they are likely to bring
+                {bring.their_likely[0] ? ` (most likely: ${bring.their_likely[0].lead} lead with ${bring.their_likely[0].bring.slice(1).join(' + ')})` : ''}, mixed with
+                any other bring so a surprise is covered.
+              </p>
             </div>
           )}
           <h4>The three you brought ({brought.length}/3)</h4>

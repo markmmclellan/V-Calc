@@ -530,6 +530,11 @@ td.v-loses, .bg-verdict.v-loses { background: color-mix(in srgb, var(--bad) 38%,
 .ai-vol { gap: 4px; }
 .ai-vol .ai-toggle:disabled { opacity: 0.45; }
 .ai-close { flex-basis: 100%; }
+.ai-hp-abs { width: 4.2em; }
+.ai-more { margin-left: auto; }
+.ai-bring { display: grid; grid-template-columns: 1fr 70px 40px auto; align-items: center; gap: 8px; padding: 5px 0; border-top: 1px solid var(--line, #2b354a); }
+.ai-bring.top .ai-opt-main strong { color: var(--good); }
+.ai-bad { color: var(--bad); }
 .ai-review { font-size: 13px; color: var(--accent); text-decoration: none; }
 .ai-review:hover { text-decoration: underline; }
 .ai-inline { flex-direction: row; align-items: center; gap: 4px; font-size: 13px; color: var(--text); }

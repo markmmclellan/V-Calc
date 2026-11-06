@@ -1,5 +1,5 @@
 import type { FieldState } from './calc';
-import type { PokemonSet } from './model';
+import { calcStats, type PokemonSet } from './model';
 import { baseForMega, exportTeam } from './showdown';
 
 /**
@@ -93,6 +93,9 @@ export const appeared = (s: PokemonSet, m: Marks, isActive: boolean): boolean =>
 
 export const baseName = (s: PokemonSet): string => baseForMega(s.species)?.base ?? s.species;
 
+/** Max HP of one of your Pokémon (the game shows your own HP as a number, e.g. 132/185). */
+export const maxHpOf = (s: PokemonSet): number | undefined => calcStats(s.species, s.nature, s.sp)?.hp;
+
 const WEATHER = new Set(['Sun', 'Rain', 'Sand', 'Snow']);
 
 export interface PositionInput {
@@ -120,6 +123,13 @@ export function buildPosition(p: PositionInput) {
     me: {
       active: p.mineActive,
       hp: Object.fromEntries(p.mine.map((s) => [baseName(s), hpOf(0, s)])),
+      // exact HP where the max is known (the percentage alone can be off by a point)
+      hp_abs: Object.fromEntries(
+        p.mine.flatMap((s) => {
+          const max = maxHpOf(s);
+          return max ? [[baseName(s), mk(0, s).ko ? 0 : Math.max(1, Math.round((s.hpPercent * max) / 100))]] : [];
+        }),
+      ),
       status: Object.fromEntries(p.mine.filter((s) => s.status).map((s) => [baseName(s), s.status])),
       boosts: Object.fromEntries(p.mine.map((s) => [baseName(s), boosts(s)])),
       mega_used: mineMega.length > 0,
@@ -185,6 +195,26 @@ export interface MoveCheck {
 
 export const askBring = (team: PokemonSet[], theirs: PokemonSet[]) =>
   call<{ options: BringOption[]; win: number }>('/api/preview', { team_text: exportTeam(team), opp: theirs.map(baseName) });
+
+/** One of my brings, simulated: whole games against what they are likely to bring. */
+export interface BringRow {
+  lead: string;
+  bring: string[];
+  win: number; // against their likely brings
+  worst: number | null; // against the bring of theirs it does worst against
+  worst_vs: string[] | null;
+  rank: number; // among all 60 brings and leads
+  p: number; // how strongly the network's instant guess picked it
+  games: number;
+}
+export interface BringCheck {
+  options: BringRow[];
+  games: number;
+  seconds: number;
+  their_likely: { lead: string; bring: string[]; p: number }[];
+}
+export const askBringCheck = (team: PokemonSet[], theirs: PokemonSet[], seconds = 20) =>
+  call<BringCheck>('/api/bring_check', { team_text: exportTeam(team), opp: theirs.map(baseName), seconds });
 
 type Position = ReturnType<typeof buildPosition>;
 const withTeam = (team: PokemonSet[], pos: Position) => ({ ...pos, team_text: exportTeam(team) });

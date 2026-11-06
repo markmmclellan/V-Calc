@@ -217,7 +217,8 @@ export default function BotPanel({ open, teams, setTeams, field, skipped, single
     if (mine.length !== 3) throw new Error('Tick the three Pokémon you brought (Setup, below).');
     if (!mineActive || !mine.some((s) => baseName(s) === baseName(mineActive))) throw new Error('Pick which of your three is out.');
     if (!theirActive) throw new Error("Add the opposing Pokémon that is out and pick it.");
-    if (mark(1, theirActive).ko) throw new Error('Their Pokémon is marked fainted: pick the one they sent out.');
+    // both fainted (double KO): you pick blind, so the bot solves that guess; otherwise theirs must be replaced first
+    if (mark(1, theirActive).ko && !mark(0, mineActive).ko) throw new Error('Their Pokémon is marked fainted: pick the one they sent out.');
     return buildPosition({ mine, mineActive: baseName(mineActive), theirs, theirActive: baseName(theirActive), marks, field, turn, vol });
   };
   let board: ReturnType<typeof buildPosition> | null = null;
@@ -279,11 +280,24 @@ export default function BotPanel({ open, teams, setTeams, field, skipped, single
       return run('Picking your replacement…', async () => {
         const r = await askReplace(mineAll, pos);
         setSolved(null);
+        const dko = !!r.double_ko;
         setAdvice({
           key: k,
-          title: 'Best replacement',
-          rows: r.replace.map((x) => ({ label: x.action, v: x.win, n: x.games })),
-          note: r.replace.length ? 'Each replacement is played out from the new board.' : r.note,
+          title: dko ? 'Double KO: pick blind' : 'Best replacement',
+          rows: r.replace.map((x) => ({
+            label: dko && x.mix !== undefined && x.mix >= 0.05 ? `${x.action} (pick ${pct(x.mix)})` : x.action,
+            v: x.win,
+            n: x.games,
+          })),
+          note: !r.replace.length
+            ? r.note
+            : dko
+              ? `You both pick at the same time. Their likely pick: ${(r.theirs ?? [])
+                  .filter((t) => t.prob >= 0.05)
+                  .map((t) => `${t.their_action.replace('Send in ', '')} ${pct(t.prob)}`)
+                  .join(' · ')}. ` +
+                r.replace.map((x) => `${x.action.replace('Send in ', '')}: worst ${pct(x.worst ?? x.win)}`).join(' · ')
+              : 'Each replacement is played out from the new board.',
         });
       });
     return run(`Solving this turn (about ${secs} s)…`, async () => {

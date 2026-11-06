@@ -240,4 +240,9 @@ export interface SolveResult {
 /** This turn solved as a simultaneous guessing game (or exactly, in an endgame). */
 export const askSolve = (team: PokemonSet[], pos: Position, seconds = 8) => call<SolveResult>('/api/solve', { ...withTeam(team, pos), seconds });
 export const askReplace =(team: PokemonSet[], pos: Position) =>
-  call<{ replace: { action: string; win: number; games: number }[]; note?: string }>('/api/replace', withTeam(team, pos));
+  call<{
+    replace: { action: string; win: number; games: number; mix?: number; worst?: number; vs?: Record<string, number> }[];
+    note?: string;
+    double_ko?: boolean; // both fainted: a blind pick, solved as a guessing game
+    theirs?: { their_action: string; prob: number }[];
+  }>('/api/replace', withTeam(team, pos));

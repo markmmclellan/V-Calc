@@ -102,6 +102,9 @@ type Advice = { pSwitch?: number; title: string; rows: { label: string; v: numbe
  * board from here (who is out, HP, status, fainted), keeps track of what it can (who has appeared, the turn number),
  * and re-solves the turn by itself whenever the board changes.
  */
+/** Board changes within this long of the last answer are you still entering the same turn. */
+const SAME_TURN_MS = 20_000;
+
 export default function BotPanel({ open, teams, setTeams, field, skipped, singles, battleId, onApplyBring, onResetBattle, onClose }: Props) {
   const [up, setUp] = useState<boolean | null>(null);
   const [marks, setMarks] = useState<Record<string, Marks>>(() => load(MARKS_KEY, {}));
@@ -115,7 +118,9 @@ export default function BotPanel({ open, teams, setTeams, field, skipped, single
   const [solved, setSolved] = useState<(SolveResult & { key: string }) | null>(null);
   const [advice, setAdvice] = useState<(Advice & { key: string }) | null>(null);
   // the last call to the bot: its board and turn, to tell a new turn from the same one
-  const last = useRef<{ key: string; turn: number; kind: 'solve' | 'replace' } | null>(null);
+  const last = useRef<{ key: string; turnKey: string; bring: string; turn: number; kind: 'solve' | 'replace'; at: number } | null>(null);
+  // one id per game, sent with each question so the bot's log (runs/gui_log.jsonl) can tell games apart
+  const gameId = useRef(new Date().toISOString());
 
   useEffect(() => {
     if (open) pingBot().then(setUp);
@@ -137,6 +142,7 @@ export default function BotPanel({ open, teams, setTeams, field, skipped, single
     setError('');
     setLive(false);
     last.current = null;
+    gameId.current = new Date().toISOString();
   }, [battleId]);
 
   const setTurn = (n: number) => {
@@ -217,6 +223,24 @@ export default function BotPanel({ open, teams, setTeams, field, skipped, single
   const myKo = !!mineActive && mark(0, mineActive).ko;
   // the board without the turn number: a change here means something happened
   const key = board ? JSON.stringify({ ...board, turn: 0 }) + (myKo ? '|replace' : '') : '';
+  // Only what a turn changes: who is out, HP, status, boosts, the field. Revealed moves, items and Mega marks are
+  // facts you learn, not a turn going by.
+  const turnKey = board
+    ? JSON.stringify({
+        me: [board.me.active, board.me.hp, board.me.status, board.me.boosts],
+        opp: board.opp.map((o) => [o.species, o.hp, o.status, o.boosts, o.active]),
+        field: board.field,
+      })
+    : '';
+  // Nothing has happened yet (everyone at full HP, no status, boosts or field): still the first turn, whatever the leads.
+  const pristine =
+    !!board &&
+    Object.values(board.me.hp).every((h) => h === 100) &&
+    board.opp.every((o) => o.hp === 100 && !o.status && !Object.keys(o.boosts).length) &&
+    !Object.keys(board.me.status).length &&
+    Object.values(board.me.boosts).every((b) => !Object.keys(b).length) &&
+    !board.field.weather && !board.field.terrain && !board.field.trick_room &&
+    !board.field.stealth_rock.some(Boolean) && !board.field.tailwind.some(Boolean) && !board.field.screens.some(Boolean);
 
   const run = async (label: string, fn: () => Promise<void>) => {
     setBusy(label);
@@ -240,12 +264,18 @@ export default function BotPanel({ open, teams, setTeams, field, skipped, single
     markAppeared(theirActive);
     // The board changed since the last answer for this turn number: a turn has gone by. (A replacement after a faint
     // belongs to the turn that follows, so the turn after a replacement is not counted again.)
+    // Not counted: edits soon after the last answer (you are still entering this turn: your HP, then theirs, then a
+    // fix), a change of the three brought (setup), changes that are only revealed info, and a board where nothing
+    // has happened yet. The - / + buttons put it right if it still goes wrong.
+    const now = Date.now();
+    const bringKey = board.bring.join(',');
     let t = turn;
-    if (last.current && last.current.key !== key && last.current.turn === turn && last.current.kind === 'solve') t = turn + 1;
+    const l = last.current;
+    if (l && l.kind === 'solve' && l.turn === turn && l.turnKey !== turnKey && l.bring === bringKey && !pristine && now - l.at > SAME_TURN_MS) t = turn + 1;
     if (t !== turn) setTurnRaw(t);
-    const pos = { ...board, turn: t };
+    const pos = { ...board, turn: t, game: gameId.current };
     const kind = myKo ? 'replace' : 'solve';
-    last.current = { key, turn: t, kind };
+    last.current = { key, turnKey, bring: bringKey, turn: t, kind, at: now };
     const k = key;
     if (kind === 'replace')
       return run('Picking your replacement…', async () => {
@@ -291,7 +321,7 @@ export default function BotPanel({ open, teams, setTeams, field, skipped, single
     run('Simulating each option…', async () => {
       if (!board) throw new Error(boardProblem);
       if (myKo) return solveNow();
-      const pos = { ...board, turn };
+      const pos = { ...board, turn, game: gameId.current };
       const c = await askCheck(mineAll, pos);
       let quick = '';
       try {

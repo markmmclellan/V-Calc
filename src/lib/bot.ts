@@ -74,6 +74,7 @@ export interface Marks {
 /** What the battle text says about the Pokémon that is out (cleared when it switches out). */
 export interface Vol {
   last_move?: string; // the move it used last turn (Encore locks it into this)
+  last_move_turn?: number; // the panel's turn when the last move was tapped: a new tap (the same move used again) changes it
   first_move?: string; // the first move since it came in (Protean / Libero changed its type to this move's)
   charging?: string; // a two-turn move it started (Dive, Dig, Fly, Phantom Force, Solar Beam...): it lands next turn
   charge_turn?: number; // the turn it started on (panel only: the charge is sent for the next turn only)

@@ -615,6 +615,7 @@ td.v-loses, .bg-verdict.v-loses { background: color-mix(in srgb, var(--bad) 38%,
 .bv-move { font-size: 12px; padding: 2px 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .bv-move.seen { border-style: dashed; border-color: var(--accent); }
 .bv-move.on { background: var(--accent); border-color: var(--accent); color: #07101f; font-weight: 600; }
+.bv-move.on.old { background: transparent; color: var(--accent); }
 
 /* battle view: timers and what is on the field */
 .bv-timer { display: inline-block; margin-left: 4px; min-width: 15px; padding: 0 4px; border-radius: 7px; font-size: 10px; line-height: 14px; font-weight: 700;

@@ -20,6 +20,8 @@ interface Props {
   setMark: (side: 0 | 1, s: PokemonSet, patch: Partial<Marks>) => void;
   isAppeared: (s: PokemonSet) => boolean;
   vol: [Vol, Vol];
+  /** the panel's turn number: tapping the last move again on a later turn records it again instead of clearing it */
+  turn: number;
   patchVol: (side: 0 | 1, patch: Partial<Vol>) => void;
   patchSet: (side: 0 | 1, s: PokemonSet, patch: Partial<PokemonSet>) => void;
   sendOut: (side: 0 | 1, s: PokemonSet) => void;
@@ -339,11 +341,13 @@ export default function BattleView(p: Props) {
           mv ? (
             <button
               key={k}
-              className={'bv-move' + (last === mv ? ' on' : '') + (side === 1 && m.moves[k] ? ' seen' : '')}
-              title={side === 1 && m.moves[k] ? 'Seen' : 'Tap if it just used this'}
+              className={'bv-move' + (last === mv ? ' on' : '') + (last === mv && p.vol[side].last_move_turn !== p.turn ? ' old' : '') + (side === 1 && m.moves[k] ? ' seen' : '')}
+              title={last === mv && p.vol[side].last_move_turn !== p.turn ? 'Used on an earlier turn: tap if it used it again' : side === 1 && m.moves[k] ? 'Seen' : 'Tap if it just used this'}
               onClick={() => {
-                p.patchVol(side, { last_move: last === mv ? undefined : mv });
-                if (side === 1 && last !== mv && !m.moves[k]) p.setMark(1, s, { moves: m.moves.map((x, j) => (j === k ? true : x)) });
+                // tapped again this turn: a mis-tap, clear it; on a later turn: it used the same move again
+                const same = last === mv && p.vol[side].last_move_turn === p.turn;
+                p.patchVol(side, { last_move: same ? undefined : mv });
+                if (side === 1 && !same && !m.moves[k]) p.setMark(1, s, { moves: m.moves.map((x, j) => (j === k ? true : x)) });
               }}
             >
               {mv}

@@ -106,6 +106,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
       // The first move since it came in (Protean / Libero take its type). A pick made while it is still on its first
       // turn out replaces it, so fixing a wrong tap works; after that it stays.
       if ('last_move' in patch) {
+        next[side].last_move_turn = patch.last_move ? turn : undefined;
         const out = outFor.current;
         const name = side === 0 ? (mineActive ? baseName(mineActive) : '') : theirActive ? baseName(theirActive) : '';
         const firstTurn = out.names[side] !== name || out.n[side] === 0;
@@ -581,6 +582,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
             setMark={setMark}
             isAppeared={(s) => appeared(s, mark(1, s), !!theirActive && baseName(s) === baseName(theirActive))}
             vol={vol}
+            turn={turn}
             patchVol={patchVol}
             patchSet={patchSet}
             sendOut={sendOut}

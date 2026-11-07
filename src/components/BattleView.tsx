@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { FieldState, SideState, Terrain, Weather } from '../lib/calc';
 import type { Marks, Vol } from '../lib/bot';
-import { baseName, maxHpOf } from '../lib/bot';
+import { baseName, CHARGE_MOVES, maxHpOf } from '../lib/bot';
 import type { PokemonSet, Status } from '../lib/model';
 import { spriteSources } from '../lib/sprites';
 import Sprite from './Sprite';
@@ -177,6 +177,13 @@ export default function BattleView(p: Props) {
             {tm(`${side}:${k}`)}
           </button>,
         );
+    const ch = p.vol[side].charging;
+    if (ch)
+      tags.push(
+        <button key="charging" className="bv-tag fx" title={`${ch} lands next turn. Tap to remove`} onClick={() => p.patchVol(side, { charging: undefined, charge_turn: undefined })}>
+          {CHARGE_MOVES[ch] ?? 'Charging'} ({ch})
+        </button>,
+      );
     for (const [k, l] of VOL_FX)
       if (p.vol[side][k])
         tags.push(

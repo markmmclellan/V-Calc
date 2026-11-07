@@ -8,6 +8,7 @@ import {
   askSolve,
   appeared,
   baseName,
+  CHARGE_MOVES,
   blankMarks,
   buildPosition,
   getBotUrl,
@@ -110,6 +111,10 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
         const firstTurn = out.names[side] !== name || out.n[side] === 0;
         if (patch.last_move && (firstTurn || !old[side].first_move)) next[side].first_move = patch.last_move;
         else if (!patch.last_move && firstTurn) next[side].first_move = undefined;
+        // a two-turn move: tapped the turn it started, it is charging (and lands next turn); tapped again, it landed
+        const m = patch.last_move;
+        if (m && CHARGE_MOVES[m] && old[side].charging !== m) Object.assign(next[side], { charging: m, charge_turn: turn });
+        else if (old[side].charging && (!m || old[side].charging === m || !CHARGE_MOVES[m])) Object.assign(next[side], { charging: undefined, charge_turn: undefined });
       }
       return next;
     });
@@ -324,13 +329,19 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     outFor.current = { names, n };
     return n;
   };
+  /** A charge started on turn N matters for turn N+1 only (it lands then). */
+  const chargeNow = <V extends Vol & { turns_out?: number }>(v: V, ahead: number): V => {
+    const { charge_turn, ...rest } = v;
+    if (!v.charging) return rest as V;
+    return (charge_turn !== undefined && turn + ahead === charge_turn + 1 ? rest : { ...rest, charging: undefined }) as V;
+  };
   const withTimers = <B extends NonNullable<typeof board>>(b: B, ahead: number, out: [number, number] = [0, 0]) => {
     const tt = turnsFor(ahead);
     return {
       ...b,
       field: { ...b.field, turns: tt.field },
-      me: { ...b.me, volatile: { ...b.me.volatile, ...tt.vol[0], turns_out: out[0] } },
-      opp: b.opp.map((o) => (o.active ? { ...o, volatile: { ...o.volatile, ...tt.vol[1], turns_out: out[1] } } : o)),
+      me: { ...b.me, volatile: chargeNow({ ...b.me.volatile, ...tt.vol[0], turns_out: out[0] }, ahead) },
+      opp: b.opp.map((o) => (o.active ? { ...o, volatile: chargeNow({ ...o.volatile, ...tt.vol[1], turns_out: out[1] }, ahead) } : o)),
     };
   };
 

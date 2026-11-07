@@ -75,6 +75,8 @@ export interface Marks {
 export interface Vol {
   last_move?: string; // the move it used last turn (Encore locks it into this)
   first_move?: string; // the first move since it came in (Protean / Libero changed its type to this move's)
+  charging?: string; // a two-turn move it started (Dive, Dig, Fly, Phantom Force, Solar Beam...): it lands next turn
+  charge_turn?: number; // the turn it started on (panel only: the charge is sent for the next turn only)
   encore?: string; // Encored into this move
   yawn?: boolean; // drowsy: falls asleep at the end of this turn
   taunt?: boolean;
@@ -247,3 +249,19 @@ export const askReplace =(team: PokemonSet[], pos: Position) =>
     double_ko?: boolean; // both fainted: a blind pick, solved as a guessing game
     theirs?: { their_action: string; prob: number }[];
   }>('/api/replace', withTeam(team, pos));
+
+/** Two-turn moves: the first turn only charges. Dig / Dive / Fly / Bounce / Phantom Force also take the user out of
+ * reach until it lands (the name is the battle's word for it). */
+export const CHARGE_MOVES: Record<string, string> = {
+  Dig: 'Underground',
+  Dive: 'Underwater',
+  Fly: 'In the air',
+  Bounce: 'In the air',
+  'Phantom Force': 'Concealed',
+  'Shadow Force': 'Concealed',
+  'Solar Beam': 'Charging',
+  'Solar Blade': 'Charging',
+  'Electro Shot': 'Charging',
+  'Meteor Beam': 'Charging',
+  'Sky Attack': 'Charging',
+};

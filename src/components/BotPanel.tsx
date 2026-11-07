@@ -352,13 +352,15 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
   const myKo = !!mineActive && mark(0, mineActive).ko;
   // the board without the turn number: a change here means something happened
   const key = board ? JSON.stringify({ ...board, turn: 0 }) + (myKo ? '|replace' : '') : '';
-  // Only what a turn changes: who is out, HP, status, boosts, the field. Revealed moves, items and Mega marks are
-  // facts you learn, not a turn going by.
+  // Only what a turn changes: who is out, HP, status, boosts, the field, and the moves used and their effects (a turn of
+  // Yawn into Dive, Protect or Taunt changes nothing else). Revealed moves, items and Mega marks are facts you learn,
+  // not a turn going by.
   const turnKey = board
     ? JSON.stringify({
         me: [board.me.active, board.me.hp, board.me.status, board.me.boosts],
         opp: board.opp.map((o) => [o.species, o.hp, o.status, o.boosts, o.active]),
         field: board.field,
+        vol,
       })
     : '';
 

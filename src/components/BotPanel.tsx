@@ -211,7 +211,8 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     const entering = ([0, 1] as const)
       .filter((sd) => changed[sd])
       .map((sd) => (sd === 0 ? mineActive : theirActive))
-      .filter((x): x is PokemonSet => !!x?.species && baseName(x) === x.species && !!ON_ENTRY[x.ability])
+      // a Mega Stone holder that has not Mega Evolved has its normal ability (the set lists the Mega's, e.g. Drought)
+      .filter((x): x is PokemonSet => !!x?.species && baseName(x) === x.species && !!ON_ENTRY[x.ability] && !/ite( [XYZ])?$/.test(x.item))
       .map((x) => ({ fx: ON_ENTRY[x.ability], spe: calcStats(x.species, x.nature, x.sp)?.spe ?? 0 }))
       .sort((a, b) => b.spe - a.spe);
     if (entering.length)

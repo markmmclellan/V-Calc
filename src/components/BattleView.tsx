@@ -97,6 +97,9 @@ function NaturalSprite({ src, size, onError }: { src: string; size: number; onEr
   return <img className="bv-sprite" src={src} alt="" draggable={false} style={{ maxWidth: size * 1.6, maxHeight: size * 1.4 }} onError={onError} />;
 }
 
+/** What is on the field: the Mega form only once it has Mega Evolved (V-Calc's set may show the Mega for the worst case). */
+const shown = (s: PokemonSet, mega: boolean) => (mega ? s.species : baseName(s));
+
 /** Showdown's field effect images. */
 const FX = 'https://play.pokemonshowdown.com/fx';
 
@@ -248,7 +251,7 @@ export default function BattleView(p: Props) {
     return (
       <div className={`bv-stat ${side ? 'opp' : 'me'}${menu.endsWith(`-${side}`) ? ' raised' : ''}`}>
         <div className="bv-name">
-          <strong>{s.species}</strong>
+          <strong>{shown(s, m.mega)}</strong>
           <span className="bv-flags">
             <button className={'bv-flag' + (m.mega ? ' on' : '')} title="It has Mega Evolved" onClick={() => p.setMark(side, s, { mega: !m.mega })}>
               Mega
@@ -509,9 +512,9 @@ export default function BattleView(p: Props) {
         {party(1, p.theirs, p.theirActive)}
         {statBox(1, p.theirActive)}
         <div className="bv-pad opp" />
-        <div className="bv-mon opp">{p.theirActive && <FrontSprite species={p.theirActive.species} size={110} />}</div>
+        <div className="bv-mon opp">{p.theirActive && <FrontSprite species={shown(p.theirActive, p.mark(1, p.theirActive).mega)} size={110} />}</div>
         <div className="bv-pad me" />
-        <div className="bv-mon me">{p.mineActive && <BackSprite species={p.mineActive.species} size={140} />}</div>
+        <div className="bv-mon me">{p.mineActive && <BackSprite species={shown(p.mineActive, p.mark(0, p.mineActive).mega)} size={140} />}</div>
         {statBox(0, p.mineActive)}
         {party(0, p.mine, p.mineActive)}
       </div>

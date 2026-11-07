@@ -5,6 +5,7 @@ import {
   askCheck,
   askQuick,
   askReplace,
+  askPlayTurn,
   askSolve,
   appeared,
   baseName,
@@ -16,6 +17,7 @@ import {
   type BringCheck,
   type Marks,
   type MoveCheck,
+  type PlayResult,
   type SolveResult,
   type Vol,
 } from '../lib/bot';
@@ -177,12 +179,20 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
   const theirActive = teams[1].sets[teams[1].active];
   // A Pokémon that switches out loses its effects, and frees the other side from its trap.
   const outNames = [mineActive ? baseName(mineActive) : '', theirActive ? baseName(theirActive) : ''];
+  // a played turn sets everything itself: the reactions to a switch / a new turn are skipped once
+  const skipVolReset = useRef(false);
+  const pendingTimers = useRef<((old: Record<string, number>) => Record<string, number>) | null>(null);
+  const playedTurn = useRef<number | null>(null);
   const prevOut = useRef(outNames);
   useEffect(() => {
     const [a, b] = prevOut.current;
     prevOut.current = outNames;
     const changed = [a !== outNames[0], b !== outNames[1]];
     if (!changed[0] && !changed[1]) return;
+    if (skipVolReset.current) {
+      skipVolReset.current = false;
+      return;
+    }
     setVol((old) => {
       const next: [Vol, Vol] = [old[0], old[1]];
       for (const sd of [0, 1] as const) {
@@ -273,6 +283,12 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     const d = turn - prevTurn.current;
     prevTurn.current = turn;
     if (!d) return;
+    if (pendingTimers.current) {
+      const f = pendingTimers.current;
+      pendingTimers.current = null;
+      setTimers(f);
+      return;
+    }
     const ended = d > 0 ? Object.keys(timers).filter((k) => timers[k] - d <= 0) : [];
     setTimers((old) => {
       const next: Record<string, number> = {};
@@ -392,6 +408,200 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     }
   };
 
+  // ---- Play turn: both sides' choices run through the engine, the board fills itself in ----
+  const [playChoice, setPlayChoice] = useState<[string, string]>(['', '']);
+  const [needPivot, setNeedPivot] = useState<{ side: 'me' | 'opp'; options: string[]; chosen: Record<string, string> } | null>(null);
+  type Snapshot = { teams: [Team, Team]; field: FieldState; vol: [Vol, Vol]; marks: Record<string, Marks>; turn: number; timers: Record<string, number> };
+  const [played, setPlayed] = useState<{ turn: number; events: string[]; undo: Snapshot } | null>(null);
+  const strip = (a: string) => a.replace(/ -> .*$/, '');
+  const freshSolve = solved && solved.key === key ? solved : null;
+  const playOpts: [string[], string[]] = (() => {
+    const myOpts: string[] = [];
+    const add = (arr: string[], x: string) => {
+      if (x && !arr.includes(x)) arr.push(x);
+    };
+    for (const r of freshSolve?.mine ?? []) add(myOpts, strip(r.action));
+    if (mineActive) for (const m of mineActive.moves) add(myOpts, m);
+    for (const s of mine) if (mineActive && baseName(s) !== baseName(mineActive) && !mark(0, s).ko) add(myOpts, 'Switch to ' + baseName(s));
+    const theirOpts: string[] = [];
+    for (const r of freshSolve?.theirs ?? []) if (r.their_action !== 'Switch out') add(theirOpts, r.their_action);
+    if (theirActive) for (const m of theirActive.moves) add(theirOpts, m);
+    for (const s of teams[1].sets) if (theirActive && s.species && baseName(s) !== baseName(theirActive) && !mark(1, s).ko) add(theirOpts, 'Switch to ' + baseName(s));
+    return [myOpts, theirOpts];
+  })();
+  const defaultPlay: [string, string] = [
+    (freshSolve && strip([...freshSolve.mine].sort((a, b) => b.mix - a.mix)[0]?.action ?? '')) || playOpts[0][0] || '',
+    (freshSolve && [...freshSolve.theirs].sort((a, b) => b.prob - a.prob).find((t) => t.their_action !== 'Switch out')?.their_action) || playOpts[1][0] || '',
+  ];
+  // a new board to choose for: back to the bot's suggestions
+  useEffect(() => setPlayChoice(['', '']), [solved?.key]);
+
+  const applyPlay = (r: PlayResult, snap: Snapshot) => {
+    const t0 = turn;
+    const sides = [r.me, r.opp] as const;
+    // their moves as V-Calc keeps them: a move they showed that the set lacks takes the place of one not seen yet
+    const theirMoves = new Map<PokemonSet, string[]>();
+    for (const s of teams[1].sets) {
+      const m = s.species ? r.opp.mons[baseName(s)] : undefined;
+      if (!m) continue;
+      const moves = [...s.moves];
+      const seen = [...mark(1, s).moves];
+      for (const mv of m.revealed_moves ?? []) {
+        if (moves.includes(mv)) continue;
+        const free = moves.findIndex((x, i) => !seen[i] && !(m.revealed_moves ?? []).includes(x));
+        if (free >= 0) {
+          moves[free] = mv;
+          seen[free] = true;
+        }
+      }
+      theirMoves.set(s, moves);
+    }
+    setTeams((old) => {
+      const next: [Team, Team] = [old[0], old[1]];
+      for (const sd of [0, 1] as const) {
+        const ps = sides[sd];
+        const sets = old[sd].sets.map((s) => {
+          const m = s.species ? ps.mons[baseName(s)] : undefined;
+          if (!m) return s;
+          const patch: Partial<PokemonSet> = {
+            hpPercent: m.fainted ? 1 : Math.max(1, m.hp_pct),
+            status: (m.fainted ? '' : m.status) as PokemonSet['status'],
+            boosts: m.active ? m.boosts : { atk: 0, def: 0, spa: 0, spd: 0, spe: 0 },
+          };
+          if (sd === 1 && theirMoves.has(s)) patch.moves = theirMoves.get(s);
+          if (sd === 1 && m.revealed_item) patch.item = m.revealed_item;
+          if (sd === 1 && m.revealed_ability) patch.ability = m.revealed_ability;
+          return { ...s, ...patch };
+        });
+        const ai = sets.findIndex((s) => s.species && baseName(s) === ps.active);
+        next[sd] = { ...old[sd], sets, active: ai >= 0 ? ai : old[sd].active, partner: undefined };
+      }
+      return next;
+    });
+    setMarks((old) => {
+      const out = { ...old };
+      for (const sd of [0, 1] as const) {
+        for (const s of teams[sd].sets) {
+          if (!s.species) continue;
+          const m = sides[sd].mons[baseName(s)];
+          if (!m) continue;
+          const k = `${sd}:${baseName(s)}`;
+          const cur = out[k] ?? blankMarks();
+          const moves = [...cur.moves];
+          if (sd === 1)
+            for (const mv of m.revealed_moves ?? []) {
+              const i = (theirMoves.get(s) ?? s.moves).indexOf(mv);
+              if (i >= 0) moves[i] = true;
+            }
+          out[k] = {
+            ...cur,
+            ko: m.fainted,
+            mega: cur.mega || m.mega,
+            gone: cur.gone || (!!s.item && m.item_gone && !m.mega),
+            moves,
+            item: cur.item || (sd === 1 && !!m.revealed_item),
+            ability: cur.ability || (sd === 1 && !!m.revealed_ability),
+            seen: sd === 1 ? cur.seen || m.active || m.fainted || m.hp_pct < 100 : cur.seen,
+          };
+        }
+      }
+      return out;
+    });
+    const f = r.field;
+    const sideOf = (x: PlaySideFieldT, old: FieldState['attackerSide']) => ({
+      ...old,
+      isSR: x.stealth_rock,
+      spikes: x.spikes,
+      toxicSpikes: x.toxic_spikes,
+      isTailwind: x.tailwind,
+      isReflect: x.reflect,
+      isLightScreen: x.light_screen,
+      isAuroraVeil: x.aurora_veil,
+      isSeeded: x.leech_seed,
+      isBound: x.bound,
+    });
+    setField((old) => ({
+      ...old,
+      weather: f.weather as FieldState['weather'],
+      terrain: f.terrain as FieldState['terrain'],
+      isTrickRoom: f.trick_room,
+      attackerSide: sideOf(f.sides[0], old.attackerSide),
+      defenderSide: sideOf(f.sides[1], old.defenderSide),
+    }));
+    const volOf = (v: PlayResult['me']['vol']): Vol => ({
+      yawn: v.yawn || undefined,
+      taunt: v.taunt || undefined,
+      encore: v.encore ?? undefined,
+      substitute: v.substitute || undefined,
+      trapped: v.trapped || undefined,
+      confused: v.confused || undefined,
+      last_move: v.last_move ?? undefined,
+      last_move_turn: v.last_move ? t0 : undefined,
+      first_move: v.first_move ?? undefined,
+      charging: v.charging ?? undefined,
+      charge_turn: v.charging ? t0 : undefined,
+      disabled: v.disabled ?? undefined,
+    });
+    setVol([volOf(r.me.vol), volOf(r.opp.vol)]);
+    skipVolReset.current = true;
+    // timers: the usual count-down, with what the engine knows (weather, terrain, Trick Room, Tailwind, screens) on top
+    const tt = f.turns;
+    pendingTimers.current = (old) => {
+      const next: Record<string, number> = {};
+      for (const [k, v] of Object.entries(old)) next[k] = Math.max(1, v - 1);
+      const put = (k: string, n: number) => {
+        if (n > 0 && next[k] !== undefined) next[k] = n;
+      };
+      put('weather', tt.weather);
+      put('terrain', tt.terrain);
+      put('tr', tt.trick_room);
+      ([0, 1] as const).forEach((sd) => {
+        put(`${sd}:isTailwind`, tt.tailwind[sd]);
+        (['isReflect', 'isLightScreen', 'isAuroraVeil'] as const).forEach((k, i) => put(`${sd}:${k}`, tt.screens[sd][i]));
+      });
+      return next;
+    };
+    playedTurn.current = t0 + 1;
+    setTurnRaw(t0 + 1);
+    setPlayed({ turn: t0, events: r.events, undo: snap });
+    setPlayChoice(['', '']);
+  };
+  type PlaySideFieldT = PlayResult['field']['sides'][0];
+
+  const doPlay = (pivot: Record<string, string> = {}) =>
+    run('Playing the turn…', async () => {
+      if (!board) throw new Error(boardProblem);
+      setLive(true);
+      const mine = needPivot ? needPivot.chosen.__mine : playChoice[0] || defaultPlay[0];
+      const theirs = needPivot ? needPivot.chosen.__theirs : playChoice[1] || defaultPlay[1];
+      if (!mine || !theirs) throw new Error('Pick what both sides did.');
+      const snap: Snapshot = { teams, field, vol, marks, turn, timers };
+      const pos = { ...withTimers(board, 0, outFor.current.n), turn, game: gameId.current };
+      const { __mine, __theirs, ...piv } = { __mine: '', __theirs: '', ...pivot };
+      void __mine;
+      void __theirs;
+      const r = await askPlayTurn(mineAll, pos, mine, theirs, piv, teams[1].sets);
+      if (r.need_pivot) {
+        setNeedPivot({ side: r.need_pivot.side, options: r.need_pivot.options, chosen: { ...piv, __mine: mine, __theirs: theirs } });
+        return;
+      }
+      setNeedPivot(null);
+      applyPlay(r, snap);
+    });
+  const undoPlay = () => {
+    if (!played) return;
+    const s = played.undo;
+    skipVolReset.current = true;
+    pendingTimers.current = () => s.timers;
+    playedTurn.current = null;
+    setTeams(() => s.teams);
+    setField(() => s.field);
+    setVol(s.vol);
+    setMarks(s.marks);
+    setTurnRaw(s.turn);
+    setPlayed(null);
+  };
+
   /** Ask the bot about the current board: the replacement if yours fainted, otherwise the turn as a guessing game. */
   const solveNow = () => {
     if (!board) {
@@ -409,7 +619,8 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     const bringKey = board.bring.join(',');
     let t = turn;
     const l = last.current;
-    if (l && l.kind === 'solve' && l.turn === turn && l.turnKey !== turnKey && l.bring === bringKey && now - l.at > SAME_TURN_MS) t = turn + 1;
+    if (playedTurn.current === turn) playedTurn.current = null; // Play turn already counted this one
+    else if (l && l.kind === 'solve' && l.turn === turn && l.turnKey !== turnKey && l.bring === bringKey && now - l.at > SAME_TURN_MS) t = turn + 1;
     if (t !== turn) setTurnRaw(t);
     const pos = { ...withTimers(board, t - turn, countOut(t)), turn: t, game: gameId.current };
     const kind = myKo ? 'replace' : 'solve';
@@ -617,6 +828,58 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
             ) : null}
           </div>
           {error && <p className="err">{error}</p>}
+          {ready && board && !myKo && (
+            <div className="ai-play">
+              <span className="hint" title="Pick what both sides did, then Play: the turn runs with average luck (middle damage roll, no crits, chance effects only when likely) and the board updates itself. Fix what luck changed (HP, a crit, a burn) by hand.">
+                Play turn
+              </span>
+              <label>
+                You
+                <select value={playChoice[0] || defaultPlay[0]} onChange={(e) => setPlayChoice([e.target.value, playChoice[1]])}>
+                  {playOpts[0].map((o) => (
+                    <option key={o}>{o}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                They
+                <select value={playChoice[1] || defaultPlay[1]} onChange={(e) => setPlayChoice([playChoice[0], e.target.value])}>
+                  {playOpts[1].map((o) => (
+                    <option key={o}>{o}</option>
+                  ))}
+                </select>
+              </label>
+              <button onClick={() => doPlay()} disabled={!!busy}>
+                Play
+              </button>
+            </div>
+          )}
+          {needPivot && (
+            <div className="ai-play">
+              <span>{needPivot.side === 'me' ? 'Which of yours came in?' : 'Which of theirs came in?'}</span>
+              {needPivot.options.map((o) => (
+                <button key={o} onClick={() => doPlay({ ...needPivot.chosen, [needPivot.side]: o })}>
+                  {o}
+                </button>
+              ))}
+              <button onClick={() => setNeedPivot(null)}>Cancel</button>
+            </div>
+          )}
+          {played && (
+            <details className="ai-played" open>
+              <summary>
+                Turn {played.turn} played with average luck: fix HP, crits or chance effects to match the game.{' '}
+                <button className="link" onClick={undoPlay}>
+                  Undo
+                </button>
+              </summary>
+              <ul>
+                {played.events.map((e, i) => (
+                  <li key={i}>{e}</li>
+                ))}
+              </ul>
+            </details>
+          )}
 
           {solved && (
             <div className={'ai-result' + (resultStale(solved.key) ? ' stale' : '')}>

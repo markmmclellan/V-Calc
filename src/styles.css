@@ -648,6 +648,12 @@ td.v-loses, .bg-verdict.v-loses { background: color-mix(in srgb, var(--bad) 38%,
 .bv-rocks i:nth-child(2) { left: 40px; height: 22px; }
 .bv-rocks i:nth-child(3) { left: 86px; transform: scale(0.9) rotate(12deg); }
 .bv-rocks i:nth-child(4) { left: 126px; transform: scale(0.7); }
+.ai-play { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 8px 0; padding: 6px 8px; border: 1px dashed var(--line); border-radius: 8px; }
+.ai-play label { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; }
+.ai-play select { max-width: 210px; }
+.ai-played { margin: 6px 0; font-size: 12px; }
+.ai-played summary { cursor: pointer; color: var(--muted); }
+.ai-played ul { margin: 4px 0 0; padding-left: 18px; max-height: 220px; overflow-y: auto; }
 .bv-spikes { position: absolute; z-index: 2; width: 170px; height: 14px; pointer-events: none; display: flex; flex-wrap: wrap; gap: 4px 10px; justify-content: center; }
 .bv-spikes.opp { right: 60px; top: 200px; }
 .bv-spikes.me { left: 50px; bottom: 26px; }

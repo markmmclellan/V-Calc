@@ -246,6 +246,67 @@ export interface SolveResult {
 }
 /** This turn solved as a simultaneous guessing game (or exactly, in an endgame). */
 export const askSolve = (team: PokemonSet[], pos: Position, seconds = 8) => call<SolveResult>('/api/solve', { ...withTeam(team, pos), seconds });
+/** One Pokémon after a played turn (see the bot's play_turn). */
+export interface PlayMon {
+  hp: number;
+  max_hp: number;
+  hp_pct: number;
+  status: string;
+  fainted: boolean;
+  active: boolean;
+  boosts: { atk: number; def: number; spa: number; spd: number; spe: number };
+  mega: boolean;
+  item: string;
+  item_gone: boolean;
+  revealed_item?: string | null;
+  revealed_ability?: string | null;
+  revealed_moves?: string[] | null;
+}
+export interface PlaySide {
+  active: string;
+  mons: Record<string, PlayMon>;
+  vol: { yawn: boolean; encore?: string | null; taunt: boolean; substitute: boolean; trapped: boolean; confused: boolean; last_move?: string | null; first_move?: string | null; charging?: string | null; disabled?: string | null };
+}
+export interface PlaySideField {
+  stealth_rock: boolean;
+  spikes: number;
+  toxic_spikes: number;
+  tailwind: boolean;
+  reflect: boolean;
+  light_screen: boolean;
+  aurora_veil: boolean;
+  leech_seed: boolean;
+  bound: boolean;
+}
+export interface PlayResult {
+  events: string[];
+  me: PlaySide;
+  opp: PlaySide;
+  field: {
+    weather: string;
+    terrain: string;
+    trick_room: boolean;
+    sides: [PlaySideField, PlaySideField];
+    turns: { weather: number; terrain: number; trick_room: number; tailwind: [number, number]; screens: [[number, number, number], [number, number, number]] };
+  };
+  winner: number | null;
+  need_pivot: null | { side: 'me' | 'opp'; options: string[] };
+  replace: [boolean, boolean];
+}
+/** Play the turn both sides chose (average luck, their most likely set): the board after it. */
+export const askPlayTurn = (team: PokemonSet[], pos: Position, mine: string, theirs: string, pivot: Record<string, string> = {}, theirSets: PokemonSet[] = []) =>
+  call<PlayResult>('/api/play_turn', {
+    ...withTeam(team, pos),
+    mine,
+    theirs,
+    pivot,
+    // their sets as entered in the calc: the turn is played with them, so it matches the damage numbers on screen
+    opp_sets: Object.fromEntries(
+      theirSets
+        .filter((s) => s.species)
+        .map((s) => [baseName(s), { item: s.item, ability: baseName(s) === s.species ? s.ability : '', nature: s.nature, sp: [s.sp.hp, s.sp.atk, s.sp.def, s.sp.spa, s.sp.spd, s.sp.spe], moves: s.moves }]),
+    ),
+  });
 export const askReplace =(team: PokemonSet[], pos: Position) =>
   call<{
     replace: { action: string; win: number; games: number; mix?: number; worst?: number; vs?: Record<string, number> }[];

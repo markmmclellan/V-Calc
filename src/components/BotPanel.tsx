@@ -426,6 +426,13 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     const theirOpts: string[] = [];
     for (const r of freshSolve?.theirs ?? []) if (r.their_action !== 'Switch out') add(theirOpts, r.their_action);
     if (theirActive) for (const m of theirActive.moves) add(theirOpts, m);
+    // their Mega Evolution: a Mega form or Mega Stone in their set, not evolved yet, and no Mega used by their team
+    const theirMega =
+      !!theirActive &&
+      !mark(1, theirActive).mega &&
+      !teams[1].sets.some((s) => s.species && mark(1, s).mega) &&
+      (baseName(theirActive) !== theirActive.species || /ite( [XYZ])?$/.test(theirActive.item));
+    if (theirActive && theirMega) for (const m of theirActive.moves) if (m) add(theirOpts, `${m} + Mega Evolve`);
     for (const s of teams[1].sets) if (theirActive && s.species && baseName(s) !== baseName(theirActive) && !mark(1, s).ko) add(theirOpts, 'Switch to ' + baseName(s));
     return [myOpts, theirOpts];
   })();

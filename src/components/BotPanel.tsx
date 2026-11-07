@@ -17,6 +17,7 @@ import {
   type BringCheck,
   type Marks,
   type MoveCheck,
+  type Outcome,
   type PlayResult,
   type SolveResult,
   type Vol,
@@ -410,6 +411,14 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
 
   // ---- Play turn: both sides' choices run through the engine, the board fills itself in ----
   const [playChoice, setPlayChoice] = useState<[string, string]>(['', '']);
+  // what happened that luck decides: [yours, theirs]
+  const [outcome, setOutcome] = useState<[Outcome, Outcome]>([{}, {}]);
+  const toggleOutcome = (sd: 0 | 1, k: keyof Outcome) =>
+    setOutcome((o) => {
+      const n: [Outcome, Outcome] = [{ ...o[0] }, { ...o[1] }];
+      n[sd][k] = !n[sd][k];
+      return n;
+    });
   const [needPivot, setNeedPivot] = useState<{ side: 'me' | 'opp'; options: string[]; chosen: Record<string, string> } | null>(null);
   type Snapshot = { teams: [Team, Team]; field: FieldState; vol: [Vol, Vol]; marks: Record<string, Marks>; turn: number; timers: Record<string, number> };
   const [played, setPlayed] = useState<{ turn: number; events: string[]; undo: Snapshot } | null>(null);
@@ -572,8 +581,25 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     setTurnRaw(t0 + 1);
     setPlayed({ turn: t0, events: r.events, undo: snap });
     setPlayChoice(['', '']);
+    setOutcome([{}, {}]);
   };
   type PlaySideFieldT = PlayResult['field']['sides'][0];
+  /** Toggles for what luck decided this turn on one side: its move missed, it crit, it did not move. */
+  const outcomeChips = (sd: 0 | 1) => (
+    <span className="ai-outcome">
+      {(
+        [
+          ['miss', 'Missed', 'Its move missed'],
+          ['crit', 'Crit', 'Its hit was a critical hit'],
+          ['no_move', "Didn't move", 'Flinched, fully paralysed, asleep... it did not move this turn'],
+        ] as [keyof Outcome, string, string][]
+      ).map(([k, l, t]) => (
+        <button key={k} className={'bv-tag' + (outcome[sd][k] ? ' on' : '')} title={t} onClick={() => toggleOutcome(sd, k)}>
+          {l}
+        </button>
+      ))}
+    </span>
+  );
 
   const doPlay = (pivot: Record<string, string> = {}) =>
     run('Playing the turn…', async () => {
@@ -587,7 +613,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
       const { __mine, __theirs, ...piv } = { __mine: '', __theirs: '', ...pivot };
       void __mine;
       void __theirs;
-      const r = await askPlayTurn(mineAll, pos, mine, theirs, piv, teams[1].sets);
+      const r = await askPlayTurn(mineAll, pos, mine, theirs, piv, teams[1].sets, { me: outcome[0], opp: outcome[1] });
       if (r.need_pivot) {
         setNeedPivot({ side: r.need_pivot.side, options: r.need_pivot.options, chosen: { ...piv, __mine: mine, __theirs: theirs } });
         return;
@@ -849,6 +875,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
                   ))}
                 </select>
               </label>
+              {outcomeChips(0)}
               <label>
                 They
                 <select value={playChoice[1] || defaultPlay[1]} onChange={(e) => setPlayChoice([playChoice[0], e.target.value])}>
@@ -857,6 +884,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
                   ))}
                 </select>
               </label>
+              {outcomeChips(1)}
               <button onClick={() => doPlay()} disabled={!!busy}>
                 Play
               </button>

@@ -651,6 +651,9 @@ td.v-loses, .bg-verdict.v-loses { background: color-mix(in srgb, var(--bad) 38%,
 .ai-play { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 8px 0; padding: 6px 8px; border: 1px dashed var(--line); border-radius: 8px; }
 .ai-play label { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; }
 .ai-play select { max-width: 210px; }
+.ai-outcome { display: inline-flex; gap: 3px; }
+.ai-outcome .bv-tag { font-size: 11px; padding: 1px 6px; cursor: pointer; }
+.ai-outcome .bv-tag.on { background: var(--accent); color: #07101f; border-color: var(--accent); }
 .ai-played { margin: 6px 0; font-size: 12px; }
 .ai-played summary { cursor: pointer; color: var(--muted); }
 .ai-played ul { margin: 4px 0 0; padding-left: 18px; max-height: 220px; overflow-y: auto; }

@@ -298,12 +298,27 @@ export interface PlayResult {
   replace: [boolean, boolean];
 }
 /** Play the turn both sides chose (average luck, their most likely set): the board after it. */
-export const askPlayTurn = (team: PokemonSet[], pos: Position, mine: string, theirs: string, pivot: Record<string, string> = {}, theirSets: PokemonSet[] = []) =>
+/** What you saw happen to one side's move this turn (overrides the dice). */
+export interface Outcome {
+  miss?: boolean;
+  crit?: boolean;
+  no_move?: boolean; // flinched, fully paralysed, asleep...
+}
+export const askPlayTurn = (
+  team: PokemonSet[],
+  pos: Position,
+  mine: string,
+  theirs: string,
+  pivot: Record<string, string> = {},
+  theirSets: PokemonSet[] = [],
+  outcome: { me?: Outcome; opp?: Outcome } = {},
+) =>
   call<PlayResult>('/api/play_turn', {
     ...withTeam(team, pos),
     mine,
     theirs,
     pivot,
+    outcome,
     // their sets as entered in the calc: the turn is played with them, so it matches the damage numbers on screen
     opp_sets: Object.fromEntries(
       theirSets

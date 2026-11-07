@@ -325,7 +325,9 @@ export default function BattleView(p: Props) {
     const m = p.mark(side, s);
     return (
       <div className="bv-moves">
-        <span className="hint">Last move</span>
+        <span className="hint">
+          Last move{p.vol[side].first_move && p.vol[side].first_move !== last ? ` (first: ${p.vol[side].first_move})` : ''}
+        </span>
         {s.moves.map((mv, k) =>
           mv ? (
             <button

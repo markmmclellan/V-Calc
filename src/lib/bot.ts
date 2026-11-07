@@ -74,6 +74,7 @@ export interface Marks {
 /** What the battle text says about the Pokémon that is out (cleared when it switches out). */
 export interface Vol {
   last_move?: string; // the move it used last turn (Encore locks it into this)
+  first_move?: string; // the first move since it came in (Protean / Libero changed its type to this move's)
   encore?: string; // Encored into this move
   yawn?: boolean; // drowsy: falls asleep at the end of this turn
   taunt?: boolean;

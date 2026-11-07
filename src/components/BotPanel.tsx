@@ -446,7 +446,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
       if (k === 'first' && n[sd].first) n[(1 - sd) as 0 | 1].first = false; // only one side can go first
       return n;
     });
-  const [needPivot, setNeedPivot] = useState<{ side: 'me' | 'opp'; options: string[]; chosen: Record<string, string> } | null>(null);
+  const [needPivot, setNeedPivot] = useState<{ side: 'me' | 'opp'; options: string[]; chosen: Record<string, string>; kind?: 'revive' } | null>(null);
   type Snapshot = { teams: [Team, Team]; field: FieldState; vol: [Vol, Vol]; marks: Record<string, Marks>; turn: number; timers: Record<string, number> };
   // Report: one tap saves the board, the last answer and the last played turn for fixing later
   const [reported, setReported] = useState('');
@@ -524,6 +524,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
             boosts: m.active ? m.boosts : { atk: 0, def: 0, spa: 0, spd: 0, spe: 0 },
           };
           if (sd === 1 && theirMoves.has(s)) patch.moves = theirMoves.get(s);
+          if (m.disguise_broken && s.ability === 'Disguise') patch.abilityOn = true; // V-Calc's "Disguise broken"
           if (sd === 1 && m.revealed_item) patch.item = m.revealed_item;
           if (sd === 1 && m.revealed_ability) patch.ability = m.revealed_ability;
           return { ...s, ...patch };
@@ -596,6 +597,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
       charging: v.charging ?? undefined,
       charge_turn: v.charging ? t0 : undefined,
       disabled: v.disabled ?? undefined,
+      transformed: v.transformed ?? undefined,
     });
     setVol([{ ...volOf(r.me.vol), who: r.me.active }, { ...volOf(r.opp.vol), who: r.opp.active }]);
     skipVolReset.current = `${r.me.active}|${r.opp.active}`;
@@ -668,7 +670,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
       const r = await askPlayTurn(mineAll, pos, mine, theirs, piv, teams[1].sets, { me: outcome[0], opp: outcome[1] });
       setBotWarn(r.warnings ?? []);
       if (r.need_pivot) {
-        setNeedPivot({ side: r.need_pivot.side, options: r.need_pivot.options, chosen: { ...piv, __mine: mine, __theirs: theirs } });
+        setNeedPivot({ side: r.need_pivot.side, options: r.need_pivot.options, kind: r.need_pivot.kind, chosen: { ...piv, __mine: mine, __theirs: theirs } });
         return;
       }
       setNeedPivot(null);
@@ -934,7 +936,15 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
           )}
           {needPivot && (
             <div className="ai-play">
-              <span>{needPivot.side === 'me' ? 'Which of yours came in?' : 'Which of theirs came in?'}</span>
+              <span>
+                {needPivot.kind === 'revive'
+                  ? needPivot.side === 'me'
+                    ? 'Revival Blessing: which of yours comes back?'
+                    : 'Revival Blessing: which of theirs comes back?'
+                  : needPivot.side === 'me'
+                    ? 'Which of yours came in?'
+                    : 'Which of theirs came in?'}
+              </span>
               {needPivot.options.map((o) => (
                 <button key={o} onClick={() => doPlay({ ...needPivot.chosen, [needPivot.side]: o })}>
                   {o}

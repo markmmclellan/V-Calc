@@ -79,8 +79,26 @@ function BackSprite({ species, size }: { species: string; size: number }) {
   const [n, setN] = useState({ species, i: 0 });
   const i = n.species === species ? n.i : 0;
   if (!sources[i]) return null;
-  return <img className="bv-sprite" src={sources[i]} alt="" width={size} height={size} draggable={false} onError={() => setN({ species, i: i + 1 })} />;
+  return <NaturalSprite src={sources[i]} size={size} onError={() => setN({ species, i: i + 1 })} />;
 }
+
+/** The opposing Pokémon (Showdown's animated front sprite, falling back to the static one). */
+function FrontSprite({ species, size }: { species: string; size: number }) {
+  const sources = spriteSources(species);
+  const [n, setN] = useState({ species, i: 0 });
+  const i = n.species === species ? n.i : 0;
+  if (!sources[i]) return null;
+  return <NaturalSprite src={sources[i]} size={size} onError={() => setN({ species, i: i + 1 })} />;
+}
+
+/** A sprite at its own size, as Showdown shows them (a small Pokémon like Ditto stays small); only very large ones are
+ * scaled down to fit the field. */
+function NaturalSprite({ src, size, onError }: { src: string; size: number; onError: () => void }) {
+  return <img className="bv-sprite" src={src} alt="" draggable={false} style={{ maxWidth: size * 1.6, maxHeight: size * 1.4 }} onError={onError} />;
+}
+
+/** Showdown's field effect images. */
+const FX = 'https://play.pokemonshowdown.com/fx';
 
 /** An HP bar you set by clicking or dragging along it. */
 function HpBar({ pct, onSet }: { pct: number; onSet: (pct: number) => void }) {
@@ -193,6 +211,12 @@ export default function BattleView(p: Props) {
             {layers(side, k) > 1 ? ` ×${layers(side, k)}` : ''}
           </button>,
         );
+    if (p.vol[side].transformed)
+      tags.push(
+        <span key="tf" className="bv-tag fx" title="Transform / Imposter: it copied this Pokémon (types, stats, moves)">
+          Transformed: {p.vol[side].transformed}
+        </span>,
+      );
     if (p.vol[side].disabled)
       tags.push(
         <button key="dis" className="bv-tag fx" title="Tap to remove" onClick={() => p.patchVol(side, { disabled: undefined })}>
@@ -421,23 +445,22 @@ export default function BattleView(p: Props) {
       <>
         {sd.isSR && (
           <div className={`bv-rocks ${at}`} aria-hidden>
-            <i />
-            <i />
-            <i />
-            <i />
+            {['rock1', 'rock2', 'rock1', 'rock2'].map((r, i) => (
+              <img key={i} src={`${FX}/${r}.png`} alt="" />
+            ))}
           </div>
         )}
         {(sd.spikes || 0) > 0 && (
           <div className={`bv-spikes ${at}`} aria-hidden>
-            {Array.from({ length: sd.spikes * 2 }, (_, i) => (
-              <i key={i} />
+            {Array.from({ length: sd.spikes }, (_, i) => (
+              <img key={i} src={`${FX}/caltrop.png`} alt="" />
             ))}
           </div>
         )}
         {(sd.toxicSpikes || 0) > 0 && (
           <div className={`bv-spikes toxic ${at}`} aria-hidden>
-            {Array.from({ length: (sd.toxicSpikes || 0) * 2 }, (_, i) => (
-              <i key={i} />
+            {Array.from({ length: sd.toxicSpikes || 0 }, (_, i) => (
+              <img key={i} src={`${FX}/poisoncaltrop.png`} alt="" />
             ))}
           </div>
         )}
@@ -486,7 +509,7 @@ export default function BattleView(p: Props) {
         {party(1, p.theirs, p.theirActive)}
         {statBox(1, p.theirActive)}
         <div className="bv-pad opp" />
-        <div className="bv-mon opp">{p.theirActive && <Sprite species={p.theirActive.species} size={110} />}</div>
+        <div className="bv-mon opp">{p.theirActive && <FrontSprite species={p.theirActive.species} size={110} />}</div>
         <div className="bv-pad me" />
         <div className="bv-mon me">{p.mineActive && <BackSprite species={p.mineActive.species} size={140} />}</div>
         {statBox(0, p.mineActive)}

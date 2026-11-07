@@ -78,6 +78,7 @@ export interface Vol {
   who?: string; // the Pokémon these effects belong to: they are never sent for another one (a stale carry-over)
   first_move?: string; // the first move since it came in (Protean / Libero changed its type to this move's)
   disabled?: string; // Disable / Cursed Body: this move cannot be used for a few turns
+  transformed?: string; // Ditto (Imposter / Transform): the species it copied
   charging?: string; // a two-turn move it started (Dive, Dig, Fly, Phantom Force, Solar Beam...): it lands next turn
   charge_turn?: number; // the turn it started on (panel only: the charge is sent for the next turn only)
   encore?: string; // Encored into this move
@@ -144,6 +145,8 @@ export function buildPosition(p: PositionInput) {
       mega_used: mineMega.length > 0,
       mega_evolved: mineMega,
       item_gone: p.mine.filter((s) => mk(0, s).gone).map(baseName),
+      // V-Calc's "Disguise broken" box
+      disguise_broken: p.mine.filter((s) => s.ability === 'Disguise' && s.abilityOn).map(baseName),
       // Leech Seed and binding are set in the calc's field (per side); the rest in the AI panel
       volatile: { ...volFor(p.vol?.[0], p.mineActive), leech_seed: !!f.attackerSide.isSeeded, bound: !!f.attackerSide.isBound },
     },
@@ -163,6 +166,7 @@ export function buildPosition(p: PositionInput) {
         item: m.item ? s.item : m.mega && baseForMega(s.species) ? baseForMega(s.species)!.stone : '',
         ability: m.ability ? s.ability : '',
         item_gone: m.gone,
+        disguise_broken: s.ability === 'Disguise' && s.abilityOn,
         volatile: baseName(s) === p.theirActive ? { ...volFor(p.vol?.[1], p.theirActive), leech_seed: !!f.defenderSide.isSeeded, bound: !!f.defenderSide.isBound } : {},
       };
     }),
@@ -266,11 +270,12 @@ export interface PlayMon {
   revealed_item?: string | null;
   revealed_ability?: string | null;
   revealed_moves?: string[] | null;
+  disguise_broken?: boolean;
 }
 export interface PlaySide {
   active: string;
   mons: Record<string, PlayMon>;
-  vol: { yawn: boolean; encore?: string | null; taunt: boolean; substitute: boolean; trapped: boolean; confused: boolean; last_move?: string | null; first_move?: string | null; charging?: string | null; disabled?: string | null };
+  vol: { yawn: boolean; encore?: string | null; taunt: boolean; substitute: boolean; trapped: boolean; confused: boolean; last_move?: string | null; first_move?: string | null; charging?: string | null; disabled?: string | null; transformed?: string | null };
 }
 export interface PlaySideField {
   stealth_rock: boolean;
@@ -296,7 +301,7 @@ export interface PlayResult {
     turns: { weather: number; terrain: number; trick_room: number; tailwind: [number, number]; screens: [[number, number, number], [number, number, number]] };
   };
   winner: number | null;
-  need_pivot: null | { side: 'me' | 'opp'; options: string[] };
+  need_pivot: null | { side: 'me' | 'opp'; options: string[]; kind?: 'revive' };
   replace: [boolean, boolean];
 }
 /** Play the turn both sides chose (average luck, their most likely set): the board after it. */

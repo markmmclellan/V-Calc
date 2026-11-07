@@ -158,8 +158,14 @@ export default function BattleView(p: Props) {
     ) : null;
 
   const sideKey = (side: 0 | 1) => (side === 0 ? 'attackerSide' : 'defenderSide');
-  const setSide = (side: 0 | 1, k: keyof SideState, v: boolean) =>
+  const setSide = (side: 0 | 1, k: keyof SideState, v: boolean | number) =>
     p.setField((f) => ({ ...f, [sideKey(side)]: { ...f[sideKey(side)], [k]: v } }));
+  /** Spikes 0-3, Toxic Spikes 0-2: each tap adds a layer, then back to none. */
+  const LAYERS: ['spikes' | 'toxicSpikes', string, number][] = [
+    ['spikes', 'Spikes', 3],
+    ['toxicSpikes', 'Toxic Spikes', 2],
+  ];
+  const layers = (side: 0 | 1, k: 'spikes' | 'toxicSpikes') => p.field[sideKey(side)][k] || 0;
 
   /** Name, HP, status, stat stages and effects of the Pokémon that is out. */
   const statBox = (side: 0 | 1, s: PokemonSet | undefined) => {
@@ -179,6 +185,20 @@ export default function BattleView(p: Props) {
             {tm(`${side}:${k}`)}
           </button>,
         );
+    for (const [k, l] of LAYERS)
+      if (layers(side, k))
+        tags.push(
+          <button key={k} className="bv-tag fx" title="Tap to remove" onClick={() => setSide(side, k, 0)}>
+            {l}
+            {layers(side, k) > 1 ? ` ×${layers(side, k)}` : ''}
+          </button>,
+        );
+    if (p.vol[side].disabled)
+      tags.push(
+        <button key="dis" className="bv-tag fx" title="Tap to remove" onClick={() => p.patchVol(side, { disabled: undefined })}>
+          Disabled: {p.vol[side].disabled}
+        </button>,
+      );
     const ch = p.vol[side].charging;
     if (ch)
       tags.push(
@@ -283,11 +303,25 @@ export default function BattleView(p: Props) {
                     {l}
                   </button>
                 ))}
+                {LAYERS.map(([k, l, max]) => (
+                  <button key={k} className={layers(side, k) ? 'on' : ''} title="Each tap adds a layer" onClick={() => setSide(side, k, (layers(side, k) + 1) % (max + 1))}>
+                    {l}
+                    {layers(side, k) ? ` ×${layers(side, k)}` : ''}
+                  </button>
+                ))}
                 {VOL_FX.map(([k, l]) => (
                   <button key={k} className={p.vol[side][k] ? 'on' : ''} onClick={() => p.patchVol(side, { [k]: !p.vol[side][k] })}>
                     {l}
                   </button>
                 ))}
+                <button
+                  className={p.vol[side].disabled ? 'on' : ''}
+                  disabled={!p.vol[side].disabled && !p.vol[side].last_move}
+                  title={p.vol[side].last_move ? `${p.vol[side].last_move} can't be used for a few turns` : 'Pick its last move below first'}
+                  onClick={() => p.patchVol(side, { disabled: p.vol[side].disabled ? undefined : p.vol[side].last_move })}
+                >
+                  Disable{p.vol[side].last_move ? ` (${p.vol[side].last_move})` : ''}
+                </button>
                 <button
                   className={p.vol[side].encore ? 'on' : ''}
                   disabled={!p.vol[side].encore && !p.vol[side].last_move}
@@ -391,6 +425,20 @@ export default function BattleView(p: Props) {
             <i />
             <i />
             <i />
+          </div>
+        )}
+        {(sd.spikes || 0) > 0 && (
+          <div className={`bv-spikes ${at}`} aria-hidden>
+            {Array.from({ length: sd.spikes * 2 }, (_, i) => (
+              <i key={i} />
+            ))}
+          </div>
+        )}
+        {(sd.toxicSpikes || 0) > 0 && (
+          <div className={`bv-spikes toxic ${at}`} aria-hidden>
+            {Array.from({ length: (sd.toxicSpikes || 0) * 2 }, (_, i) => (
+              <i key={i} />
+            ))}
           </div>
         )}
         {sd.isReflect && <div className={`bv-screen reflect ${at}`} aria-hidden />}

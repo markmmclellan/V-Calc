@@ -14,6 +14,7 @@ export interface SideState {
   isTailwind: boolean;
   isSR: boolean;
   spikes: number;
+  toxicSpikes?: number; // 0-2 layers (the damage calc ignores it; the AI panel sends it to the bot)
   // Effects on that side's active Pokemon (all optional so older saved fields keep working)
   isSaltCured?: boolean;
   isSeeded?: boolean; // Leech Seed

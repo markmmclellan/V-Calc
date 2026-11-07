@@ -76,6 +76,7 @@ export interface Vol {
   last_move?: string; // the move it used last turn (Encore locks it into this)
   last_move_turn?: number; // the panel's turn when the last move was tapped: a new tap (the same move used again) changes it
   first_move?: string; // the first move since it came in (Protean / Libero changed its type to this move's)
+  disabled?: string; // Disable / Cursed Body: this move cannot be used for a few turns
   charging?: string; // a two-turn move it started (Dive, Dig, Fly, Phantom Force, Solar Beam...): it lands next turn
   charge_turn?: number; // the turn it started on (panel only: the charge is sent for the next turn only)
   encore?: string; // Encored into this move
@@ -167,6 +168,8 @@ export function buildPosition(p: PositionInput) {
       terrain: f.terrain,
       trick_room: f.isTrickRoom,
       stealth_rock: [f.attackerSide.isSR, f.defenderSide.isSR],
+      spikes: [f.attackerSide.spikes || 0, f.defenderSide.spikes || 0],
+      toxic_spikes: [f.attackerSide.toxicSpikes || 0, f.defenderSide.toxicSpikes || 0],
       tailwind: [f.attackerSide.isTailwind, f.defenderSide.isTailwind],
       screens: [
         f.attackerSide.isReflect || f.attackerSide.isLightScreen || f.attackerSide.isAuroraVeil,

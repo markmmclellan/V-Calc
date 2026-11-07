@@ -9,7 +9,7 @@ interface Props {
 const WEATHERS: Weather[] = ['', 'Sun', 'Rain', 'Sand', 'Snow'];
 const TERRAINS: Terrain[] = ['', 'Electric', 'Grassy', 'Misty', 'Psychic'];
 
-type Flag = Exclude<keyof SideState, 'spikes' | 'active' | 'isTailwind'>; // Tailwind is toggled in the Turn order panel
+type Flag = Exclude<keyof SideState, 'spikes' | 'toxicSpikes' | 'active' | 'isTailwind'>; // Tailwind is toggled in the Turn order panel
 
 // label + tooltip for every per-side effect. Each one describes the Pokémon on that side (what it is under or has).
 const INFO: Record<Flag, [string, string]> = {

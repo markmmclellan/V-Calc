@@ -7,6 +7,7 @@ import {
   askReplace,
   askPlayTurn,
   askSolve,
+  sendReport,
   appeared,
   baseName,
   CHARGE_MOVES,
@@ -22,7 +23,19 @@ import {
   type SolveResult,
   type Vol,
 } from '../lib/bot';
-import type { PokemonSet } from '../lib/model';
+import { calcStats, type PokemonSet } from '../lib/model';
+
+/** Abilities that set the weather or terrain when their holder comes in. */
+const ON_ENTRY: Record<string, { weather?: string; terrain?: string }> = {
+  'Sand Stream': { weather: 'Sand' },
+  Drought: { weather: 'Sun' },
+  Drizzle: { weather: 'Rain' },
+  'Snow Warning': { weather: 'Snow' },
+  'Grassy Surge': { terrain: 'Grassy' },
+  'Electric Surge': { terrain: 'Electric' },
+  'Psychic Surge': { terrain: 'Psychic' },
+  'Misty Surge': { terrain: 'Misty' },
+};
 import type { Team } from './TeamSide';
 import BattleView from './BattleView';
 import Sprite from './Sprite';
@@ -193,7 +206,20 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     if (!changed[0] && !changed[1]) return;
     const skip = skipVolReset.current;
     skipVolReset.current = null;
-    if (skip !== null && skip === outNames.join('|')) return;
+    if (skip !== null && skip === outNames.join('|')) return; // a played turn: the engine already did all of this
+    // weather / terrain abilities of the ones that just came in (both at once: the slower one's lands last and stays)
+    const entering = ([0, 1] as const)
+      .filter((sd) => changed[sd])
+      .map((sd) => (sd === 0 ? mineActive : theirActive))
+      .filter((x): x is PokemonSet => !!x?.species && baseName(x) === x.species && !!ON_ENTRY[x.ability])
+      .map((x) => ({ fx: ON_ENTRY[x.ability], spe: calcStats(x.species, x.nature, x.sp)?.spe ?? 0 }))
+      .sort((a, b) => b.spe - a.spe);
+    if (entering.length)
+      setField((f) => {
+        let g = f;
+        for (const e of entering) g = { ...g, ...(e.fx.weather ? { weather: e.fx.weather as FieldState['weather'] } : {}), ...(e.fx.terrain ? { terrain: e.fx.terrain as FieldState['terrain'] } : {}) };
+        return g;
+      });
     setVol((old) => {
       const next: [Vol, Vol] = [old[0], old[1]];
       for (const sd of [0, 1] as const) {
@@ -417,10 +443,23 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     setOutcome((o) => {
       const n: [Outcome, Outcome] = [{ ...o[0] }, { ...o[1] }];
       n[sd][k] = !n[sd][k];
+      if (k === 'first' && n[sd].first) n[(1 - sd) as 0 | 1].first = false; // only one side can go first
       return n;
     });
   const [needPivot, setNeedPivot] = useState<{ side: 'me' | 'opp'; options: string[]; chosen: Record<string, string> } | null>(null);
   type Snapshot = { teams: [Team, Team]; field: FieldState; vol: [Vol, Vol]; marks: Record<string, Marks>; turn: number; timers: Record<string, number> };
+  // Report: one tap saves the board, the last answer and the last played turn for fixing later
+  const [reported, setReported] = useState('');
+  const doReport = () => {
+    if (!board) return;
+    const pos = { ...withTimers(board, 0, outFor.current.n), turn, game: gameId.current };
+    sendReport(mineAll, pos, { solved, played: played ? { turn: played.turn, events: played.events } : null, warnings: botWarn, error, opp_sets: teams[1].sets })
+      .then(() => setReported('Saved'))
+      .catch((e) => setReported('Could not save: ' + (e instanceof Error ? e.message : String(e))));
+    window.setTimeout(() => setReported(''), 2500);
+  };
+  // what the bot left out of the last answer because it did not understand it (it answers anyway)
+  const [botWarn, setBotWarn] = useState<string[]>([]);
   const [played, setPlayed] = useState<{ turn: number; events: string[]; undo: Snapshot } | null>(null);
   const strip = (a: string) => a.replace(/ -> .*$/, '');
   const freshSolve = solved && solved.key === key ? solved : null;
@@ -589,6 +628,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     <span className="ai-outcome">
       {(
         [
+          ['first', 'First', 'It moved first (a speed tie, or the bot has the speed wrong)'],
           ['miss', 'Missed', 'Its move missed'],
           ['crit', 'Crit', 'Its hit was a critical hit'],
           ['no_move', "Didn't move", 'Flinched, fully paralysed, asleep... it did not move this turn'],
@@ -601,8 +641,20 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     </span>
   );
 
+  const [playBusy, setPlayBusy] = useState(false);
+  const runPlay = async (fn: () => Promise<void>) => {
+    setPlayBusy(true);
+    setError('');
+    try {
+      await fn();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setPlayBusy(false);
+    }
+  };
   const doPlay = (pivot: Record<string, string> = {}) =>
-    run('Playing the turn…', async () => {
+    runPlay(async () => {
       if (!board) throw new Error(boardProblem);
       setLive(true);
       const mine = needPivot ? needPivot.chosen.__mine : playChoice[0] || defaultPlay[0];
@@ -614,6 +666,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
       void __mine;
       void __theirs;
       const r = await askPlayTurn(mineAll, pos, mine, theirs, piv, teams[1].sets, { me: outcome[0], opp: outcome[1] });
+      setBotWarn(r.warnings ?? []);
       if (r.need_pivot) {
         setNeedPivot({ side: r.need_pivot.side, options: r.need_pivot.options, chosen: { ...piv, __mine: mine, __theirs: theirs } });
         return;
@@ -663,6 +716,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     if (kind === 'replace')
       return run('Picking your replacement…', async () => {
         const r = await askReplace(mineAll, pos);
+        setBotWarn(r.warnings ?? []);
         setSolved(null);
         const dko = !!r.double_ko;
         setAdvice({
@@ -686,6 +740,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
       });
     return run(`Solving this turn (about ${secs} s)…`, async () => {
       const r = await askSolve(mineAll, pos, secs);
+      setBotWarn(r.warnings ?? []);
       setAdvice(null);
       setSolved({ ...r, key: k });
     });
@@ -849,19 +904,6 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
         <div className="ai-col">
 
         <section className="ai-answer">
-          <div className="ai-actions">
-            <button className="primary" onClick={solveNow} disabled={!ready || !!busy}>
-              {myKo ? 'Pick my replacement' : 'Solve this turn'}
-            </button>
-            {busy ? (
-              <span className="hint">{busy}</span>
-            ) : boardProblem ? (
-              <span className="hint">{boardProblem}</span>
-            ) : auto && !live ? (
-              <span className="hint">Auto starts once you tap who is out or press Solve.</span>
-            ) : null}
-          </div>
-          {error && <p className="err">{error}</p>}
           {ready && board && !myKo && (
             <div className="ai-play">
               <span className="hint" title="Pick what both sides did, then Play: the turn runs with average luck (middle damage roll, no crits, chance effects only when likely) and the board updates itself. Fix what luck changed (HP, a crit, a burn) by hand.">
@@ -885,8 +927,8 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
                 </select>
               </label>
               {outcomeChips(1)}
-              <button onClick={() => doPlay()} disabled={!!busy}>
-                Play
+              <button className="primary" onClick={() => doPlay()} disabled={playBusy}>
+                {playBusy ? 'Playing…' : 'Play'}
               </button>
             </div>
           )}
@@ -915,6 +957,27 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
                 ))}
               </ul>
             </details>
+          )}
+          <div className="ai-actions">
+            <button className="primary" onClick={solveNow} disabled={!ready || !!busy}>
+              {myKo ? 'Pick my replacement' : 'Solve this turn'}
+            </button>
+            <button className="ai-report" onClick={doReport} disabled={!board} title="Something looks wrong? Saves this board and what the bot said, to fix later">
+              {reported || 'Report'}
+            </button>
+            {busy ? (
+              <span className="hint">{busy}</span>
+            ) : boardProblem ? (
+              <span className="hint">{boardProblem}</span>
+            ) : auto && !live ? (
+              <span className="hint">Auto starts once you tap who is out or press Solve.</span>
+            ) : null}
+          </div>
+          {error && <p className="err">{error}</p>}
+          {botWarn.length > 0 && (
+            <p className="ai-left" title="The bot answered without these; fix them in the calc if they matter">
+              ⚠ Left out: {botWarn.join(' · ')}
+            </p>
           )}
 
           {solved && (

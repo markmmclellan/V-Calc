@@ -241,6 +241,7 @@ export interface SolveRow {
   worst: number; // win chance against their best reply to this option
 }
 export interface SolveResult {
+  warnings?: string[]; // what the bot left out because it did not understand it (it answered anyway)
   value: number;
   mine: SolveRow[];
   theirs: { their_action: string; prob: number }[];
@@ -284,6 +285,7 @@ export interface PlaySideField {
 }
 export interface PlayResult {
   events: string[];
+  warnings?: string[];
   me: PlaySide;
   opp: PlaySide;
   field: {
@@ -298,11 +300,15 @@ export interface PlayResult {
   replace: [boolean, boolean];
 }
 /** Play the turn both sides chose (average luck, their most likely set): the board after it. */
+/** "Something is off here": the board and what the bot said, saved on the bot's computer for later. */
+export const sendReport = (team: PokemonSet[], pos: Position, extra: Record<string, unknown>) => call<{ ok: boolean }>('/api/report', { ...withTeam(team, pos), ...extra });
+
 /** What you saw happen to one side's move this turn (overrides the dice). */
 export interface Outcome {
   miss?: boolean;
   crit?: boolean;
   no_move?: boolean; // flinched, fully paralysed, asleep...
+  first?: boolean; // it moved first (a speed tie, or the engine has the speed wrong)
 }
 export const askPlayTurn = (
   team: PokemonSet[],
@@ -331,6 +337,7 @@ export const askReplace =(team: PokemonSet[], pos: Position) =>
     replace: { action: string; win: number; games: number; mix?: number; worst?: number; vs?: Record<string, number> }[];
     note?: string;
     double_ko?: boolean; // both fainted: a blind pick, solved as a guessing game
+    warnings?: string[];
     theirs?: { their_action: string; prob: number }[];
   }>('/api/replace', withTeam(team, pos));
 

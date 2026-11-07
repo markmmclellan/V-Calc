@@ -180,7 +180,8 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
   // A Pokémon that switches out loses its effects, and frees the other side from its trap.
   const outNames = [mineActive ? baseName(mineActive) : '', theirActive ? baseName(theirActive) : ''];
   // a played turn sets everything itself: the reactions to a switch / a new turn are skipped once
-  const skipVolReset = useRef(false);
+  // the names out right after a played turn / undo: that one change keeps the effects it set; any later switch resets
+  const skipVolReset = useRef<string | null>(null);
   const pendingTimers = useRef<((old: Record<string, number>) => Record<string, number>) | null>(null);
   const playedTurn = useRef<number | null>(null);
   const prevOut = useRef(outNames);
@@ -189,10 +190,9 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     prevOut.current = outNames;
     const changed = [a !== outNames[0], b !== outNames[1]];
     if (!changed[0] && !changed[1]) return;
-    if (skipVolReset.current) {
-      skipVolReset.current = false;
-      return;
-    }
+    const skip = skipVolReset.current;
+    skipVolReset.current = null;
+    if (skip !== null && skip === outNames.join('|')) return;
     setVol((old) => {
       const next: [Vol, Vol] = [old[0], old[1]];
       for (const sd of [0, 1] as const) {
@@ -550,7 +550,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
       disabled: v.disabled ?? undefined,
     });
     setVol([volOf(r.me.vol), volOf(r.opp.vol)]);
-    skipVolReset.current = true;
+    skipVolReset.current = `${r.me.active}|${r.opp.active}`;
     // timers: the usual count-down, with what the engine knows (weather, terrain, Trick Room, Tailwind, screens) on top
     const tt = f.turns;
     pendingTimers.current = (old) => {
@@ -598,7 +598,8 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
   const undoPlay = () => {
     if (!played) return;
     const s = played.undo;
-    skipVolReset.current = true;
+    const nm = (t: Team) => (t.sets[t.active]?.species ? baseName(t.sets[t.active]) : '');
+    skipVolReset.current = `${nm(s.teams[0])}|${nm(s.teams[1])}`;
     pendingTimers.current = () => s.timers;
     playedTurn.current = null;
     setTeams(() => s.teams);

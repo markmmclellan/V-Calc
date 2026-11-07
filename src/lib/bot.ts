@@ -75,6 +75,7 @@ export interface Marks {
 export interface Vol {
   last_move?: string; // the move it used last turn (Encore locks it into this)
   last_move_turn?: number; // the panel's turn when the last move was tapped: a new tap (the same move used again) changes it
+  who?: string; // the Pokémon these effects belong to: they are never sent for another one (a stale carry-over)
   first_move?: string; // the first move since it came in (Protean / Libero changed its type to this move's)
   disabled?: string; // Disable / Cursed Body: this move cannot be used for a few turns
   charging?: string; // a two-turn move it started (Dive, Dig, Fly, Phantom Force, Solar Beam...): it lands next turn
@@ -115,6 +116,9 @@ export interface PositionInput {
 }
 
 /** V-Calc's battle state as the bot's position description (hp as percent; the bot converts using your max HP). */
+/** The effects of the Pokémon that is out, or nothing if they were recorded for a different one. */
+const volFor = (v: Vol | undefined, name: string): Vol => (v && (!v.who || v.who === name) ? v : {});
+
 export function buildPosition(p: PositionInput) {
   const mk = (side: 0 | 1, s: PokemonSet): Marks => p.marks[`${side}:${baseName(s)}`] ?? blankMarks();
   const boosts = (s: PokemonSet) => Object.fromEntries(Object.entries(s.boosts).filter(([, v]) => v));
@@ -141,7 +145,7 @@ export function buildPosition(p: PositionInput) {
       mega_evolved: mineMega,
       item_gone: p.mine.filter((s) => mk(0, s).gone).map(baseName),
       // Leech Seed and binding are set in the calc's field (per side); the rest in the AI panel
-      volatile: { ...(p.vol?.[0] ?? {}), leech_seed: !!f.attackerSide.isSeeded, bound: !!f.attackerSide.isBound },
+      volatile: { ...volFor(p.vol?.[0], p.mineActive), leech_seed: !!f.attackerSide.isSeeded, bound: !!f.attackerSide.isBound },
     },
     opp: p.theirs.map((s) => {
       const m = mk(1, s);
@@ -159,7 +163,7 @@ export function buildPosition(p: PositionInput) {
         item: m.item ? s.item : m.mega && baseForMega(s.species) ? baseForMega(s.species)!.stone : '',
         ability: m.ability ? s.ability : '',
         item_gone: m.gone,
-        volatile: baseName(s) === p.theirActive ? { ...(p.vol?.[1] ?? {}), leech_seed: !!f.defenderSide.isSeeded, bound: !!f.defenderSide.isBound } : {},
+        volatile: baseName(s) === p.theirActive ? { ...volFor(p.vol?.[1], p.theirActive), leech_seed: !!f.defenderSide.isSeeded, bound: !!f.defenderSide.isBound } : {},
       };
     }),
     opp_mega_used: p.theirs.some((s) => mk(1, s).mega),

@@ -104,7 +104,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
   const patchVol = (side: 0 | 1, patch: Partial<Vol>) =>
     setVol((old) => {
       const next: [Vol, Vol] = [old[0], old[1]];
-      next[side] = { ...old[side], ...patch };
+      next[side] = { ...old[side], ...patch, who: outNames[side] || old[side].who };
       // The first move since it came in (Protean / Libero take its type). A pick made while it is still on its first
       // turn out replaces it, so fixing a wrong tap works; after that it stays.
       if ('last_move' in patch) {
@@ -549,7 +549,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
       charge_turn: v.charging ? t0 : undefined,
       disabled: v.disabled ?? undefined,
     });
-    setVol([volOf(r.me.vol), volOf(r.opp.vol)]);
+    setVol([{ ...volOf(r.me.vol), who: r.me.active }, { ...volOf(r.opp.vol), who: r.opp.active }]);
     skipVolReset.current = `${r.me.active}|${r.opp.active}`;
     // timers: the usual count-down, with what the engine knows (weather, terrain, Trick Room, Tailwind, screens) on top
     const tt = f.turns;

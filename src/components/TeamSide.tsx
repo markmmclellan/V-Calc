@@ -18,7 +18,10 @@ export interface Team {
 export function focusSlot(t: Team, index: number): Team {
   if (index === t.active || index < 0 || index >= t.sets.length) return t;
   if (index === t.partner) return { ...t, active: index, partner: t.active };
-  return { ...t, active: index };
+  // the one leaving the field gets its Protean / Libero back (once per switch-in)
+  const out = t.sets[t.active];
+  const sets = out?.proteanType ? t.sets.map((s, i) => (i === t.active ? { ...s, proteanType: undefined } : s)) : t.sets;
+  return { ...t, sets, active: index };
 }
 
 /** Add or remove a Pokémon as the second one on the field. The selected Pokémon is always on the field already. */

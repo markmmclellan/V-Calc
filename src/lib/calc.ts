@@ -136,13 +136,34 @@ function spreadTargets(move: Move, foes: number, allies: number): number | null 
   return null;
 }
 
+/**
+ * Protean / Libero after it has been used: the Pokemon is now purely the type it changed to, and the ability no longer
+ * gives STAB to every move (the library always assumes the move about to be used is the first). The library clones
+ * Pokemon before calculating, and its clone would merge the old types back in, so the type is set again on clone.
+ */
+class ProteanUsedPokemon extends Pokemon {
+  changedTo = '';
+  hasAbility(...abilities: string[]): boolean {
+    return super.hasAbility(...abilities.filter((a) => a !== 'Protean' && a !== 'Libero'));
+  }
+  clone(): Pokemon {
+    const c = Object.setPrototypeOf(super.clone(), ProteanUsedPokemon.prototype) as ProteanUsedPokemon;
+    c.changedTo = this.changedTo;
+    (c as { types: string[] }).types = [this.changedTo];
+    return c;
+  }
+}
+
+export const isProtean = (ability: string) => ability === 'Protean' || ability === 'Libero';
+
 export function buildPokemon(set: PokemonSet, allySteelySpirit = false): Pokemon | null {
   if (!gen.species.get(toID(set.species))) return null;
   const stats = calcStats(set.species, set.nature, set.sp);
   if (!stats) return null;
   const evs = Object.fromEntries(STAT_KEYS.map((k) => [k, set.sp[k]]));
-  const Ctor = allySteelySpirit && set.ability !== 'Steely Spirit' ? AllySteelySpiritPokemon : Pokemon;
-  return new Ctor(gen, set.species, {
+  const protean = isProtean(set.ability) && set.proteanType ? set.proteanType : '';
+  const Ctor = protean ? ProteanUsedPokemon : allySteelySpirit && set.ability !== 'Steely Spirit' ? AllySteelySpiritPokemon : Pokemon;
+  const p = new Ctor(gen, set.species, {
     level: LEVEL,
     ability: set.ability || undefined,
     abilityOn: set.abilityOn,
@@ -154,6 +175,11 @@ export function buildPokemon(set: PokemonSet, allySteelySpirit = false): Pokemon
     evs,
     curHP: Math.max(1, Math.round((stats.hp * set.hpPercent) / 100)),
   });
+  if (protean) {
+    (p as ProteanUsedPokemon).changedTo = protean;
+    (p as { types: string[] }).types = [protean];
+  }
+  return p;
 }
 
 const WEATHER_MAP: Record<string, string | undefined> = { '': undefined };

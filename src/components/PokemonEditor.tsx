@@ -1,6 +1,8 @@
 import { useRef, useState } from 'react';
 import { toID } from '@smogon/calc';
-import { lastRespectsPower } from '../lib/calc';
+import { isProtean, lastRespectsPower } from '../lib/calc';
+
+const ALL_TYPES = ['Normal', 'Fire', 'Water', 'Electric', 'Grass', 'Ice', 'Fighting', 'Poison', 'Ground', 'Flying', 'Psychic', 'Bug', 'Rock', 'Ghost', 'Dragon', 'Dark', 'Steel', 'Fairy'];
 import { metaFor, type BattleFormat, type Meta } from '../lib/data';
 import {
   baseStatsOf,
@@ -98,7 +100,7 @@ export default function PokemonEditor({ set, onChange, meta, format, weather, on
     const s = gen.species.get(toID(name));
     if (!s) return patch({ species: name }); // let the user keep typing
     const abs = abilitiesOf(s.name);
-    patch({ species: s.name, ability: abs.includes(set.ability) ? set.ability : abs[0] ?? '' });
+    patch({ species: s.name, ability: abs.includes(set.ability) ? set.ability : abs[0] ?? '', proteanType: undefined });
   };
 
   /** Mirror Showdown: holding a Mega Stone switches to (or from) the Mega form. */
@@ -163,7 +165,7 @@ export default function PokemonEditor({ set, onChange, meta, format, weather, on
             )}
           </div>
           <div className="types-row">
-            <TypeBadges types={species?.types as string[] | undefined} />
+            <TypeBadges types={isProtean(set.ability) && set.proteanType ? [set.proteanType] : (species?.types as string[] | undefined)} />
             <PresetBar set={set} onChange={onChange} />
           </div>
         </div>
@@ -309,10 +311,27 @@ export default function PokemonEditor({ set, onChange, meta, format, weather, on
             </select>
           </label>
         ))}
-        <label className="check" title={set.ability === 'Disguise' ? 'Tick once the Disguise has been broken (the first hit is no longer blocked)' : 'For abilities that need to be active (e.g. Flash Fire, Protosynthesis)'}>
-          <input type="checkbox" checked={set.abilityOn} onChange={(e) => patch({ abilityOn: e.target.checked })} />
-          {set.ability === 'Disguise' ? 'Disguise broken' : 'Ability active'}
-        </label>
+        {isProtean(set.ability) ? (
+          <label
+            className="inline"
+            title={`${set.ability} changes its type to its move's type once per switch-in. Not used yet: every move gets STAB (whichever it uses first). Used: it is now that one type, and only moves of that type get STAB. A single-type Pokémon using its own type does not use it up.`}
+          >
+            {set.ability}
+            <select value={set.proteanType ?? ''} onChange={(e) => patch({ proteanType: e.target.value || undefined })}>
+              <option value="">not used yet</option>
+              {ALL_TYPES.map((t) => (
+                <option key={t} value={t}>
+                  now {t}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : (
+          <label className="check" title={set.ability === 'Disguise' ? 'Tick once the Disguise has been broken (the first hit is no longer blocked)' : 'For abilities that need to be active (e.g. Flash Fire, Protosynthesis)'}>
+            <input type="checkbox" checked={set.abilityOn} onChange={(e) => patch({ abilityOn: e.target.checked })} />
+            {set.ability === 'Disguise' ? 'Disguise broken' : 'Ability active'}
+          </label>
+        )}
         {(set.ability === 'Supreme Overlord' || set.moves.includes('Last Respects')) && (
           <label className="inline" title="How many of your Pokémon have fainted: Supreme Overlord gives +10% power each (up to 5), Last Respects is 50 + 50 power each">
             Fainted allies

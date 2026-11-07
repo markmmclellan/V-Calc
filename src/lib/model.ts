@@ -68,6 +68,9 @@ export interface PokemonSet {
   boosts: BoostTable;
   hpPercent: number; // 1-100
   abilityOn: boolean;
+  /** Protean / Libero already used since it came in: the type it changed to (unset = not used yet, so its next move
+   * gets STAB). Once per switch-in in Champions; a mono type using its own type does not use it up. */
+  proteanType?: string;
   alliesFainted?: number; // 0-5, for Supreme Overlord
   critMoves: boolean[]; // per move slot
 }

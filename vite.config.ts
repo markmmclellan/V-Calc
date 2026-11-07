@@ -43,23 +43,24 @@ function refreshEndpoint(): Plugin {
 }
 
 /** Short git commit of this build, or '' when git isn't available. */
-function commit(): string {
+/** The version: the major number from package.json, then how many commits there are, so every push counts up
+ * (v1.78, v1.79...). The deploy checks out the whole history so the count is right there too. */
+function version(): string {
+  const major = String(JSON.parse(fs.readFileSync('./package.json', 'utf8')).version).split('.')[0] || '1';
   try {
-    return execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+    const n = execSync('git rev-list --count HEAD', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+    return `${major}.${n}`;
   } catch {
-    return '';
+    return major;
   }
 }
-
-const pkg = JSON.parse(fs.readFileSync('./package.json', 'utf8'));
 
 export default defineConfig({
   plugins: [react(), refreshEndpoint()],
   base: './',
   // shown in the footer so you can tell which deploy you're looking at
   define: {
-    __APP_VERSION__: JSON.stringify(pkg.version),
-    __APP_COMMIT__: JSON.stringify(commit()),
+    __APP_VERSION__: JSON.stringify(version()),
     __APP_BUILT__: JSON.stringify(new Date().toISOString()),
   },
 });

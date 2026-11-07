@@ -496,7 +496,7 @@ export default function App() {
         <button className="linklike" onClick={changeBotUrl} title="Where the optional AI bot runs. The AI advice button appears when it answers.">
           AI bot: {botUrl === DEFAULT_BOT_URL ? 'this computer' : botUrl}
         </button>
-        {' · '}© 2026 Mark McLellan · <span title={`Built ${new Date(__APP_BUILT__).toLocaleString()}`}>v{__APP_VERSION__}{__APP_COMMIT__ ? ` (${__APP_COMMIT__})` : ''} · built {new Date(__APP_BUILT__).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}</span>
+        {' · '}© 2026 Mark McLellan · <span title={`Built ${new Date(__APP_BUILT__).toLocaleString()}`}>v{__APP_VERSION__} · built {new Date(__APP_BUILT__).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}</span>
       </footer>
 
       <Mascot />

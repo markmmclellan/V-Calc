@@ -403,6 +403,13 @@ export const oppSetsJson = (theirSets: PokemonSet[]) =>
       .map((s) => [baseName(s), { item: s.item, ability: baseName(s) === s.species ? s.ability : '', nature: s.nature, sp: [s.sp.hp, s.sp.atk, s.sp.def, s.sp.spa, s.sp.spd, s.sp.spe], moves: s.moves }]),
   );
 
+/** The board as you corrected it after a played turn: only logged (the review shows how the game really went). */
+export const logBoard = (team: PokemonSet[], pos: Position) => call<{ ok: boolean }>('/api/board', withTeam(team, pos));
+
+/** The start of a battle: both leads come in through the engine (Intimidate, weather and terrain, Imposter...). */
+export const askLeads = (team: PokemonSet[], pos: Position, theirSets: PokemonSet[] = []) =>
+  call<PlayResult>('/api/leads', { ...withTeam(team, pos), opp_sets: oppSetsJson(theirSets) });
+
 /** The opposing Pokémon's most likely builds, given the hits measured so far. */
 export const askLikelySets = (team: PokemonSet[], pos: Position) => call<LikelySets>('/api/likely_sets', withTeam(team, pos));
 

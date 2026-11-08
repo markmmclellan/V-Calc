@@ -8,6 +8,8 @@ import {
   askPlayTurn,
   askSendIn,
   askLikelySets,
+  askLeads,
+  logBoard,
   oppSetsJson,
   maxHpOf,
   type LikelySets,
@@ -175,6 +177,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     setTurnRaw(1);
     setNext('solve');
     setShowSetup(false);
+    setLeadsDone(false);
     setPlayed(null);
     setSolved(null);
     setAdvice(null);
@@ -567,7 +570,9 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
   };
   // what the bot left out of the last answer because it did not understand it (it answers anyway)
   const [botWarn, setBotWarn] = useState<string[]>([]);
-  const [played, setPlayed] = useState<{ turn: number; events: string[]; undo: Snapshot; sent?: boolean } | null>(null);
+  const [played, setPlayed] = useState<{ turn: number; events: string[]; undo: Snapshot; sent?: boolean; leads?: boolean } | null>(null);
+  // turn 1: the leads' entry abilities (Intimidate, weather, terrain...) run through the engine once both leads are out
+  const [leadsDone, setLeadsDone] = useState(false);
   const strip = (a: string) => a.replace(/ -> .*$/, '');
   const freshSolve = solved && solved.key === coreKey ? solved : null;
   const playOpts: [string[], string[]] = (() => {
@@ -830,8 +835,40 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
       setBotWarn(r.warnings ?? []);
       applyPlay(r, snap, false);
     });
+  // after a played turn, the board you correct by hand is logged a few seconds after you stop (once per change)
+  const loggedKey = useRef('');
+  useEffect(() => {
+    if (!played || played.sent || !board || !coreKey || loggedKey.current === coreKey) return;
+    const t = window.setTimeout(() => {
+      loggedKey.current = coreKey;
+      const pos = { ...withTimers(board, 0, outFor.current.n), turn, game: gameId.current };
+      logBoard(mineAll, pos).catch(() => {});
+    }, 4000);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [coreKey, played]);
+  const noBoosts = (s?: PokemonSet) => !s || Object.values(s.boosts).every((v) => !v);
+  const needLeads = turn === 1 && !leadsDone && !!rawBoard && !!mineActive?.species && !!theirActive?.species && !played && noBoosts(mineActive) && noBoosts(theirActive) && !field.weather && !field.terrain;
+  const doLeads = () =>
+    runPlay(async () => {
+      if (!rawBoard) return;
+      const snap: Snapshot = { teams, field, vol, marks, turn, timers };
+      const pos = { ...withTimers(rawBoard, 0, outFor.current.n), turn, game: gameId.current };
+      const r = await askLeads(mineAll, pos, teams[1].sets);
+      setLeadsDone(true);
+      if (!r.events.length) return; // no entry abilities: nothing to show
+      applyPlay(r, snap, false);
+      setPlayed({ turn, events: ['Leads come in:', ...r.events], undo: snap, sent: true, leads: true });
+    });
+  useEffect(() => {
+    if (!open || !ready || !live || !needLeads || playBusy) return;
+    const t = window.setTimeout(doLeads, 1500); // after you finish picking the leads
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, ready, live, needLeads, mineActive?.species, theirActive?.species]);
   const undoPlay = () => {
     if (!played) return;
+    if (played.leads) setLeadsDone(false);
     const s = played.undo;
     const nm = (t: Team) => (t.sets[t.active]?.species ? baseName(t.sets[t.active]) : '');
     skipVolReset.current = `${nm(s.teams[0])}|${nm(s.teams[1])}`;
@@ -849,6 +886,11 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
   const solveNow = () => {
     if (!board) {
       setError(boardProblem);
+      return;
+    }
+    if (needLeads) {
+      setLive(true);
+      doLeads();
       return;
     }
     finalizeHits();
@@ -908,7 +950,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
 
   // Auto: re-solve shortly after the board stops changing.
   useEffect(() => {
-    if (!open || !auto || !live || !ready || busy || !key || last.current?.key === key) return;
+    if (!open || !auto || !live || !ready || busy || !key || last.current?.key === key || needLeads) return;
     const t = window.setTimeout(solveNow, 1200);
     return () => window.clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps

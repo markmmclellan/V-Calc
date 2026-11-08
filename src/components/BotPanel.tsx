@@ -95,6 +95,8 @@ const pct = (x: number) => `${Math.round(x * 100)}%`;
  * Taunt, Encore and Yawn count from the turn after (Yawn: asleep at the end of the next turn). */
 const TIMED: Record<string, number> = { weather: 5, terrain: 5, tr: 5, isTailwind: 4, isReflect: 5, isLightScreen: 5, isAuroraVeil: 5, taunt: 4, encore: 4, yawn: 2 };
 const timerStart = (key: string) => TIMED[key.split(':').pop()!] ?? 5;
+/** " + Mega" after one of their moves when the bot expects them to Mega Evolve with it ("+ Mega 60%" when unsure). */
+const megaNote = (m?: number) => (m == null || m < 0.05 ? '' : m >= 0.95 ? ' + Mega' : ` + Mega ${Math.round(m * 100)}%`);
 /** Options this close (win chance against their likely play) are a toss-up: the simulation cannot tell them apart. */
 const CLOSE = 0.02;
 const Bar = ({ v }: { v: number }) => (
@@ -596,9 +598,12 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     for (const s of teams[1].sets) if (theirActive && s.species && baseName(s) !== baseName(theirActive) && !mark(1, s).ko) add(theirOpts, 'Switch to ' + baseName(s));
     return [myOpts, theirOpts];
   })();
+  // their top move, with Mega Evolution when the bot expects it
+  const theirTop = freshSolve && [...freshSolve.theirs].sort((a, b) => b.prob - a.prob).find((t) => t.their_action !== 'Switch out');
+  const theirTopLabel = theirTop && (theirTop.mega ?? 0) >= 0.5 && playOpts[1].includes(`${theirTop.their_action} + Mega Evolve`) ? `${theirTop.their_action} + Mega Evolve` : theirTop?.their_action;
   const defaultPlay: [string, string] = [
     (freshSolve && strip([...freshSolve.mine].sort((a, b) => b.mix - a.mix)[0]?.action ?? '')) || playOpts[0][0] || '',
-    (freshSolve && [...freshSolve.theirs].sort((a, b) => b.prob - a.prob).find((t) => t.their_action !== 'Switch out')?.their_action) || playOpts[1][0] || '',
+    theirTopLabel || playOpts[1][0] || '',
   ];
   // a new board to choose for: back to the bot's suggestions
   useEffect(() => setPlayChoice(['', '']), [solved?.key]);
@@ -1251,7 +1256,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
                 {solved.theirs
                   .filter((c) => c.prob >= 0.05)
                   .slice(0, 4)
-                  .map((c) => `${c.their_action} ${pct(c.prob)}`)
+                  .map((c) => `${c.their_action}${megaNote(c.mega)} ${pct(c.prob)}`)
                   .join(' · ') || '–'}
               </p>
               <p className="hint">

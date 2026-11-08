@@ -303,7 +303,7 @@ export interface SolveResult {
   warnings?: string[]; // what the bot left out because it did not understand it (it answered anyway)
   value: number;
   mine: SolveRow[];
-  theirs: { their_action: string; prob: number }[];
+  theirs: { their_action: string; prob: number; mega?: number }[]; // mega: how often that move comes with Mega Evolution
   endgame?: boolean; // two or fewer a side: every chance outcome of two turns listed exactly
   depth?: number;
   cut_short?: boolean;

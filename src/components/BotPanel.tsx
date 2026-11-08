@@ -155,7 +155,9 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
   const [solved, setSolved] = useState<(SolveResult & { key: string }) | null>(null);
   const [advice, setAdvice] = useState<(Advice & { key: string }) | null>(null);
   // the last call to the bot: its board and turn, to tell a new turn from the same one
-  const last = useRef<{ key: string; turnKey: string; bring: string; turn: number; kind: 'solve' | 'replace'; at: number } | null>(null);
+  // this game's turns go through Play turn: the turn number then only moves with it, never guessed from edits
+  const playsTurns = useRef(false);
+  const last = useRef<{ key: string; turnKey: string; hpKey: string; bring: string; turn: number; kind: 'solve' | 'replace'; at: number } | null>(null);
   // one id per game, sent with each question so the bot's log (runs/gui_log.jsonl) can tell games apart
   const gameId = useRef(new Date().toISOString());
 
@@ -191,6 +193,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     setTimers({});
     outFor.current = { names: ['', ''], n: [0, 0] };
     last.current = null;
+    playsTurns.current = false;
     gameId.current = new Date().toISOString();
   }, [battleId]);
 
@@ -473,6 +476,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
   // Only what a turn changes: who is out, HP, status, boosts, the field, and the moves used and their effects (a turn of
   // Yawn into Dive, Protect or Taunt changes nothing else). Revealed moves, items and Mega marks are facts you learn,
   // not a turn going by.
+  const hpKey = board ? JSON.stringify([board.me.active, board.me.hp, board.me.status, board.opp.map((o) => [o.species, o.hp, o.status, o.active])]) : '';
   const turnKey = board
     ? JSON.stringify({
         me: [board.me.active, board.me.hp, board.me.status, board.me.boosts],
@@ -744,6 +748,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
       return next;
     };
     playedTurn.current = t0 + 1;
+    playsTurns.current = true;
     setTurnRaw(t0 + 1);
     setPlayed({ turn: t0, events: r.events, undo: snap });
     pendingHits.current = {
@@ -911,11 +916,12 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     let t = turn;
     const l = last.current;
     if (playedTurn.current === turn) playedTurn.current = null; // Play turn already counted this one
-    else if (l && l.kind === 'solve' && l.turn === turn && l.turnKey !== turnKey && l.bring === bringKey && now - l.at > SAME_TURN_MS) t = turn + 1;
+    // (turn 1: only damage, a status or a switch means a turn went by, not a stat stage or weather put right by hand)
+    else if (!playsTurns.current && l && l.kind === 'solve' && l.turn === turn && l.turnKey !== turnKey && (turn > 1 || l.hpKey !== hpKey) && l.bring === bringKey && now - l.at > SAME_TURN_MS) t = turn + 1;
     if (t !== turn) setTurnRaw(t);
     const pos = { ...withTimers(board, t - turn, countOut(t)), turn: t, game: gameId.current };
     const kind = myKo ? 'replace' : 'solve';
-    last.current = { key, turnKey, bring: bringKey, turn: t, kind, at: now };
+    last.current = { key, turnKey, hpKey, bring: bringKey, turn: t, kind, at: now };
     const k = coreKey;
     if (kind === 'replace')
       return run('Picking your replacement…', async () => {

@@ -345,6 +345,18 @@ export const askPlayTurn = (
         .map((s) => [baseName(s), { item: s.item, ability: baseName(s) === s.species ? s.ability : '', nature: s.nature, sp: [s.sp.hp, s.sp.atk, s.sp.def, s.sp.spa, s.sp.spd, s.sp.spe], moves: s.moves }]),
     ),
   });
+/** A replacement sent in between turns through the engine, so Stealth Rock, Intimidate and the like apply. */
+export const askSendIn = (team: PokemonSet[], pos: Position, side: 'me' | 'opp', species: string, theirSets: PokemonSet[] = []) =>
+  call<PlayResult>('/api/send_in', {
+    ...withTeam(team, pos),
+    side,
+    species,
+    opp_sets: Object.fromEntries(
+      theirSets
+        .filter((s) => s.species)
+        .map((s) => [baseName(s), { item: s.item, ability: baseName(s) === s.species ? s.ability : '', nature: s.nature, sp: [s.sp.hp, s.sp.atk, s.sp.def, s.sp.spa, s.sp.spd, s.sp.spe], moves: s.moves }]),
+    ),
+  });
 export const askReplace =(team: PokemonSet[], pos: Position) =>
   call<{
     replace: { action: string; win: number; games: number; mix?: number; worst?: number; vs?: Record<string, number> }[];

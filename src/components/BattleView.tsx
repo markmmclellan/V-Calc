@@ -94,7 +94,22 @@ function FrontSprite({ species, size }: { species: string; size: number }) {
 /** A sprite at its own size, as Showdown shows them (a small Pokémon like Ditto stays small); only very large ones are
  * scaled down to fit the field. */
 function NaturalSprite({ src, size, onError }: { src: string; size: number; onError: () => void }) {
-  return <img className="bv-sprite" src={src} alt="" draggable={false} style={{ maxWidth: size * 1.6, maxHeight: size * 1.4 }} onError={onError} />;
+  // every sprite scaled by the same factor, so sizes stay true to each other (Ditto small, Hippowdon big)
+  const [dim, setDim] = useState<{ src: string; w: number; h: number } | null>(null);
+  const k = 1.6;
+  const d = dim && dim.src === src ? dim : null;
+  const scale = d ? Math.min(k, (size * 1.8) / d.w, (size * 1.5) / d.h) : 1;
+  return (
+    <img
+      className="bv-sprite"
+      src={src}
+      alt=""
+      draggable={false}
+      style={d ? { width: d.w * scale, height: d.h * scale } : { visibility: 'hidden' }}
+      onLoad={(e) => setDim({ src, w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })}
+      onError={onError}
+    />
+  );
 }
 
 /** What is on the field: the Mega form only once it has Mega Evolved (V-Calc's set may show the Mega for the worst case). */

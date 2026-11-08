@@ -6,6 +6,7 @@ import {
   askQuick,
   askReplace,
   askPlayTurn,
+  askSendIn,
   askSolve,
   sendReport,
   appeared,
@@ -91,7 +92,7 @@ const Bar = ({ v }: { v: number }) => (
   </div>
 );
 
-type Advice = { pSwitch?: number; title: string; rows: { label: string; v: number; stay?: number; sw?: number; net?: number; heur?: number; ko?: number; n?: number }[]; quick?: string; note?: string };
+type Advice = { pSwitch?: number; title: string; rows: { sendIn?: string; label: string; v: number; stay?: number; sw?: number; net?: number; heur?: number; ko?: number; n?: number }[]; quick?: string; note?: string };
 
 /**
  * Advice from the local simulation bot, docked beside the calc. It reads the battle from V-Calc, lets you update the
@@ -263,6 +264,12 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
       return next;
     });
   const sendOut = (side: 0 | 1, s: PokemonSet) => {
+    // a replacement after a faint: through the engine, so Stealth Rock, Spikes, Intimidate and the like apply
+    const out = side === 0 ? mineActive : theirActive;
+    if (out && out.species && baseName(out) !== baseName(s) && mark(side, out).ko && board && ready) {
+      doSendIn(side, s);
+      return;
+    }
     setLive(true);
     if (side === 1) markAppeared(s);
     setTeams((old) => {
@@ -461,7 +468,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
   };
   // what the bot left out of the last answer because it did not understand it (it answers anyway)
   const [botWarn, setBotWarn] = useState<string[]>([]);
-  const [played, setPlayed] = useState<{ turn: number; events: string[]; undo: Snapshot } | null>(null);
+  const [played, setPlayed] = useState<{ turn: number; events: string[]; undo: Snapshot; sent?: boolean } | null>(null);
   const strip = (a: string) => a.replace(/ -> .*$/, '');
   const freshSolve = solved && solved.key === key ? solved : null;
   const playOpts: [string[], string[]] = (() => {
@@ -492,7 +499,8 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
   // a new board to choose for: back to the bot's suggestions
   useEffect(() => setPlayChoice(['', '']), [solved?.key]);
 
-  const applyPlay = (r: PlayResult, snap: Snapshot) => {
+  /** advance: a played turn moves the turn number on; a replacement sent in between turns does not. */
+  const applyPlay = (r: PlayResult, snap: Snapshot, advance = true) => {
     const t0 = turn;
     const sides = [r.me, r.opp] as const;
     // their moves as V-Calc keeps them: a move they showed that the set lacks takes the place of one not seen yet
@@ -604,6 +612,10 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     });
     setVol([{ ...volOf(r.me.vol), who: r.me.active }, { ...volOf(r.opp.vol), who: r.opp.active }]);
     skipVolReset.current = `${r.me.active}|${r.opp.active}`;
+    if (!advance) {
+      setPlayed({ turn: t0, events: r.events, undo: snap, sent: true });
+      return;
+    }
     // timers: the usual count-down, with what the engine knows (weather, terrain, Trick Room, Tailwind, screens) on top
     const tt = f.turns;
     pendingTimers.current = (old) => {
@@ -679,12 +691,23 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
       setNeedPivot(null);
       applyPlay(r, snap);
     });
+  const doSendIn = (side: 0 | 1, s: PokemonSet) =>
+    runPlay(async () => {
+      if (!board) throw new Error(boardProblem);
+      setLive(true);
+      if (side === 1) markAppeared(s);
+      const snap: Snapshot = { teams, field, vol, marks, turn, timers };
+      const pos = { ...withTimers(board, 0, outFor.current.n), turn, game: gameId.current };
+      const r = await askSendIn(mineAll, pos, side === 0 ? 'me' : 'opp', baseName(s), teams[1].sets);
+      setBotWarn(r.warnings ?? []);
+      applyPlay(r, snap, false);
+    });
   const undoPlay = () => {
     if (!played) return;
     const s = played.undo;
     const nm = (t: Team) => (t.sets[t.active]?.species ? baseName(t.sets[t.active]) : '');
     skipVolReset.current = `${nm(s.teams[0])}|${nm(s.teams[1])}`;
-    pendingTimers.current = () => s.timers;
+    if (!played.sent) pendingTimers.current = () => s.timers; // a send-in did not move the turn on
     playedTurn.current = null;
     setTeams(() => s.teams);
     setField(() => s.field);
@@ -728,6 +751,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
           key: k,
           title: dko ? 'Double KO: pick blind' : 'Best replacement',
           rows: r.replace.map((x) => ({
+            sendIn: x.action.replace(/^Send in /, ''),
             label: dko && x.mix !== undefined && x.mix >= 0.05 ? `${x.action} (pick ${pct(x.mix)})` : x.action,
             v: x.win,
             n: x.games,
@@ -959,7 +983,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
           {played && (
             <details className="ai-played" open>
               <summary>
-                Turn {played.turn} played with average luck: fix HP, crits or chance effects to match the game.{' '}
+                {played.sent ? 'Sent in through the engine (hazards and entry abilities applied).' : `Turn ${played.turn} played with average luck: fix HP, crits or chance effects to match the game.`}{' '}
                 <button className="link" onClick={undoPlay}>
                   Undo
                 </button>
@@ -1051,6 +1075,11 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
                 <div key={i} className={'ai-opt2' + (i === 0 ? ' top' : '')}>
                   <div className="ai-opt-main">
                     {r.label}
+                    {r.sendIn && (
+                      <button className="ai-sendin" disabled={playBusy} onClick={() => { const s = mine.find((x) => baseName(x) === r.sendIn); if (s) doSendIn(0, s); }}>
+                        Send in
+                      </button>
+                    )}
                     {r.ko !== undefined && r.ko >= 0.5 && <span className="ai-tag ko">KO {pct(r.ko)}</span>}
                   </div>
                   <span className="ai-pct">{r.stay !== undefined ? pct(r.stay) : ''}</span>

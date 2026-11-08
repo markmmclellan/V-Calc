@@ -649,7 +649,8 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
           const m = s.species ? ps.mons[baseName(s)] : undefined;
           if (!m) return s;
           const patch: Partial<PokemonSet> = {
-            hpPercent: m.fainted ? 1 : Math.max(1, m.hp_pct),
+            // yours exactly (the game shows your HP as a number; a whole percent can be a point off), theirs as shown
+            hpPercent: m.fainted ? 1 : sd === 0 && m.max_hp ? Math.max(0.1, (100 * m.hp) / m.max_hp) : Math.max(1, m.hp_pct),
             status: (m.fainted ? '' : m.status) as PokemonSet['status'],
             boosts: m.active ? m.boosts : { atk: 0, def: 0, spa: 0, spd: 0, spe: 0 },
           };
@@ -813,8 +814,8 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
           const s = teams[1].sets.find((x) => x.species && baseName(x) === sp);
           if (!b || !s || l.entered_fits !== false) continue;
           const spread = { hp: b.sp[0], atk: b.sp[1], def: b.sp[2], spa: b.sp[3], spd: b.sp[4], spe: b.sp[5] };
-          const itemFree = b.item && !mark(1, s).item && !teams[1].sets.some((x) => x !== s && x.item === b.item);
-          patchSet(1, s, { nature: b.nature, sp: spread, ...(itemFree ? { item: b.item } : {}) });
+          // nature and stat points only: the item stays as you set it (a spread switch never undoes your Leftovers)
+          patchSet(1, s, { nature: b.nature, sp: spread });
         }
       })
       .catch(() => setLikely({}));

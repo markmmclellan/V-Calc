@@ -193,6 +193,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     setLive(false);
     setVol([{}, {}]);
     setTimers({});
+    setFaints([0, 0]);
     outFor.current = { names: ['', ''], n: [0, 0] };
     last.current = null;
     playsTurns.current = false;
@@ -445,13 +446,15 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     };
   };
 
+  const [faints, setFaints] = useState<[number, number]>([0, 0]);
   const position = (allowTheirKo = false) => {
     if (mine.length !== 3) throw new Error('Tick the three Pokémon you brought (Setup, below).');
     if (!mineActive || !mine.some((s) => baseName(s) === baseName(mineActive))) throw new Error('Pick which of your three is out.');
     if (!theirActive) throw new Error("Add the opposing Pokémon that is out and pick it.");
     // both fainted (double KO): you pick blind, so the bot solves that guess; otherwise theirs must be replaced first
     if (!allowTheirKo && mark(1, theirActive).ko && !mark(0, mineActive).ko) throw new Error('Their Pokémon is marked fainted: pick the one they sent out.');
-    return buildPosition({ mine, mineActive: baseName(mineActive), theirs, theirActive: baseName(theirActive), marks, field, turn, vol });
+    // faints so far (a Pokémon brought back by Revival Blessing still counts for Last Respects)
+    return { ...buildPosition({ mine, mineActive: baseName(mineActive), theirs, theirActive: baseName(theirActive), marks, field, turn, vol }), fainted_count: faints };
   };
   let board: ReturnType<typeof buildPosition> | null = null;
   let boardProblem = '';
@@ -528,7 +531,8 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
         const ko = mark(0, s).ko;
         const cur = ko ? 0 : Math.round((max * s.hpPercent) / 100);
         const dmg = ko ? h.before : h.dmg + (p.me[h.mine] - cur); // the engine's number, moved by your correction
-        if (dmg <= 0) continue;
+        // far from the engine's number (under 40% or over 2.5x): a slip in the HP entered or something not modelled
+        if (dmg <= 0 || (!ko && (dmg < 0.4 * h.dmg || dmg > 2.5 * h.dmg))) continue;
         (add[h.theirs] ??= []).push({ ...base, dealt_by_opp: true, dmg, my_hp_before: h.before, ko });
       } else {
         const s = teams[1].sets.find((x) => x.species && baseName(x) === h.theirs);
@@ -537,7 +541,8 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
         const cur = ko ? 0 : s.hpPercent;
         const from = (100 * h.before) / h.max_hp;
         const to = ko ? 0 : Math.max(0, (100 * (h.before - h.dmg)) / h.max_hp + (cur - p.opp[h.theirs]));
-        if (from - to <= 0) continue;
+        const pctEngine = (100 * h.dmg) / h.max_hp;
+        if (from - to < 1 || (!ko && (from - to < 0.4 * pctEngine || from - to > 2.5 * pctEngine))) continue;
         (add[h.theirs] ??= []).push({ ...base, dealt_by_opp: false, pct_from: from, pct_to: to, ko });
       }
     }
@@ -565,7 +570,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
       return n;
     });
   const [needPivot, setNeedPivot] = useState<{ side: 'me' | 'opp'; options: string[]; chosen: Record<string, string>; kind?: 'revive' } | null>(null);
-  type Snapshot = { teams: [Team, Team]; field: FieldState; vol: [Vol, Vol]; marks: Record<string, Marks>; turn: number; timers: Record<string, number> };
+  type Snapshot = { teams: [Team, Team]; field: FieldState; vol: [Vol, Vol]; marks: Record<string, Marks>; turn: number; timers: Record<string, number>; faints?: [number, number] };
   // Report: one tap saves the board, the last answer and the last played turn for fixing later
   const [reported, setReported] = useState('');
   const doReport = () => {
@@ -617,6 +622,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
   /** advance: a played turn moves the turn number on; a replacement sent in between turns does not. */
   const applyPlay = (r: PlayResult, snap: Snapshot, advance = true) => {
     const t0 = turn;
+    if (r.fainted_count) setFaints(r.fainted_count);
     const sides = [r.me, r.opp] as const;
     // their moves as V-Calc keeps them: a move they showed that the set lacks takes the place of one not seen yet
     const theirMoves = new Map<PokemonSet, string[]>();
@@ -822,7 +828,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
       const mine = needPivot ? needPivot.chosen.__mine : playChoice[0] || defaultPlay[0];
       const theirs = needPivot ? needPivot.chosen.__theirs : playChoice[1] || defaultPlay[1];
       if (!mine || !theirs) throw new Error('Pick what both sides did.');
-      const snap: Snapshot = { teams, field, vol, marks, turn, timers };
+      const snap: Snapshot = { teams, field, vol, marks, turn, timers, faints };
       const pos = { ...withTimers(board, 0, outFor.current.n), turn, game: gameId.current };
       const { __mine, __theirs, ...piv } = { __mine: '', __theirs: '', ...pivot };
       void __mine;
@@ -841,7 +847,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
       if (!rawBoard) throw new Error(boardProblem);
       setLive(true);
       if (side === 1) markAppeared(s);
-      const snap: Snapshot = { teams, field, vol, marks, turn, timers };
+      const snap: Snapshot = { teams, field, vol, marks, turn, timers, faints };
       const pos = { ...withTimers(rawBoard, 0, outFor.current.n), turn, game: gameId.current };
       const r = await askSendIn(mineAll, pos, side === 0 ? 'me' : 'opp', baseName(s), teams[1].sets);
       setBotWarn(r.warnings ?? []);
@@ -864,7 +870,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
   const doLeads = () =>
     runPlay(async () => {
       if (!rawBoard) return;
-      const snap: Snapshot = { teams, field, vol, marks, turn, timers };
+      const snap: Snapshot = { teams, field, vol, marks, turn, timers, faints };
       const pos = { ...withTimers(rawBoard, 0, outFor.current.n), turn, game: gameId.current };
       const r = await askLeads(mineAll, pos, teams[1].sets);
       setLeadsDone(true);
@@ -882,6 +888,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     if (!played) return;
     if (played.leads) setLeadsDone(false);
     const s = played.undo;
+    setFaints(s.faints ?? [0, 0]);
     const nm = (t: Team) => (t.sets[t.active]?.species ? baseName(t.sets[t.active]) : '');
     skipVolReset.current = `${nm(s.teams[0])}|${nm(s.teams[1])}`;
     if (!played.sent) pendingTimers.current = () => s.timers; // a send-in did not move the turn on

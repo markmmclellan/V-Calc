@@ -346,6 +346,8 @@ export interface PlaySideField {
 }
 export interface PlayResult {
   events: string[];
+  /** faints so far per side [yours, theirs], revived ones included (Last Respects, Supreme Overlord) */
+  fainted_count?: [number, number];
   warnings?: string[];
   hits?: PlayHit[];
   me: PlaySide;

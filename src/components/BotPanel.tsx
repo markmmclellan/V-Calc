@@ -164,6 +164,9 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     if (battleId === firstBattle.current) return;
     setMarks({});
     setTurnRaw(1);
+    setNext('solve');
+    setShowSetup(false);
+    setPlayed(null);
     setSolved(null);
     setAdvice(null);
     setBring(null);
@@ -445,6 +448,9 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
 
   // ---- Play turn: both sides' choices run through the engine, the board fills itself in ----
   const [playChoice, setPlayChoice] = useState<[string, string]>(['', '']);
+  // which button is next, highlighted: ask the bot, then play the turn, then ask again...
+  const [next, setNext] = useState<'solve' | 'play' | 'sendin'>('solve');
+  const [showSetup, setShowSetup] = useState(false);
   // what happened that luck decides: [yours, theirs]
   const [outcome, setOutcome] = useState<[Outcome, Outcome]>([{}, {}]);
   const toggleOutcome = (sd: 0 | 1, k: keyof Outcome) =>
@@ -612,6 +618,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     });
     setVol([{ ...volOf(r.me.vol), who: r.me.active }, { ...volOf(r.opp.vol), who: r.opp.active }]);
     skipVolReset.current = `${r.me.active}|${r.opp.active}`;
+    setNext('solve');
     if (!advance) {
       setPlayed({ turn: t0, events: r.events, undo: snap, sent: true });
       return;
@@ -745,6 +752,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
       return run('Picking your replacement…', async () => {
         const r = await askReplace(mineAll, pos);
         setBotWarn(r.warnings ?? []);
+        setNext('sendin');
         setSolved(null);
         const dko = !!r.double_ko;
         setAdvice({
@@ -772,6 +780,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
       setBotWarn(r.warnings ?? []);
       setAdvice(null);
       setSolved({ ...r, key: k });
+      setNext('play');
     });
   };
 
@@ -934,29 +943,33 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
 
         <section className="ai-answer">
           {ready && board && !myKo && (
-            <div className="ai-play">
+            <div className="ai-play grid">
               <span className="hint" title="Pick what both sides did, then Play: the turn runs with average luck (middle damage roll, no crits, chance effects only when likely) and the board updates itself. Fix what luck changed (HP, a crit, a burn) by hand.">
                 Play turn
               </span>
-              <label>
-                You
-                <select value={playChoice[0] || defaultPlay[0]} onChange={(e) => setPlayChoice([e.target.value, playChoice[1]])}>
-                  {playOpts[0].map((o) => (
-                    <option key={o}>{o}</option>
-                  ))}
-                </select>
-              </label>
-              {outcomeChips(0)}
-              <label>
-                They
-                <select value={playChoice[1] || defaultPlay[1]} onChange={(e) => setPlayChoice([playChoice[0], e.target.value])}>
-                  {playOpts[1].map((o) => (
-                    <option key={o}>{o}</option>
-                  ))}
-                </select>
-              </label>
-              {outcomeChips(1)}
-              <button className="primary" onClick={() => doPlay()} disabled={playBusy}>
+              <div className="ai-play-side">
+                <label>
+                  You
+                  <select value={playChoice[0] || defaultPlay[0]} onChange={(e) => setPlayChoice([e.target.value, playChoice[1]])}>
+                    {playOpts[0].map((o) => (
+                      <option key={o}>{o}</option>
+                    ))}
+                  </select>
+                </label>
+                {outcomeChips(0)}
+              </div>
+              <div className="ai-play-side">
+                <label>
+                  They
+                  <select value={playChoice[1] || defaultPlay[1]} onChange={(e) => setPlayChoice([playChoice[0], e.target.value])}>
+                    {playOpts[1].map((o) => (
+                      <option key={o}>{o}</option>
+                    ))}
+                  </select>
+                </label>
+                {outcomeChips(1)}
+              </div>
+              <button className={'primary' + (next === 'play' ? ' ai-next' : '')} onClick={() => doPlay()} disabled={playBusy}>
                 {playBusy ? 'Playing…' : 'Play'}
               </button>
             </div>
@@ -996,7 +1009,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
             </details>
           )}
           <div className="ai-actions">
-            <button className="primary" onClick={solveNow} disabled={!ready || !!busy}>
+            <button className={'primary' + (next === 'solve' ? ' ai-next' : '')} onClick={solveNow} disabled={!ready || !!busy}>
               {myKo ? 'Pick my replacement' : 'Solve this turn'}
             </button>
             <button className="ai-report" onClick={doReport} disabled={!board} title="Something looks wrong? Saves this board and what the bot said, to fix later">
@@ -1076,7 +1089,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
                   <div className="ai-opt-main">
                     {r.label}
                     {r.sendIn && (
-                      <button className="ai-sendin" disabled={playBusy} onClick={() => { const s = mine.find((x) => baseName(x) === r.sendIn); if (s) doSendIn(0, s); }}>
+                      <button className={'ai-sendin' + (next === 'sendin' && i === 0 ? ' ai-next' : '')} disabled={playBusy} onClick={() => { const s = mine.find((x) => baseName(x) === r.sendIn); if (s) doSendIn(0, s); }}>
                         Send in
                       </button>
                     )}
@@ -1115,6 +1128,11 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
             ))}
           </section>
         )}
+        {turn > 1 && !showSetup ? (
+          <button className="link ai-setup-link" onClick={() => setShowSetup(true)} title="Team preview, what to bring, the three you brought">
+            Team setup…
+          </button>
+        ) : (
         <details className="ai-setup" open={turn === 1 && !solved && !advice}>
           <summary>Team preview and setup</summary>
           <h4>What should I bring?</h4>
@@ -1180,6 +1198,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
             })}
           </div>
         </details>
+        )}
         </div>
         </div>
       </div>

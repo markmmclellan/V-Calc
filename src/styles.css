@@ -650,6 +650,16 @@ td.v-loses, .bg-verdict.v-loses { background: color-mix(in srgb, var(--bad) 38%,
 .ai-play label { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; }
 .ai-play select { max-width: 210px; }
 .ai-outcome { display: inline-flex; gap: 3px; }
+.ai-play-side { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.ai-play.grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; align-items: start; gap: 6px 12px; }
+.ai-play.grid > .hint { grid-column: 1 / -1; }
+.ai-play.grid > button { align-self: center; }
+.ai-play-side label { display: flex; flex-direction: column; align-items: stretch; gap: 2px; font-size: 12px; color: var(--muted); }
+.ai-play-side select { width: 100%; max-width: none; }
+.ai-play-side .ai-outcome { flex-wrap: wrap; }
+.ai-next { box-shadow: 0 0 0 3px var(--accent), 0 0 12px var(--accent); animation: ai-next 1.4s ease-in-out infinite; }
+@keyframes ai-next { 50% { box-shadow: 0 0 0 2px var(--accent), 0 0 4px var(--accent); } }
+.ai-setup-link { margin-top: 8px; font-size: 12px; }
 .ai-sendin { margin-left: 8px; font-size: 11px; padding: 1px 8px; }
 .bv-pp { font-size: 10px; opacity: 0.75; font-weight: 500; }
 .bv-pp.out { color: var(--bad, #e05252); opacity: 1; font-weight: 700; }

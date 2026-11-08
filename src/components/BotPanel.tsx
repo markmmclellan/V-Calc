@@ -95,6 +95,8 @@ const pct = (x: number) => `${Math.round(x * 100)}%`;
  * Taunt, Encore and Yawn count from the turn after (Yawn: asleep at the end of the next turn). */
 const TIMED: Record<string, number> = { weather: 5, terrain: 5, tr: 5, isTailwind: 4, isReflect: 5, isLightScreen: 5, isAuroraVeil: 5, taunt: 4, encore: 4, yawn: 2 };
 const timerStart = (key: string) => TIMED[key.split(':').pop()!] ?? 5;
+/** A two-turn line, said plainly: "Yawn -> Switch to Golisopod" is "Yawn now, then next turn Switch to Golisopod". */
+const lineLabel = (a: string) => (a.includes(' -> ') ? a.replace(' -> ', ' now, then next turn ') : a);
 /** " + Mega" after one of their moves when the bot expects them to Mega Evolve with it ("+ Mega 60%" when unsure). */
 const megaNote = (m?: number) => (m == null || m < 0.05 ? '' : m >= 0.95 ? ' + Mega' : ` + Mega ${Math.round(m * 100)}%`);
 /** Options this close (win chance against their likely play) are a toss-up: the simulation cannot tell them apart. */
@@ -1251,7 +1253,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
               </div>
               {solved.mine.map((r, i) => (
                 <div key={i} className={'ai-opt2' + (i === 0 ? ' top' : '')}>
-                  <div className="ai-opt-main">{r.action}</div>
+                  <div className="ai-opt-main">{lineLabel(r.action)}</div>
                   <span className="ai-pct">{r.mix >= 0.005 ? pct(r.mix) : '–'}</span>
                   <span className="ai-pct">{pct(r.vs_their_play)}</span>
                   <span className="ai-pct">{pct(r.worst)}</span>

@@ -504,7 +504,7 @@ td.v-loses, .bg-verdict.v-loses { background: color-mix(in srgb, var(--bad) 38%,
 
 /* AI advice, docked beside the calc so both stay usable */
 .ai-wide { margin-top: 8px; background: var(--panel); border: 1px solid var(--accent); border-radius: 10px; scroll-margin-top: 8px; }
-.ai-grid { display: grid; grid-template-columns: minmax(480px, 1.25fr) minmax(360px, 1.1fr) minmax(280px, 0.85fr); gap: 18px; align-items: start; }
+.ai-grid { display: grid; grid-template-columns: minmax(480px, 1.2fr) minmax(400px, 1fr); gap: 18px; align-items: start; }
 .ai-col { min-width: 0; }
 .ai-col > .ai-setup:first-child { margin-top: 12px; border-top: 0; padding-top: 0; }
 @media (max-width: 1100px) { .ai-grid { grid-template-columns: 1fr; gap: 0; } }
@@ -653,7 +653,10 @@ td.v-loses, .bg-verdict.v-loses { background: color-mix(in srgb, var(--bad) 38%,
 .ai-theirsend { display: inline-flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .ai-theirsend button { font-size: 12px; padding: 3px 10px; }
 .ai-main-btn { min-width: 150px; padding: 8px 18px; font-size: 14px; font-weight: 600; }
-.ai-likely { flex-basis: 100%; font-size: 12px; color: var(--muted); margin-top: 2px; }
+.ai-likely { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); margin-top: 3px; }
+.ai-reads h3, .ai-theirsets summary { margin-top: 10px; }
+.ai-theirsets summary { cursor: pointer; font-size: 12px; color: var(--muted); }
+.ai-auto { color: var(--accent); }
 .ai-likely b { color: var(--text); font-weight: 600; }
 .ai-likely .link { margin-left: 8px; }
 .ai-play-side { display: flex; flex-direction: column; gap: 4px; min-width: 0; }

@@ -465,6 +465,7 @@ export default function App() {
           onApplyBring={applyBring}
           onResetBattle={resetBattle}
           onClose={() => setAiOpen(false)}
+          meta={meta}
         />
       )}
 

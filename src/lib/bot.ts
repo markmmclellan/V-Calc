@@ -117,7 +117,7 @@ export interface PlayHit {
   def_screens: boolean[];
 }
 export interface LikelySets {
-  [species: string]: { hits: number; builds: { nature: string; sp: number[]; item: string; share: number }[] };
+  [species: string]: { hits: number; builds: { nature: string; sp: number[]; item: string; share: number }[]; entered_fits?: boolean };
 }
 /** What the battle text says about the Pokémon that is out (cleared when it switches out). */
 export interface Vol {
@@ -395,6 +395,14 @@ export const askPlayTurn = (
     ),
   });
 /** A replacement sent in between turns through the engine, so Stealth Rock, Intimidate and the like apply. */
+/** Their sets as entered in V-Calc, keyed by base species (what the engine plays them with). */
+export const oppSetsJson = (theirSets: PokemonSet[]) =>
+  Object.fromEntries(
+    theirSets
+      .filter((s) => s.species)
+      .map((s) => [baseName(s), { item: s.item, ability: baseName(s) === s.species ? s.ability : '', nature: s.nature, sp: [s.sp.hp, s.sp.atk, s.sp.def, s.sp.spa, s.sp.spd, s.sp.spe], moves: s.moves }]),
+  );
+
 /** The opposing Pokémon's most likely builds, given the hits measured so far. */
 export const askLikelySets = (team: PokemonSet[], pos: Position) => call<LikelySets>('/api/likely_sets', withTeam(team, pos));
 

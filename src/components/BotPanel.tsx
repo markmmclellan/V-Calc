@@ -8,6 +8,7 @@ import {
   askPlayTurn,
   askSendIn,
   askLikelySets,
+  oppSetsJson,
   maxHpOf,
   type LikelySets,
   type PlayHit,
@@ -30,6 +31,7 @@ import {
   type Vol,
 } from '../lib/bot';
 import { calcStats, type PokemonSet } from '../lib/model';
+import { metaFor, type Meta } from '../lib/data';
 
 /** Abilities that set the weather or terrain when their holder comes in. */
 const ON_ENTRY: Record<string, { weather?: string; terrain?: string }> = {
@@ -62,6 +64,8 @@ interface Props {
   onApplyBring: (bring: number[], leads: number[]) => void;
   onResetBattle: () => void;
   onClose: () => void;
+  /** op.gg usage data (the next most likely item for the Item Clause) */
+  meta?: Meta | null;
 }
 
 const MARKS_KEY = 'champions-calc:ai-marks:v1';
@@ -109,7 +113,7 @@ const SAME_TURN_MS = 20_000;
 /** Time the bring check may take at team preview. */
 const BRING_SECS = 20;
 
-export default function BotPanel({ open, teams, setTeams, field, setField, skipped, singles, battleId, onApplyBring, onResetBattle, onClose }: Props) {
+export default function BotPanel({ open, teams, setTeams, field, setField, skipped, singles, battleId, onApplyBring, onResetBattle, onClose, meta }: Props) {
   const [up, setUp] = useState<boolean | null>(null);
   const [marks, setMarks] = useState<Record<string, Marks>>(() => load(MARKS_KEY, {}));
   const [auto, setAuto] = useState<boolean>(() => load(AUTO_KEY, true));
@@ -202,6 +206,28 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
   const theirActive = teams[1].sets[teams[1].active];
   // A Pokémon that switches out loses its effects, and frees the other side from its trap.
   const outNames = [mineActive ? baseName(mineActive) : '', theirActive ? baseName(theirActive) : ''];
+  const prevItems = useRef<Record<string, string>>({});
+  const itemsSig = teams[1].sets.map((s) => `${s.species}@${s.item}`).join('|');
+  useEffect(() => {
+    const before = prevItems.current;
+    prevItems.current = Object.fromEntries(teams[1].sets.filter((s) => s.species).map((s) => [baseName(s), s.item]));
+    if (!meta) return;
+    const holders = new Map<string, PokemonSet[]>();
+    for (const s of teams[1].sets) if (s.species && s.item) holders.set(s.item, [...(holders.get(s.item) ?? []), s]);
+    for (const [item, list] of holders) {
+      if (list.length < 2) continue;
+      // keep the one that just got this item (or one whose item has been seen); move the others
+      const keep = list.find((s) => before[baseName(s)] !== item) ?? list.find((s) => mark(1, s).item) ?? list[0];
+      for (const s of list) {
+        if (s === keep || mark(1, s).item) continue;
+        const d = metaFor(meta, baseName(s))?.data.single;
+        const used = new Set(teams[1].sets.map((x) => x.item));
+        const next = d?.items.find((i) => !used.has(i.name))?.name;
+        if (next) patchSet(1, s, { item: next });
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [itemsSig, meta]);
   // a played turn sets everything itself: the reactions to a switch / a new turn are skipped once
   // the names out right after a played turn / undo: that one change keeps the effects it set; any later switch resets
   const skipVolReset = useRef<string | null>(null);
@@ -434,6 +460,9 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     }
   const theirKo = !!theirActive && mark(1, theirActive).ko;
   const myKo = !!mineActive && mark(0, mineActive).ko;
+  const coreKey = board
+    ? JSON.stringify({ ...board, turn: 0, opp: board.opp.map(({ seen: _s, hits: _h, ...o }) => o) }) + (myKo ? '|replace' : '')
+    : '';
   // the board without the turn number: a change here means something happened
   const key = board ? JSON.stringify({ ...board, turn: 0 }) + (myKo ? '|replace' : '') : '';
   // Only what a turn changes: who is out, HP, status, boosts, the field, and the moves used and their effects (a turn of
@@ -540,7 +569,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
   const [botWarn, setBotWarn] = useState<string[]>([]);
   const [played, setPlayed] = useState<{ turn: number; events: string[]; undo: Snapshot; sent?: boolean } | null>(null);
   const strip = (a: string) => a.replace(/ -> .*$/, '');
-  const freshSolve = solved && solved.key === key ? solved : null;
+  const freshSolve = solved && solved.key === coreKey ? solved : null;
   const playOpts: [string[], string[]] = (() => {
     const myOpts: string[] = [];
     const add = (arr: string[], x: string) => {
@@ -753,8 +782,18 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
       return;
     }
     const pos = { ...withTimers(board, 0, outFor.current.n), turn, game: gameId.current };
-    askLikelySets(mineAll, pos)
-      .then(setLikely)
+    askLikelySets(mineAll, { ...pos, opp_sets: oppSetsJson(teams[1].sets) } as typeof pos)
+      .then((r) => {
+        setLikely(r);
+        for (const [sp, l] of Object.entries(r)) {
+          const b = l.builds[0];
+          const s = teams[1].sets.find((x) => x.species && baseName(x) === sp);
+          if (!b || !s || l.entered_fits !== false) continue;
+          const spread = { hp: b.sp[0], atk: b.sp[1], def: b.sp[2], spa: b.sp[3], spd: b.sp[4], spe: b.sp[5] };
+          const itemFree = b.item && !mark(1, s).item && !teams[1].sets.some((x) => x !== s && x.item === b.item);
+          patchSet(1, s, { nature: b.nature, sp: spread, ...(itemFree ? { item: b.item } : {}) });
+        }
+      })
       .catch(() => setLikely({}));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hitsSig]);
@@ -830,7 +869,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     const pos = { ...withTimers(board, t - turn, countOut(t)), turn: t, game: gameId.current };
     const kind = myKo ? 'replace' : 'solve';
     last.current = { key, turnKey, bring: bringKey, turn: t, kind, at: now };
-    const k = key;
+    const k = coreKey;
     if (kind === 'replace')
       return run('Picking your replacement…', async () => {
         const r = await askReplace(mineAll, pos);
@@ -938,7 +977,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     return chips;
   };
 
-  const resultStale = (k: string) => k !== key;
+  const resultStale = (k: string) => k !== coreKey;
   /** Options the bot left out of its pick that do almost as well (within CLOSE) against their likely play. (The options
    * inside a mixed pick always score the same against it: that is what makes it a mix.) */
   const closeCall = (r: SolveResult) => r.mine.filter((x) => x.mix < 0.05 && x.vs_their_play >= r.value - CLOSE);
@@ -1208,35 +1247,38 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
             </p>
           )}
         </section>
-        </div>
-        <div className="ai-col">
+        {Object.keys(likely).length > 0 && (
+          <section className="ai-reads">
+            <h3>Spread reads</h3>
+            {theirSeen
+              .filter((s) => likely[baseName(s)]?.builds[0])
+              .map((s) => {
+                const l = likely[baseName(s)];
+                const b = l.builds[0];
+                return (
+                  <div key={'l' + baseName(s)} className="ai-likely" title={l.builds.map((x) => `${x.nature} ${x.sp.join('/')}${x.item ? ' @ ' + x.item : ''}: ${pct(x.share)}`).join('\n')}>
+                    <Sprite species={s.species} size={24} />
+                    <span>
+                      <b>{baseName(s)}</b> ({l.hits} hit{l.hits === 1 ? '' : 's'}): {b.nature} {b.sp.join('/')}
+                      {b.item ? ` @ ${b.item}` : ''} · {pct(b.share)}
+                      {l.entered_fits === false ? <span className="ai-auto"> · set changed to fit the hits</span> : null}
+                    </span>
+                  </div>
+                );
+              })}
+          </section>
+        )}
         {theirSeen.length > 0 && (
-          <section>
-            <h3>Their sets: tap what you've seen</h3>
-            <p className="hint">Unticked moves, item and ability are guessed from usage data.</p>
+          <details className="ai-theirsets">
+            <summary>Their sets: what you've seen</summary>
+            <p className="hint">Ticked by Play turn as moves, items and abilities show; unticked ones are guessed from usage data.</p>
             {theirSeen.map((s) => (
               <div key={'s' + baseName(s)} className="ai-seenrow">
                 <Sprite species={s.species} size={26} />
-                <div className="ai-seen">
-                  {seenChips(s)}
-                  {likely[baseName(s)]?.builds[0] && (() => {
-                    const l = likely[baseName(s)];
-                    const b = l.builds[0];
-                    const sp = { hp: b.sp[0], atk: b.sp[1], def: b.sp[2], spa: b.sp[3], spd: b.sp[4], spe: b.sp[5] };
-                    return (
-                      <div className="ai-likely" title={l.builds.map((x) => `${x.nature} ${x.sp.join('/')}${x.item ? ' @ ' + x.item : ''}: ${pct(x.share)}`).join('\n')}>
-                        Likely ({l.hits} hit{l.hits === 1 ? '' : 's'}): <b>{b.nature} {b.sp.join('/')}</b>
-                        {b.item ? ` @ ${b.item}` : ''} · {pct(b.share)}
-                        <button className="link" onClick={() => patchSet(1, s, { nature: b.nature, sp, ...(b.item ? { item: b.item } : {}) })}>
-                          Apply
-                        </button>
-                      </div>
-                    );
-                  })()}
-                </div>
+                <div className="ai-seen">{seenChips(s)}</div>
               </div>
             ))}
-          </section>
+          </details>
         )}
         {turn > 1 && !showSetup ? (
           <button className="link ai-setup-link" onClick={() => setShowSetup(true)} title="Team preview, what to bring, the three you brought">

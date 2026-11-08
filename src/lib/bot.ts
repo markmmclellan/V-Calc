@@ -70,6 +70,7 @@ export interface Marks {
   item: boolean; // opposing only: the item is known
   ability: boolean; // opposing only: the ability is known
   seen?: boolean; // opposing only: has appeared in this battle (unset = worked out: selected, fainted or damaged)
+  pp?: Record<string, [number, number]>; // PP left / max of moves used, counted from played turns
 }
 /** What the battle text says about the Pokémon that is out (cleared when it switches out). */
 export interface Vol {
@@ -117,6 +118,9 @@ export interface PositionInput {
 }
 
 /** V-Calc's battle state as the bot's position description (hp as percent; the bot converts using your max HP). */
+/** PP left of moves that have been used, as {move: n}. */
+const ppLeft = (m: Marks): Record<string, number> => Object.fromEntries(Object.entries(m.pp ?? {}).filter(([, v]) => v[0] < v[1]).map(([k, v]) => [k, v[0]]));
+
 /** The effects of the Pokémon that is out, or nothing if they were recorded for a different one. */
 const volFor = (v: Vol | undefined, name: string): Vol => (v && (!v.who || v.who === name) ? v : {});
 
@@ -147,6 +151,8 @@ export function buildPosition(p: PositionInput) {
       item_gone: p.mine.filter((s) => mk(0, s).gone).map(baseName),
       // V-Calc's "Disguise broken" box
       disguise_broken: p.mine.filter((s) => s.ability === 'Disguise' && s.abilityOn).map(baseName),
+      // PP left, from played turns: a move at 0 is never suggested
+      pp: Object.fromEntries(p.mine.map((s) => [baseName(s), ppLeft(mk(0, s))])),
       // Leech Seed and binding are set in the calc's field (per side); the rest in the AI panel
       volatile: { ...volFor(p.vol?.[0], p.mineActive), leech_seed: !!f.attackerSide.isSeeded, bound: !!f.attackerSide.isBound },
     },
@@ -167,6 +173,7 @@ export function buildPosition(p: PositionInput) {
         ability: m.ability ? s.ability : '',
         item_gone: m.gone,
         disguise_broken: s.ability === 'Disguise' && s.abilityOn,
+        pp: ppLeft(m), // their moves seen running low (or out)
         volatile: baseName(s) === p.theirActive ? { ...volFor(p.vol?.[1], p.theirActive), leech_seed: !!f.defenderSide.isSeeded, bound: !!f.defenderSide.isBound } : {},
       };
     }),
@@ -271,6 +278,7 @@ export interface PlayMon {
   revealed_ability?: string | null;
   revealed_moves?: string[] | null;
   disguise_broken?: boolean;
+  pp?: Record<string, [number, number]>;
 }
 export interface PlaySide {
   active: string;

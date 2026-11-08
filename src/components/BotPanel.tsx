@@ -558,6 +558,8 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
             moves,
             item: cur.item || (sd === 1 && !!m.revealed_item),
             ability: cur.ability || (sd === 1 && !!m.revealed_ability),
+            // PP left: yours all, theirs only of moves they were seen using
+            pp: m.pp ? Object.fromEntries(Object.entries(m.pp).filter(([mv]) => sd === 0 || (m.revealed_moves ?? []).includes(mv))) : cur.pp,
             seen: sd === 1 ? cur.seen || m.active || m.fainted || m.hp_pct < 100 : cur.seen,
           };
         }

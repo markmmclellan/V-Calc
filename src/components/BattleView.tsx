@@ -412,6 +412,7 @@ export default function BattleView(p: Props) {
               }}
             >
               {mv}
+              {m.pp?.[mv] && m.pp[mv][0] < m.pp[mv][1] ? <span className={'bv-pp' + (m.pp[mv][0] === 0 ? ' out' : '')}> {m.pp[mv][0]}/{m.pp[mv][1]}</span> : null}
             </button>
           ) : null,
         )}

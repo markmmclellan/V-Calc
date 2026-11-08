@@ -71,6 +71,53 @@ export interface Marks {
   ability: boolean; // opposing only: the ability is known
   seen?: boolean; // opposing only: has appeared in this battle (unset = worked out: selected, fainted or damaged)
   pp?: Record<string, [number, number]>; // PP left / max of moves used, counted from played turns
+  hits?: SeenHit[]; // opposing only: measured hits it dealt or took (narrow down its spread)
+}
+/** A measured hit, in the bot's format (see the engine's position::parse_hits). */
+export interface SeenHit {
+  dealt_by_opp: boolean;
+  move: string;
+  other: string; // my Pokémon in the hit
+  dmg?: number; // HP my Pokémon lost (dealt_by_opp)
+  my_hp_before?: number;
+  pct_from?: number; // their HP % before and after (my hit on them)
+  pct_to?: number;
+  crit: boolean;
+  ko: boolean;
+  opp_boosts: Record<string, number>;
+  my_boosts: Record<string, number>;
+  opp_status: string;
+  my_status: string;
+  opp_mega: boolean;
+  my_mega: boolean;
+  weather: string;
+  terrain: string;
+  def_screens: boolean[];
+}
+/** One move's hit in a played turn, as the engine worked it out (average roll). */
+export interface PlayHit {
+  attacker: 'me' | 'opp';
+  move: string;
+  mine: string;
+  theirs: string;
+  dmg: number;
+  before: number;
+  max_hp: number;
+  hits: number;
+  crit: boolean;
+  ko: boolean;
+  my_boosts: number[];
+  opp_boosts: number[];
+  my_status: string;
+  opp_status: string;
+  my_mega: boolean;
+  opp_mega: boolean;
+  weather: string;
+  terrain: string;
+  def_screens: boolean[];
+}
+export interface LikelySets {
+  [species: string]: { hits: number; builds: { nature: string; sp: number[]; item: string; share: number }[] };
 }
 /** What the battle text says about the Pokémon that is out (cleared when it switches out). */
 export interface Vol {
@@ -174,6 +221,7 @@ export function buildPosition(p: PositionInput) {
         item_gone: m.gone,
         disguise_broken: s.ability === 'Disguise' && s.abilityOn,
         pp: ppLeft(m), // their moves seen running low (or out)
+        hits: m.hits ?? [], // measured hits: the bot only imagines spreads that explain them
         volatile: baseName(s) === p.theirActive ? { ...volFor(p.vol?.[1], p.theirActive), leech_seed: !!f.defenderSide.isSeeded, bound: !!f.defenderSide.isBound } : {},
       };
     }),
@@ -299,6 +347,7 @@ export interface PlaySideField {
 export interface PlayResult {
   events: string[];
   warnings?: string[];
+  hits?: PlayHit[];
   me: PlaySide;
   opp: PlaySide;
   field: {
@@ -346,6 +395,9 @@ export const askPlayTurn = (
     ),
   });
 /** A replacement sent in between turns through the engine, so Stealth Rock, Intimidate and the like apply. */
+/** The opposing Pokémon's most likely builds, given the hits measured so far. */
+export const askLikelySets = (team: PokemonSet[], pos: Position) => call<LikelySets>('/api/likely_sets', withTeam(team, pos));
+
 export const askSendIn = (team: PokemonSet[], pos: Position, side: 'me' | 'opp', species: string, theirSets: PokemonSet[] = []) =>
   call<PlayResult>('/api/send_in', {
     ...withTeam(team, pos),

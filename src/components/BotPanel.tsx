@@ -7,6 +7,11 @@ import {
   askReplace,
   askPlayTurn,
   askSendIn,
+  askLikelySets,
+  maxHpOf,
+  type LikelySets,
+  type PlayHit,
+  type SeenHit,
   askSolve,
   sendReport,
   appeared,
@@ -448,6 +453,56 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
 
   // ---- Play turn: both sides' choices run through the engine, the board fills itself in ----
   const [playChoice, setPlayChoice] = useState<[string, string]>(['', '']);
+  // Spread reading: the last played turn's hits (engine's average roll), turned into measured hits once you have set the
+  // HP the game showed (at the next Solve / Play), then the likely builds of their Pokémon
+  const pendingHits = useRef<{ hits: PlayHit[]; me: Record<string, number>; opp: Record<string, number> } | null>(null);
+  const [likely, setLikely] = useState<LikelySets>({});
+  const finalizeHits = () => {
+    const p = pendingHits.current;
+    pendingHits.current = null;
+    if (!p || !p.hits.length) return;
+    const toObj = (a: number[]) => ({ atk: a[0], def: a[1], spa: a[2], spd: a[3], spe: a[4] });
+    // one hit on a Pokémon in the turn: its HP change is that hit's (two would be ambiguous)
+    const per: Record<string, number> = {};
+    for (const h of p.hits) per[h.attacker + h.mine + h.theirs] = (per[h.attacker + h.mine + h.theirs] ?? 0) + 1;
+    const add: Record<string, SeenHit[]> = {};
+    for (const h of p.hits) {
+      if (h.hits !== 1 || per[h.attacker + h.mine + h.theirs] !== 1) continue;
+      const base = {
+        move: h.move, other: h.mine, crit: h.crit, opp_boosts: toObj(h.opp_boosts), my_boosts: toObj(h.my_boosts), opp_status: h.opp_status,
+        my_status: h.my_status, opp_mega: h.opp_mega, my_mega: h.my_mega, weather: h.weather, terrain: h.terrain, def_screens: h.def_screens,
+      };
+      if (h.attacker === 'opp') {
+        const s = mine.find((x) => baseName(x) === h.mine);
+        const max = s ? maxHpOf(s) : undefined;
+        if (!s || !max || p.me[h.mine] === undefined) continue;
+        const ko = mark(0, s).ko;
+        const cur = ko ? 0 : Math.round((max * s.hpPercent) / 100);
+        const dmg = ko ? h.before : h.dmg + (p.me[h.mine] - cur); // the engine's number, moved by your correction
+        if (dmg <= 0) continue;
+        (add[h.theirs] ??= []).push({ ...base, dealt_by_opp: true, dmg, my_hp_before: h.before, ko });
+      } else {
+        const s = teams[1].sets.find((x) => x.species && baseName(x) === h.theirs);
+        if (!s || p.opp[h.theirs] === undefined) continue;
+        const ko = mark(1, s).ko;
+        const cur = ko ? 0 : s.hpPercent;
+        const from = (100 * h.before) / h.max_hp;
+        const to = ko ? 0 : Math.max(0, (100 * (h.before - h.dmg)) / h.max_hp + (cur - p.opp[h.theirs]));
+        if (from - to <= 0) continue;
+        (add[h.theirs] ??= []).push({ ...base, dealt_by_opp: false, pct_from: from, pct_to: to, ko });
+      }
+    }
+    if (!Object.keys(add).length) return;
+    setMarks((old) => {
+      const out = { ...old };
+      for (const [sp, hs] of Object.entries(add)) {
+        const k = `1:${sp}`;
+        const cur = out[k] ?? blankMarks();
+        out[k] = { ...cur, hits: [...(cur.hits ?? []), ...hs] };
+      }
+      return out;
+    });
+  };
   // which button is next, highlighted: ask the bot, then play the turn, then ask again...
   const [next, setNext] = useState<'solve' | 'play' | 'sendin'>('solve');
   const [showSetup, setShowSetup] = useState(false);
@@ -643,6 +698,11 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     playedTurn.current = t0 + 1;
     setTurnRaw(t0 + 1);
     setPlayed({ turn: t0, events: r.events, undo: snap });
+    pendingHits.current = {
+      hits: r.hits ?? [],
+      me: Object.fromEntries(Object.entries(r.me.mons).map(([k, m]) => [k, m.fainted ? 0 : m.hp])),
+      opp: Object.fromEntries(Object.entries(r.opp.mons).map(([k, m]) => [k, m.fainted ? 0 : m.hp_pct])),
+    };
     setPlayChoice(['', '']);
     setOutcome([{}, {}]);
   };
@@ -677,9 +737,22 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
       setPlayBusy(false);
     }
   };
+  const hitsSig = JSON.stringify(Object.fromEntries(Object.entries(marks).filter(([k, m]) => k.startsWith('1:') && m.hits?.length).map(([k, m]) => [k, m.hits!.length])));
+  useEffect(() => {
+    if (hitsSig === '{}' || !board) {
+      setLikely({});
+      return;
+    }
+    const pos = { ...withTimers(board, 0, outFor.current.n), turn, game: gameId.current };
+    askLikelySets(mineAll, pos)
+      .then(setLikely)
+      .catch(() => setLikely({}));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hitsSig]);
   const doPlay = (pivot: Record<string, string> = {}) =>
     runPlay(async () => {
       if (!board) throw new Error(boardProblem);
+      finalizeHits();
       setLive(true);
       const mine = needPivot ? needPivot.chosen.__mine : playChoice[0] || defaultPlay[0];
       const theirs = needPivot ? needPivot.chosen.__theirs : playChoice[1] || defaultPlay[1];
@@ -730,6 +803,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
       setError(boardProblem);
       return;
     }
+    finalizeHits();
     setLive(true);
     markAppeared(theirActive);
     // The board changed since the last answer for this turn number: a turn has gone by. (A replacement after a faint
@@ -969,7 +1043,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
                 </label>
                 {outcomeChips(1)}
               </div>
-              <button className={'primary' + (next === 'play' ? ' ai-next' : '')} onClick={() => doPlay()} disabled={playBusy}>
+              <button className={'primary ai-main-btn' + (next === 'play' ? ' ai-next' : '')} onClick={() => doPlay()} disabled={playBusy}>
                 {playBusy ? 'Playing…' : 'Play'}
               </button>
             </div>
@@ -1009,7 +1083,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
             </details>
           )}
           <div className="ai-actions">
-            <button className={'primary' + (next === 'solve' ? ' ai-next' : '')} onClick={solveNow} disabled={!ready || !!busy}>
+            <button className={'primary ai-main-btn' + (next === 'solve' ? ' ai-next' : '')} onClick={solveNow} disabled={!ready || !!busy}>
               {myKo ? 'Pick my replacement' : 'Solve this turn'}
             </button>
             <button className="ai-report" onClick={doReport} disabled={!board} title="Something looks wrong? Saves this board and what the bot said, to fix later">
@@ -1123,7 +1197,23 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
             {theirSeen.map((s) => (
               <div key={'s' + baseName(s)} className="ai-seenrow">
                 <Sprite species={s.species} size={26} />
-                <div className="ai-seen">{seenChips(s)}</div>
+                <div className="ai-seen">
+                  {seenChips(s)}
+                  {likely[baseName(s)]?.builds[0] && (() => {
+                    const l = likely[baseName(s)];
+                    const b = l.builds[0];
+                    const sp = { hp: b.sp[0], atk: b.sp[1], def: b.sp[2], spa: b.sp[3], spd: b.sp[4], spe: b.sp[5] };
+                    return (
+                      <div className="ai-likely" title={l.builds.map((x) => `${x.nature} ${x.sp.join('/')}${x.item ? ' @ ' + x.item : ''}: ${pct(x.share)}`).join('\n')}>
+                        Likely ({l.hits} hit{l.hits === 1 ? '' : 's'}): <b>{b.nature} {b.sp.join('/')}</b>
+                        {b.item ? ` @ ${b.item}` : ''} · {pct(b.share)}
+                        <button className="link" onClick={() => patchSet(1, s, { nature: b.nature, sp, ...(b.item ? { item: b.item } : {}) })}>
+                          Apply
+                        </button>
+                      </div>
+                    );
+                  })()}
+                </div>
               </div>
             ))}
           </section>

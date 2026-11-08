@@ -853,7 +853,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [coreKey, played]);
   const noBoosts = (s?: PokemonSet) => !s || Object.values(s.boosts).every((v) => !v);
-  const needLeads = turn === 1 && !leadsDone && !!rawBoard && !!mineActive?.species && !!theirActive?.species && !played && noBoosts(mineActive) && noBoosts(theirActive) && !field.weather && !field.terrain;
+  const needLeads = turn === 1 && !leadsDone && !!rawBoard && !!mineActive?.species && !!theirActive?.species && !played && noBoosts(mineActive) && noBoosts(theirActive); // (weather alone is no sign: V-Calc sets it itself for Sand Stream, Drought...)
   const doLeads = () =>
     runPlay(async () => {
       if (!rawBoard) return;

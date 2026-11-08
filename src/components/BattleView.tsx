@@ -113,7 +113,8 @@ function NaturalSprite({ src, size, onError }: { src: string; size: number; onEr
 }
 
 /** What is on the field: the Mega form only once it has Mega Evolved (V-Calc's set may show the Mega for the worst case). */
-const shown = (s: PokemonSet, mega: boolean) => (mega ? s.species : baseName(s));
+const shown = (s: PokemonSet, mega: boolean) =>
+  baseName(s) === 'Mimikyu' && s.ability === 'Disguise' && s.abilityOn ? 'Mimikyu-Busted' : mega ? s.species : baseName(s);
 
 /** Showdown's field effect images. */
 const FX = 'https://play.pokemonshowdown.com/fx';

@@ -274,7 +274,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
   const sendOut = (side: 0 | 1, s: PokemonSet) => {
     // a replacement after a faint: through the engine, so Stealth Rock, Spikes, Intimidate and the like apply
     const out = side === 0 ? mineActive : theirActive;
-    if (out && out.species && baseName(out) !== baseName(s) && mark(side, out).ko && board && ready) {
+    if (out && out.species && baseName(out) !== baseName(s) && mark(side, out).ko && rawBoard && ready) {
       doSendIn(side, s);
       return;
     }
@@ -409,12 +409,12 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     };
   };
 
-  const position = () => {
+  const position = (allowTheirKo = false) => {
     if (mine.length !== 3) throw new Error('Tick the three Pokémon you brought (Setup, below).');
     if (!mineActive || !mine.some((s) => baseName(s) === baseName(mineActive))) throw new Error('Pick which of your three is out.');
     if (!theirActive) throw new Error("Add the opposing Pokémon that is out and pick it.");
     // both fainted (double KO): you pick blind, so the bot solves that guess; otherwise theirs must be replaced first
-    if (mark(1, theirActive).ko && !mark(0, mineActive).ko) throw new Error('Their Pokémon is marked fainted: pick the one they sent out.');
+    if (!allowTheirKo && mark(1, theirActive).ko && !mark(0, mineActive).ko) throw new Error('Their Pokémon is marked fainted: pick the one they sent out.');
     return buildPosition({ mine, mineActive: baseName(mineActive), theirs, theirActive: baseName(theirActive), marks, field, turn, vol });
   };
   let board: ReturnType<typeof buildPosition> | null = null;
@@ -424,6 +424,15 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
   } catch (e) {
     boardProblem = e instanceof Error ? e.message : String(e);
   }
+  // the board as it is, a fainted Pokémon still out included (for sending in its replacement through the engine)
+  let rawBoard: ReturnType<typeof buildPosition> | null = board;
+  if (!rawBoard)
+    try {
+      rawBoard = position(true);
+    } catch {
+      rawBoard = null;
+    }
+  const theirKo = !!theirActive && mark(1, theirActive).ko;
   const myKo = !!mineActive && mark(0, mineActive).ko;
   // the board without the turn number: a change here means something happened
   const key = board ? JSON.stringify({ ...board, turn: 0 }) + (myKo ? '|replace' : '') : '';
@@ -773,11 +782,11 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     });
   const doSendIn = (side: 0 | 1, s: PokemonSet) =>
     runPlay(async () => {
-      if (!board) throw new Error(boardProblem);
+      if (!rawBoard) throw new Error(boardProblem);
       setLive(true);
       if (side === 1) markAppeared(s);
       const snap: Snapshot = { teams, field, vol, marks, turn, timers };
-      const pos = { ...withTimers(board, 0, outFor.current.n), turn, game: gameId.current };
+      const pos = { ...withTimers(rawBoard, 0, outFor.current.n), turn, game: gameId.current };
       const r = await askSendIn(mineAll, pos, side === 0 ? 'me' : 'opp', baseName(s), teams[1].sets);
       setBotWarn(r.warnings ?? []);
       applyPlay(r, snap, false);
@@ -1091,6 +1100,17 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
             </button>
             {busy ? (
               <span className="hint">{busy}</span>
+            ) : theirKo && !myKo && rawBoard ? (
+              <span className="ai-theirsend">
+                <span className="hint">They sent in:</span>
+                {teams[1].sets
+                  .filter((x) => x.species && !mark(1, x).ko && baseName(x) !== baseName(theirActive!))
+                  .map((x, i) => (
+                    <button key={baseName(x)} className={i === 0 ? 'ai-next' : ''} disabled={playBusy} onClick={() => doSendIn(1, x)} title="Sends it in through the engine: Stealth Rock, Spikes and entry abilities apply">
+                      {baseName(x)}
+                    </button>
+                  ))}
+              </span>
             ) : boardProblem ? (
               <span className="hint">{boardProblem}</span>
             ) : auto && !live ? (

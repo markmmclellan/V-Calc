@@ -962,6 +962,19 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
       if (mineAll.length < 6) throw new Error(`The bot picks 3 from your six; you have ${mineAll.length} entered.`);
       setBring(await askBringCheck(mineAll, theirs, BRING_SECS));
     });
+  // Start the bring check by itself as soon as their six are in (team preview), so it is ready when you look; once per
+  // pair of teams
+  const bringSig = turn === 1 && theirs.length >= 6 && mineAll.length >= 6 ? [...mineAll, ...theirs].map((s) => baseName(s)).join(',') : '';
+  const bringAsked = useRef('');
+  useEffect(() => {
+    if (!open || !ready || !bringSig || busy || bring || bringAsked.current === bringSig) return;
+    const t = window.setTimeout(() => {
+      bringAsked.current = bringSig;
+      doBring();
+    }, 1200);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, ready, bringSig, busy, bring]);
 
   const useBring = (o: { bring: string[] }) => {
     const idx = o.bring.map((n) => mineAll.findIndex((s) => baseName(s) === n)).filter((i) => i >= 0);

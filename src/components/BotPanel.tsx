@@ -177,8 +177,10 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
 
   // A new game: forget the last one's marks, results and turn count.
   const firstBattle = useRef(battleId);
+  const lastOpp = useRef<string[]>([]);
   useEffect(() => {
     if (battleId === firstBattle.current) return;
+    lastOpp.current = theirs.map((x) => baseName(x)); // last game's six: a slot left unchanged gets pointed out
     setMarks({});
     setTurnRaw(1);
     setNext('solve');
@@ -981,21 +983,29 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     run(`Simulating every bring (about ${BRING_SECS} s)…`, async () => {
       if (theirs.length < 6) throw new Error(`Enter all six of the opponent's Pokémon first (${theirs.length} so far).`);
       if (mineAll.length < 6) throw new Error(`The bot picks 3 from your six; you have ${mineAll.length} entered.`);
+      const sig = bringSig;
       setBring(await askBringCheck(mineAll, theirs, BRING_SECS));
+      bringFor.current = sig;
     });
   // Start the bring check by itself as soon as their six are in (team preview), so it is ready when you look; once per
   // pair of teams
   const bringSig = turn === 1 && theirs.length >= 6 && mineAll.length >= 6 ? [...mineAll, ...theirs].map((s) => baseName(s)).join(',') : '';
   const bringAsked = useRef('');
+  const bringFor = useRef(''); // the teams the answer shown is for: a change of either six asks again
+  const oppNames = theirs.map((s) => baseName(s));
+  // their six exactly as last game: not entered yet for this game, so no bring check on it
+  const sameAsLast = lastOpp.current.length >= 6 && oppNames.length >= 6 && oppNames.every((n) => lastOpp.current.includes(n));
+  // some of last game's six still there: worth a look (a slot not retyped)
+  const carried = turn === 1 && !sameAsLast ? oppNames.filter((n) => lastOpp.current.includes(n)) : [];
   useEffect(() => {
-    if (!open || !ready || !bringSig || busy || bring || bringAsked.current === bringSig) return;
+    if (!open || !ready || !bringSig || busy || sameAsLast || (bring && bringFor.current === bringSig) || bringAsked.current === bringSig) return;
     const t = window.setTimeout(() => {
       bringAsked.current = bringSig;
       doBring();
     }, 1200);
     return () => window.clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, ready, bringSig, busy, bring]);
+  }, [open, ready, bringSig, busy, bring, sameAsLast]);
 
   const useBring = (o: { bring: string[] }) => {
     const idx = o.bring.map((n) => mineAll.findIndex((s) => baseName(s) === n)).filter((i) => i >= 0);
@@ -1365,6 +1375,11 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
           <summary>Team preview and setup</summary>
           <h4>What should I bring?</h4>
           <p className="hint">Uses your six and their six as entered in the calc.</p>
+          {sameAsLast && <p className="ai-left">Their six are still last game's: enter this opponent's team.</p>}
+          {carried.length > 0 && carried.length < 6 && (
+            <p className="ai-left">Also on last game's team: {carried.join(', ')}. Still on this team?</p>
+          )}
+          {bring && bringFor.current && bringFor.current !== bringSig && <p className="ai-left">The teams changed since this answer: asking again…</p>}
           <button onClick={doBring} disabled={!ready || !!busy}>
             What should I bring?
           </button>

@@ -175,6 +175,8 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
   const [dOther, setDOther] = useState<string[]>(['', '']);
   const [dPlayed, setDPlayed] = useState<DoublesPlay | null>(null);
   const [dReported, setDReported] = useState('');
+  // Play turn: who comes in after a switching move (Parting Shot, U-turn...) or comes back (Revival Blessing), per side
+  const [dPivot, setDPivot] = useState<{ me: string; opp: string }>({ me: '', opp: '' });
   const [dTimers, setDTimers] = useState<DoublesTurns | null>(null);
   const [solved, setSolved] = useState<(SolveResult & { key: string }) | null>(null);
   const [advice, setAdvice] = useState<(Advice & { key: string }) | null>(null);
@@ -1116,7 +1118,23 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
       setDOther(['', '']);
       setDOpts(o);
       setDPlayed(null);
+      setDPivot({ me: dTurnRes?.pivot?.options[0]?.species ?? '', opp: '' });
     });
+  // the moves after which the side picks who comes in (or, Revival Blessing, who comes back)
+  const PIVOTS = ['U-turn', 'Volt Switch', 'Flip Turn', 'Parting Shot', 'Teleport', 'Shed Tail', 'Baton Pass', 'Chilly Reception', 'Revival Blessing'];
+  const dPicked = (side: 'me' | 'opp'): string[] =>
+    !dOpts || !dPick
+      ? []
+      : [0, 1].map((k) => (side === 'opp' && dOther[k].trim() ? dOther[k].trim() : dOpts[side][k].find((o) => o.index === dPick[side][k])?.action ?? ''));
+  const moveOf = (label: string) => label.replace(/^mega\s*\+\s*/i, '').split(' → ')[0].trim();
+  const dPivotNeeded = (side: 'me' | 'opp') => dPicked(side).some((l) => PIVOTS.includes(moveOf(l)));
+  const dPivotChoices = (side: 'me' | 'opp'): string[] => {
+    const revive = dPicked(side).some((l) => moveOf(l) === 'Revival Blessing');
+    const out = dSide(side === 'me' ? 0 : 1).map((s) => (s ? baseName(s) : ''));
+    const kept = mineAll.filter((s) => !skipped.includes(s.species));
+    const pool = side === 'me' ? (kept.length === 4 ? kept : mineAll.slice(0, 4)) : theirs;
+    return pool.filter((s) => !out.includes(baseName(s)) && (revive ? s.hpPercent <= 0 : s.hpPercent > 0)).map(baseName);
+  };
   const doDoublesPlay = () =>
     run('Playing the turn…', async () => {
       if (!dOpts || !dPick) throw new Error('Press "Enter the turn" first.');
@@ -1128,7 +1146,8 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
         const [mv, tgt] = typed.replace(/^mega\s*\+\s*/i, '').split(/\s*(?:→|->)\s*/);
         return { move: mv, target: tgt ?? '', mega, who: k === 0 ? tl?.species : tr?.species };
       });
-      const r = await askDoublesPlay(mineAll, doublesBoard(takeDoublesHits()), dPick.me, theirsSent);
+      const board = { ...doublesBoard(takeDoublesHits()), pivot_to: dPivot };
+      const r = await askDoublesPlay(mineAll, board, dPick.me, theirsSent);
       applyDoubles(r);
       dPending.current = r.hits ?? null;
       setDTurn((t) => Math.min(60, t + 1));
@@ -1149,15 +1168,22 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
         if (x && x.item_gone && s.item && !mark(0, s).gone) setMark(0, s, { gone: true });
       }
       setTeams((old) => {
-        const upd = (t: Team, side: 'me' | 'opp'): Team => ({
-          ...t,
-          sets: t.sets.map((s) => {
-            const x = s.species ? r[side][baseName(s)] : undefined;
-            if (!x) return s;
-            const b = x.boosts;
-            return { ...s, hpPercent: Math.round(x.hp_pct), status: x.status as PokemonSet["status"], boosts: { atk: b.atk, def: b.def, spa: b.spa, spd: b.spd, spe: b.spe } };
-          }),
-        });
+        const upd = (t: Team, side: 'me' | 'opp'): Team => {
+          // who is out after the turn (a switching move brought someone in): left = selected, right = partner
+          const slotOf = (k: number) => t.sets.findIndex((s) => s.species && r[side][baseName(s)]?.out === k);
+          const [l, rr] = [slotOf(0), slotOf(1)];
+          return {
+            ...t,
+            active: l >= 0 ? l : t.active,
+            partner: rr >= 0 ? rr : t.partner,
+            sets: t.sets.map((s) => {
+              const x = s.species ? r[side][baseName(s)] : undefined;
+              if (!x) return s;
+              const b = x.boosts;
+              return { ...s, hpPercent: Math.round(x.hp_pct), status: x.status as PokemonSet["status"], boosts: { atk: b.atk, def: b.def, spa: b.spa, spd: b.spd, spe: b.spe } };
+            }),
+          };
+        };
         return [upd(old[0], 'me'), upd(old[1], 'opp')];
       });
       setField((f) => ({
@@ -1436,6 +1462,20 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
                     </div>
                   ) : null;
                 })}
+                {dTurnRes.pivot && (
+                  <div className="ai-result">
+                    <h4>After {dTurnRes.pivot.move.split(' → ')[0]}, send in</h4>
+                    {dTurnRes.pivot.options.map((o, i) => (
+                      <div key={o.species} className={'ai-bring' + (i === 0 ? ' top' : '')}>
+                        <div className="ai-opt-main">
+                          <strong>{o.species}</strong>
+                        </div>
+                        <Bar v={o.win} />
+                        <span className="ai-pct">{pct(o.win)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 {dTurnRes.options && dTurnRes.options.length > 0 && (
                   <details open>
                     <summary>Together (win chance against their likely choices)</summary>
@@ -1545,6 +1585,19 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
                           )}
                         </div>
                       ) : null,
+                    )}
+                    {dPivotNeeded(side) && (
+                      <div className="ai-flags">
+                        <span>then sends in</span>
+                        <select value={dPivot[side]} onChange={(e) => setDPivot((v) => ({ ...v, [side]: e.target.value }))}>
+                          <option value="">{side === 'me' ? '(the healthiest)' : '(the healthiest seen)'}</option>
+                          {dPivotChoices(side).map((n) => (
+                            <option key={n} value={n}>
+                              {n}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
                     )}
                   </div>
                 ))}

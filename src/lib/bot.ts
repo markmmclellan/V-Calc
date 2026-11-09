@@ -356,6 +356,8 @@ export interface DoublesTurn {
   games?: number;
   seconds?: number;
   endgame?: boolean; // few left: every likely option, played to the end
+  // the pick uses a switching move: who to send in, each from simulated games
+  pivot?: { move: string; options: { species: string; win: number }[] } | null;
 }
 export const askDoublesTurn = (team: PokemonSet[], board: Record<string, unknown>, seconds = 6) =>
   call<DoublesTurn>('/api/doubles_turn', { ...board, team_text: exportTeam(team), seconds });

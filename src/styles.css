@@ -717,3 +717,17 @@ td.v-loses, .bg-verdict.v-loses { background: color-mix(in srgb, var(--bad) 38%,
 .ai-prev-mon { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px; min-width: 92px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel-2); font-size: 12px; }
 .ai-prev-mon.on { border-color: var(--accent, #5b9cff); }
 .ai-prev-btns { display: flex; gap: 4px; }
+
+/* AI panel (doubles): Showdown-style choice per Pokémon */
+.ai-pick-side { display: flex; flex-direction: column; gap: 4px; }
+.ai-pick-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.ai-pick { border: 1px solid var(--line); border-radius: 8px; padding: 6px; display: flex; flex-direction: column; gap: 4px; background: var(--panel-2); }
+.ai-pick-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.ai-pick-moves { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.ai-pick-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.ai-dplay { display: flex; flex-direction: column; gap: 8px; }
+.ai-dplay .ai-main-btn { align-self: flex-end; min-width: 160px; }
+.ai-pick .bv-move { white-space: normal; overflow: visible; text-overflow: clip; font-size: 12px; padding: 4px 6px; line-height: 1.2; }
+.ai-pick .bv-move.on { outline: 2px solid var(--accent, #5b9cff); }
+.ai-pick .bv-tag { cursor: pointer; }
+.ai-pick .bv-tag.on, .ai-prev-mon .bv-tag.on { background: var(--accent); color: #07101f; border-color: var(--accent); }

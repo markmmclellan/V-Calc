@@ -7,6 +7,7 @@ import {
   askDoublesOptions,
   askDoublesPlay,
   askDoublesLeads,
+  askDoublesSendIn,
   sendDoublesReport,
   type DoublesBring,
   type DoublesTurn,
@@ -206,6 +207,84 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     const foes = dOpts.field[side === 'me' ? 1 : 0].filter(Boolean);
     const partner = dOpts.field[side === 'me' ? 0 : 1][1 - k];
     return all && partner ? [...foes, partner] : foes;
+  };
+  // Showdown-style choice: a label is "Mega + Move → Target", "Move (both foes)", "Move" or "Switch to X"
+  const parseAct = (a: string) => {
+    if (a.startsWith('Switch to ')) return { kind: 'switch' as const, mega: false, move: '', target: '', to: a.slice(10) };
+    const mega = a.startsWith('Mega + ');
+    const rest = mega ? a.slice(7) : a;
+    const [mv, tgt] = rest.split(' → ');
+    return { kind: 'move' as const, mega, move: mv.replace(/ \((both foes|hits everyone|partner)\)$/, ''), target: tgt ?? '', to: '' };
+  };
+  const pickIdx = (side: 'me' | 'opp', k: number, want: { kind: 'move' | 'switch'; mega?: boolean; move?: string; target?: string; to?: string }) => {
+    const list = dOpts?.[side][k] ?? [];
+    const ps = list.map((o) => ({ o, a: parseAct(o.action) }));
+    const hit =
+      want.kind === 'switch'
+        ? ps.find((x) => x.a.kind === 'switch' && x.a.to === want.to)
+        : ps.find((x) => x.a.kind === 'move' && x.a.move === want.move && x.a.mega === !!want.mega && (!want.target || x.a.target === want.target)) ??
+          ps.find((x) => x.a.kind === 'move' && x.a.move === want.move && x.a.mega === !!want.mega) ??
+          ps.find((x) => x.a.kind === 'move' && x.a.move === want.move);
+    if (!hit) return;
+    setDPick((p) => (p ? { ...p, [side]: p[side].map((x, j) => (j === k ? hit.o.index : x)) } : p));
+    // another choice: what was ticked for the old one goes
+    setDOutcome((o) => ({ ...o, [side]: o[side].map((x, j) => (j === k ? {} : x)) }));
+  };
+  const dPicker = (side: 'me' | 'opp', k: number) => {
+    const list = dOpts?.[side][k] ?? [];
+    if (!list.length || !dPick) return null;
+    const cur = parseAct(list.find((o) => o.index === dPick[side][k])?.action ?? '');
+    const acts = list.map((o) => parseAct(o.action));
+    const moves = [...new Set(acts.filter((a) => a.kind === 'move' && !a.mega).map((a) => a.move))];
+    for (const a of acts) if (a.kind === 'move' && !moves.includes(a.move)) moves.push(a.move);
+    const canMega = acts.some((a) => a.mega);
+    const targets = cur.kind === 'move' ? [...new Set(acts.filter((a) => a.kind === 'move' && a.move === cur.move && a.mega === cur.mega && a.target).map((a) => a.target))] : [];
+    const switches = acts.filter((a) => a.kind === 'switch').map((a) => a.to);
+    const who = dOpts!.field[side === 'me' ? 0 : 1][k];
+    return (
+      <div key={side + k} className="ai-pick">
+        <div className="ai-pick-head">
+          <strong>{who}</strong>
+          {canMega && (
+            <button
+              className={'bv-tag' + (cur.mega ? ' on' : '')}
+              title="Mega Evolve this turn"
+              onClick={() => pickIdx(side, k, { kind: 'move', mega: !cur.mega, move: cur.kind === 'move' ? cur.move : moves[0], target: cur.target })}
+            >
+              Mega
+            </button>
+          )}
+        </div>
+        <div className="ai-pick-moves">
+          {moves.map((m) => (
+            <button key={m} className={'bv-move' + (cur.kind === 'move' && cur.move === m ? ' on' : '')} onClick={() => pickIdx(side, k, { kind: 'move', mega: cur.mega, move: m, target: cur.target })}>
+              {m}
+            </button>
+          ))}
+        </div>
+        {targets.length > 1 && (
+          <div className="ai-pick-row">
+            <span className="hint">at</span>
+            {targets.map((t) => (
+              <button key={t} className={'bv-tag' + (cur.target === t ? ' on' : '')} onClick={() => pickIdx(side, k, { kind: 'move', mega: cur.mega, move: cur.move, target: t })}>
+                {t}
+              </button>
+            ))}
+          </div>
+        )}
+        {switches.length > 0 && (
+          <div className="ai-pick-row">
+            <span className="hint">switch</span>
+            {switches.map((t) => (
+              <button key={t} className={'bv-tag' + (cur.kind === 'switch' && cur.to === t ? ' on' : '')} onClick={() => pickIdx(side, k, { kind: 'switch', to: t })}>
+                {t}
+              </button>
+            ))}
+          </div>
+        )}
+        {dOutcomeChips(side, k)}
+      </div>
+    );
   };
   const dOutcomeChips = (side: 'me' | 'opp', k: number) => {
     const spread = dSpreadTargets(side, k);
@@ -492,6 +571,17 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
       return;
     }
     if (!singles) {
+      // a slot whose Pokémon fainted: the replacement comes in through the engine (no turn change)
+      {
+        const t = teams[side];
+        const downAt = (k: number | undefined) => k != null && !!t.sets[k]?.species && (t.sets[k].hpPercent <= 0 || mark(side, t.sets[k]).ko);
+        const slot = downAt(t.active) ? 0 : downAt(t.partner) ? 1 : -1;
+        const i = t.sets.indexOf(s);
+        if (slot >= 0 && i >= 0 && i !== t.active && i !== t.partner && s.hpPercent > 0 && phase === 'battle' && up === true) {
+          doDoublesSendIn(side, slot, s);
+          return;
+        }
+      }
       setLive(true);
       if (side === 1) markAppeared(s);
       setTeams((old) => {
@@ -1375,6 +1465,18 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     dUndo.current = null;
     setDPlayed(null);
   };
+  // A replacement after a faint (as singles' send-in): through the engine, so Intimidate, weather and seeds apply; the
+  // turn does not move on.
+  const doDoublesSendIn = (side: 0 | 1, slot: number, x: PokemonSet) =>
+    run(`${baseName(x)} comes in…`, async () => {
+      const b = doublesBoard();
+      // one of theirs not seen yet: it is one of their four now
+      const opp = b.opp.map((o) => (side === 1 && o.species === baseName(x) ? { ...o, seen: true } : o));
+      const snap: DSnap = { teams, field, marks, turn, timers: dTimers };
+      if (side === 1) markAppeared(x);
+      const r = await askDoublesSendIn(mineAll, { ...b, opp }, side === 0 ? 'me' : 'opp', slot, baseName(x));
+      applyDoubles({ ...r, events: [`${baseName(x)} sent in:`, ...r.events] }, snap);
+    });
   // Turn 1: the leads come out (Intimidate, weather / terrain, seeds) by themselves once all four are out, as in singles
   const [dLeadsDone, setDLeadsDone] = useState(false);
   const dOutNow = [...dSide(0), ...dSide(1)];
@@ -1772,34 +1874,14 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
           {!singles ? (
             <>
             {dOpts && dPick && !dPlayed?.replace.some(Boolean) && (
-              <div className="ai-play grid">
+              <div className="ai-play ai-dplay">
                 <span className="hint" title="Pick what both sides did, then Play: the turn is played 64 times and the typical result is written into the calc (HP, status, stat changes, the field, who is out). Fix what luck changed by hand.">
                   Play turn
                 </span>
                 {(['me', 'opp'] as const).map((side) => (
-                  <div key={side} className="ai-play-side">
-                    {[0, 1].map((k) =>
-                      dOpts[side][k].length ? (
-                        <label key={k}>
-                          {side === 'me' ? 'You' : 'They'}: {dOpts.field[side === 'me' ? 0 : 1][k]}
-                          <select
-                            value={dPick[side][k]}
-                            onChange={(e) => {
-                              setDPick((p) => (p ? { ...p, [side]: p[side].map((x, j) => (j === k ? +e.target.value : x)) } : p));
-                              // another move: what was ticked for the old one goes
-                              setDOutcome((o) => ({ ...o, [side]: o[side].map((x, j) => (j === k ? {} : x)) }));
-                            }}
-                          >
-                            {dOpts[side][k].map((o) => (
-                              <option key={o.index} value={o.index}>
-                                {o.action}
-                              </option>
-                            ))}
-                          </select>
-                          {dOutcomeChips(side, k)}
-                        </label>
-                      ) : null,
-                    )}
+                  <div key={side} className="ai-play-side ai-pick-side">
+                    <span className="hint">{side === 'me' ? 'You' : 'They'}</span>
+                    <div className="ai-pick-pair">{[0, 1].map((k) => dPicker(side, k))}</div>
                     {dPivotNeeded(side) && (
                       <label>
                         then sends in
@@ -1870,7 +1952,28 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
               >
                 {dReported || 'Report'}
               </button>
-              {busy && <span className="hint">{busy}</span>}
+              {busy ? (
+                <span className="hint">{busy}</span>
+              ) : oppLeadsReady ? (
+                (() => {
+                  const t = teams[1];
+                  const downK = [t.active, t.partner].findIndex((i) => i != null && !!t.sets[i]?.species && (t.sets[i].hpPercent <= 0 || mark(1, t.sets[i]).ko));
+                  if (downK < 0) return null;
+                  const out = [t.active, t.partner].filter((i) => i != null).map((i) => baseName(t.sets[i!]));
+                  return (
+                    <span className="ai-theirsend">
+                      <span className="hint">They sent in:</span>
+                      {theirs
+                        .filter((x) => !mark(1, x).ko && x.hpPercent > 0 && !out.includes(baseName(x)))
+                        .map((x, i) => (
+                          <button key={baseName(x)} className={i === 0 ? 'ai-next' : ''} onClick={() => doDoublesSendIn(1, downK, x)} title="Sends it in through the engine: entry abilities apply; the turn does not move on">
+                            {baseName(x)}
+                          </button>
+                        ))}
+                    </span>
+                  );
+                })()
+              ) : null}
             </div>
             {error && <p className="err">{error}</p>}
             {dTurnRes && (

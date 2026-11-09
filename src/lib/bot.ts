@@ -396,6 +396,9 @@ export interface DoublesPlay {
 /** "Something is off" (doubles): the board and the bot's last answers, saved on the bot's computer. */
 export const sendDoublesReport = (team: PokemonSet[], board: Record<string, unknown>, extra: Record<string, unknown>) =>
   call<{ ok: boolean }>('/api/report', { ...board, team_text: exportTeam(team), doubles: true, ...extra });
+/** A replacement between turns (after a faint): through the engine (entry abilities); the turn does not move on. */
+export const askDoublesSendIn = (team: PokemonSet[], board: Record<string, unknown>, side: 'me' | 'opp', slot: number, species: string) =>
+  call<DoublesPlay>('/api/doubles_send_in', { ...board, team_text: exportTeam(team), side, slot, species });
 /** Turn 1: the leads come out (entry abilities, seeds); the board after. */
 export const askDoublesLeads = (team: PokemonSet[], board: Record<string, unknown>) =>
   call<DoublesPlay>('/api/doubles_leads', { ...board, team_text: exportTeam(team) });

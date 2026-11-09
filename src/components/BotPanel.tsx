@@ -177,7 +177,16 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
   const [dPlayed, setDPlayed] = useState<DoublesPlay | null>(null);
   const [dReported, setDReported] = useState('');
   // Play turn: what you saw happen to each of the four's moves (First / Missed / Crit / Didn't move), as in singles
-  const [dOutcome, setDOutcome] = useState<{ me: Outcome[]; opp: Outcome[] }>({ me: [{}, {}], opp: [{}, {}] });
+  // (a spread move: missed / crit per target, by name)
+  type DOut = Outcome & { miss_on?: string[]; crit_on?: string[] };
+  const [dOutcome, setDOutcome] = useState<{ me: DOut[]; opp: DOut[] }>({ me: [{}, {}], opp: [{}, {}] });
+  const toggleDOn = (side: 'me' | 'opp', k: number, f: 'miss_on' | 'crit_on', who: string) =>
+    setDOutcome((o) => {
+      const n = { me: o.me.map((x) => ({ ...x })), opp: o.opp.map((x) => ({ ...x })) };
+      const cur = n[side][k][f] ?? [];
+      n[side][k][f] = cur.includes(who) ? cur.filter((x) => x !== who) : [...cur, who];
+      return n;
+    });
   const toggleDOutcome = (side: 'me' | 'opp', k: number, f: keyof Outcome) =>
     setDOutcome((o) => {
       const n = { me: o.me.map((x) => ({ ...x })), opp: o.opp.map((x) => ({ ...x })) };
@@ -186,22 +195,44 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
       if (f === 'first' && n[side][k].first) for (const sd of ['me', 'opp'] as const) for (const j of [0, 1]) if (sd !== side || j !== k) n[sd][j].first = false;
       return n;
     });
-  const dOutcomeChips = (side: 'me' | 'opp', k: number) => (
-    <span className="ai-outcome">
-      {(
-        [
-          ['first', 'First', 'It moved first in its priority bracket (a speed tie, or the bot has the speed wrong)'],
-          ['miss', 'Missed', 'Its move missed'],
-          ['crit', 'Crit', 'Its hits were critical hits'],
-          ['no_move', "Didn't move", 'Flinched, fully paralysed, asleep... it did not move this turn'],
-        ] as [keyof Outcome, string, string][]
-      ).map(([f, l, t]) => (
-        <button key={f} className={'bv-tag' + (dOutcome[side][k][f] ? ' on' : '')} title={t} onClick={() => toggleDOutcome(side, k, f)}>
-          {l}
-        </button>
-      ))}
-    </span>
-  );
+  // the Pokémon a spread move picked for this slot hits ([] for a single-target move): both foes, plus the partner for
+  // Earthquake-like moves
+  const dSpreadTargets = (side: 'me' | 'opp', k: number): string[] => {
+    const label = dOpts?.[side][k].find((o) => o.index === dPick?.[side][k])?.action ?? '';
+    const both = label.endsWith('(both foes)');
+    const all = label.endsWith('(hits everyone)');
+    if (!dOpts || (!both && !all)) return [];
+    const foes = dOpts.field[side === 'me' ? 1 : 0].filter(Boolean);
+    const partner = dOpts.field[side === 'me' ? 0 : 1][1 - k];
+    return all && partner ? [...foes, partner] : foes;
+  };
+  const dOutcomeChips = (side: 'me' | 'opp', k: number) => {
+    const spread = dSpreadTargets(side, k);
+    const one = (f: keyof Outcome, l: string, t: string) => (
+      <button key={f} className={'bv-tag' + (dOutcome[side][k][f] ? ' on' : '')} title={t} onClick={() => toggleDOutcome(side, k, f)}>
+        {l}
+      </button>
+    );
+    const per = (f: 'miss_on' | 'crit_on', l: string, who: string) => (
+      <button
+        key={f + who}
+        className={'bv-tag' + (dOutcome[side][k][f]?.includes(who) ? ' on' : '')}
+        title={f === 'miss_on' ? `It missed ${who} (and hit the others)` : `Its hit on ${who} was a critical hit`}
+        onClick={() => toggleDOn(side, k, f, who)}
+      >
+        {l} {who}
+      </button>
+    );
+    return (
+      <span className="ai-outcome">
+        {one('first', 'First', 'It moved first in its priority bracket (a speed tie, or the bot has the speed wrong)')}
+        {spread.length
+          ? [...spread.map((w) => per('miss_on', 'Missed', w)), ...spread.map((w) => per('crit_on', 'Crit', w))]
+          : [one('miss', 'Missed', 'Its move missed'), one('crit', 'Crit', 'Its hit was a critical hit')]}
+        {one('no_move', "Didn't move", 'Flinched, fully paralysed, asleep... it did not move this turn')}
+      </span>
+    );
+  };
   // Play turn: who comes in after a switching move (Parting Shot, U-turn...) or comes back (Revival Blessing), per side
   const [dPivot, setDPivot] = useState<{ me: string; opp: string }>({ me: '', opp: '' });
   const [dTimers, setDTimers] = useState<DoublesTurns | null>(null);
@@ -1588,7 +1619,11 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
                           {side === 'me' ? 'You' : 'They'}: {dOpts.field[side === 'me' ? 0 : 1][k]}
                           <select
                             value={dPick[side][k]}
-                            onChange={(e) => setDPick((p) => (p ? { ...p, [side]: p[side].map((x, j) => (j === k ? +e.target.value : x)) } : p))}
+                            onChange={(e) => {
+                              setDPick((p) => (p ? { ...p, [side]: p[side].map((x, j) => (j === k ? +e.target.value : x)) } : p));
+                              // another move: what was ticked for the old one goes
+                              setDOutcome((o) => ({ ...o, [side]: o[side].map((x, j) => (j === k ? {} : x)) }));
+                            }}
                           >
                             {dOpts[side][k].map((o) => (
                               <option key={o.index} value={o.index}>

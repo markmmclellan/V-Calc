@@ -7,6 +7,7 @@ import {
   askDoublesOptions,
   askDoublesPlay,
   askDoublesLeads,
+  sendDoublesReport,
   type DoublesBring,
   type DoublesTurn,
   type DoublesOptions,
@@ -170,6 +171,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
   const [dPick, setDPick] = useState<{ me: number[]; opp: number[] } | null>(null);
   const [dOther, setDOther] = useState<string[]>(['', '']);
   const [dPlayed, setDPlayed] = useState<DoublesPlay | null>(null);
+  const [dReported, setDReported] = useState('');
   const [solved, setSolved] = useState<(SolveResult & { key: string }) | null>(null);
   const [advice, setAdvice] = useState<(Advice & { key: string }) | null>(null);
   // the last call to the bot: its board and turn, to tell a new turn from the same one
@@ -1401,6 +1403,26 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
               <button onClick={doDoublesOptions} disabled={up !== true || !!busy} title="Enter what both sides did this turn; the engine plays it and updates the calc">
                 Enter the turn
               </button>
+              <button
+                className="link"
+                disabled={up !== true}
+                title="Something is off here: saves the board and the bot's last answers on the bot's computer for a later look"
+                onClick={() => {
+                  let board: Record<string, unknown> = {};
+                  try {
+                    board = doublesBoard();
+                  } catch {
+                    /* an incomplete board is saved as it is */
+                  }
+                  sendDoublesReport(mineAll, board, { turn_answer: dTurnRes, played: dPlayed, bring: dbring })
+                    .then(() => setDReported('Saved'))
+                    .catch((e) => setDReported('Could not save: ' + (e instanceof Error ? e.message : String(e))));
+                  window.setTimeout(() => setDReported(''), 2500);
+                }}
+              >
+                Something's off
+              </button>
+              {dReported && <span className="hint">{dReported}</span>}
             </div>
             {dOpts && dPick && (
               <div className="ai-result">

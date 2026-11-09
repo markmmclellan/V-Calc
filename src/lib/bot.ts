@@ -4,7 +4,7 @@ import { baseForMega, exportTeam } from './showdown';
 
 /**
  * Client for the local simulation bot (the ChampionsAI project). It runs on this computer; nothing here leaves it.
- * Start it with start_gui.bat in the ChampionsAI folder. Singles only.
+ * Start it with start_gui.bat in the ChampionsAI folder. Singles, and Doubles (the askDoubles* calls).
  */
 export const DEFAULT_BOT_URL = 'http://127.0.0.1:8765';
 const URL_KEY = 'champions-calc:bot-url';
@@ -354,6 +354,9 @@ export interface DoublesPlay {
   runs: number;
   warnings: string[];
 }
+/** "Something is off" (doubles): the board and the bot's last answers, saved on the bot's computer. */
+export const sendDoublesReport = (team: PokemonSet[], board: Record<string, unknown>, extra: Record<string, unknown>) =>
+  call<{ ok: boolean }>('/api/report', { ...board, team_text: exportTeam(team), doubles: true, ...extra });
 /** Turn 1: the leads come out (entry abilities, seeds); the board after. */
 export const askDoublesLeads = (team: PokemonSet[], board: Record<string, unknown>) =>
   call<DoublesPlay>('/api/doubles_leads', { ...board, team_text: exportTeam(team) });

@@ -287,6 +287,18 @@ export interface BringCheck {
 export const askBringCheck = (team: PokemonSet[], theirs: PokemonSet[], seconds = 20) =>
   call<BringCheck>('/api/bring_check', { team_text: exportTeam(team), opp: theirs.map(baseName), seconds });
 
+/** Doubles team preview: which 4 to bring and which 2 lead, from the doubles bot's preview network (instant). */
+export interface DoublesBring {
+  value: number; // expected result, -1 (loss) .. +1 (win)
+  options: { p: number; lead: string[]; back: string[] }[]; // how strongly it picks each, most first
+  brought: Record<string, number>; // share of its picks that bring each of yours
+  led: Record<string, number>; // ... and that lead with it
+  run: string;
+  update: number;
+}
+export const askDoublesBring = (team: PokemonSet[], theirs: PokemonSet[]) =>
+  call<DoublesBring>('/api/doubles_bring', { team_text: exportTeam(team), opp: theirs.map(baseName) });
+
 type Position = ReturnType<typeof buildPosition>;
 const withTeam = (team: PokemonSet[], pos: Position) => ({ ...pos, team_text: exportTeam(team) });
 

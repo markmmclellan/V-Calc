@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { FieldState } from '../lib/calc';
 import {
   askBringCheck,
+  askDoublesBring,
+  type DoublesBring,
   askCheck,
   askQuick,
   askReplace,
@@ -154,6 +156,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
   const [bring, setBring] = useState<BringCheck | null>(null);
+  const [dbring, setDBring] = useState<(DoublesBring & { sig: string }) | null>(null);
   const [solved, setSolved] = useState<(SolveResult & { key: string }) | null>(null);
   const [advice, setAdvice] = useState<(Advice & { key: string }) | null>(null);
   // the last call to the bot: its board and turn, to tell a new turn from the same one
@@ -190,6 +193,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     setSolved(null);
     setAdvice(null);
     setBring(null);
+    setDBring(null);
     setPicked(null);
     setError('');
     setLive(false);
@@ -987,6 +991,14 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
       setBring(await askBringCheck(mineAll, theirs, BRING_SECS));
       bringFor.current = sig;
     });
+  // Doubles: the doubles bot's instant pick of 4 and the 2 leads (no simulation, so no waiting)
+  const doDoublesBring = () =>
+    run('Asking the doubles bot…', async () => {
+      if (theirs.length < 6) throw new Error(`Enter all six of the opponent's Pokémon first (${theirs.length} so far).`);
+      if (mineAll.length < 6) throw new Error(`The bot picks 4 from your six; you have ${mineAll.length} entered.`);
+      const sig = [...mineAll, ...theirs].map((s) => baseName(s)).join(',');
+      setDBring({ ...(await askDoublesBring(mineAll, theirs)), sig });
+    });
   // Start the bring check by itself as soon as their six are in (team preview), so it is ready when you look; once per
   // pair of teams
   const bringSig = turn === 1 && theirs.length >= 6 && mineAll.length >= 6 ? [...mineAll, ...theirs].map((s) => baseName(s)).join(',') : '';
@@ -1412,6 +1424,34 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
                 Win chance from {bring.games.toLocaleString()} simulated games against what they are likely to bring
                 {bring.their_likely[0] ? ` (most likely: ${bring.their_likely[0].lead} lead with ${bring.their_likely[0].bring.slice(1).join(' + ')})` : ''}, mixed with
                 any other bring so a surprise is covered.
+              </p>
+            </div>
+          )}
+          <h4>Doubles: which 4?</h4>
+          <p className="hint">For doubles games: the doubles bot picks 4 of your six and the 2 leads. Instant (no simulation).</p>
+          <button onClick={doDoublesBring} disabled={!ready || !!busy}>
+            Doubles: which 4?
+          </button>
+          {dbring && (
+            <div className="ai-result">
+              {dbring.sig !== [...mineAll, ...theirs].map((s) => baseName(s)).join(',') && (
+                <p className="ai-left">The teams changed since this answer: ask again.</p>
+              )}
+              {dbring.options.map((o, i) => (
+                <div key={i} className={'ai-bring' + (i === 0 ? ' top' : '')}>
+                  <div className="ai-opt-main">
+                    <strong>
+                      Lead {o.lead[0]} + {o.lead[1]}
+                    </strong>
+                    <span className="hint"> · back {o.back.join(' + ')}</span>
+                  </div>
+                  <Bar v={o.p} />
+                  <span className="ai-pct">{pct(o.p)}</span>
+                </div>
+              ))}
+              <p className="hint">
+                How strongly the bot picks each option (it mixes them). Its guess at the result: {pct((dbring.value + 1) / 2)} to win. From{' '}
+                {dbring.run} at update {dbring.update.toLocaleString()}; still learning, so a rough guide.
               </p>
             </div>
           )}

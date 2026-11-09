@@ -285,6 +285,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     dLast.current = null;
     setPhase('preview');
     setPrevSel({ bring: [], leads: [] });
+    setPrevOpp([]);
     setOppLeads([]);
     setPicked(null);
     setError('');
@@ -313,6 +314,9 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
   const theirsCount = teams[1].sets.filter((x) => x.species).length;
   const [phase, setPhase] = useState<'preview' | 'battle'>('preview');
   const [prevSel, setPrevSel] = useState<{ bring: string[]; leads: string[] }>({ bring: [], leads: [] });
+  // their lead(s), if you mark them in the preview (else you tap them once the battle starts)
+  const [prevOpp, setPrevOpp] = useState<string[]>([]);
+  const togglePrevOpp = (n: string) => setPrevOpp((o) => (o.includes(n) ? o.filter((x) => x !== n) : o.length >= LEADS_N ? o : [...o, n]));
   const [oppLeads, setOppLeads] = useState<string[]>([]);
   const oppLeadsReady = phase === 'battle' && oppLeads.length >= Math.min(LEADS_N, Math.max(1, theirsCount));
   const togglePrevBring = (n: string) =>
@@ -345,8 +349,24 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     if (idx.some((i) => i < 0)) return setError('Could not find those in your team.');
     onApplyBring(idx, idx.slice(0, LEADS_N));
     setPicked(order);
-    setOppLeads([]);
-    setLive(false);
+    // their leads marked in the preview: out at once (left, then right), and the battle is under way
+    const theirIdx = prevOpp.map((n) => teams[1].sets.findIndex((x) => x.species && baseName(x) === n)).filter((i) => i >= 0);
+    if (theirIdx.length === LEADS_N) {
+      for (const n of prevOpp) {
+        const x = teams[1].sets.find((m) => m.species && baseName(m) === n);
+        if (x) markAppeared(x);
+      }
+      setTeams((old) => {
+        const next: [Team, Team] = [old[0], old[1]];
+        next[1] = { ...old[1], active: theirIdx[0], partner: LEADS_N > 1 ? theirIdx[1] : undefined };
+        return next;
+      });
+      setOppLeads([...prevOpp]);
+      setLive(true);
+    } else {
+      setOppLeads([]);
+      setLive(false);
+    }
     setLeadsDone(false);
     setDLeadsDone(false);
     setError('');
@@ -1656,14 +1676,25 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
         {phase === 'preview' ? (
           <section className="ai-board ai-preview">
             <h3>Team preview</h3>
-            <p className="hint">Their six</p>
+            <p className="hint">
+              Their six: mark the {LEADS_N === 1 ? 'one they lead with' : '2 they lead with'} ({prevOpp.length}/{LEADS_N}) if you know it, or tap them once the battle starts
+            </p>
             <div className="ai-prev-row">
-              {theirs.map((x) => (
-                <span key={'t' + baseName(x)} className="ai-prev-mon">
-                  <Sprite species={x.species} size={44} />
-                  <span>{baseName(x)}</span>
-                </span>
-              ))}
+              {theirs.map((x) => {
+                const n = baseName(x);
+                const l = prevOpp.includes(n);
+                return (
+                  <span key={'t' + n} className={'ai-prev-mon' + (l ? ' on' : '')}>
+                    <Sprite species={x.species} size={44} />
+                    <span>{n}</span>
+                    <span className="ai-prev-btns">
+                      <button className={'bv-tag' + (l ? ' on' : '')} onClick={() => togglePrevOpp(n)}>
+                        Lead
+                      </button>
+                    </span>
+                  </span>
+                );
+              })}
             </div>
             <p className="hint">
               Your six: pick {BRING_N} to bring ({prevSel.bring.length}/{BRING_N}) and {LEADS_N === 1 ? 'your lead' : 'your 2 leads'} ({prevSel.leads.length}/{LEADS_N}), or

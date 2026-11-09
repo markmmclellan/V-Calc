@@ -290,28 +290,39 @@ export const askBringCheck = (team: PokemonSet[], theirs: PokemonSet[], seconds 
 /** Doubles team preview: which 4 to bring and which 2 lead, from the doubles bot's preview network (instant). */
 export interface DoublesBring {
   value: number; // expected result, -1 (loss) .. +1 (win)
-  options: { p: number; lead: string[]; back: string[] }[]; // how strongly it picks each, most first
+  // p: how often to pick it (simulated mix, or the network's guess); win / worst: from simulated games
+  options: { p: number; lead: string[]; back: string[]; win?: number; worst?: number; prior?: number }[];
   brought: Record<string, number>; // share of its picks that bring each of yours
   led: Record<string, number>; // ... and that lead with it
+  their_likely?: { lead: string[]; back: string[]; p: number }[];
+  win?: number;
+  games?: number;
+  seconds?: number;
   run: string;
   update: number;
 }
-export const askDoublesBring = (team: PokemonSet[], theirs: PokemonSet[]) =>
-  call<DoublesBring>('/api/doubles_bring', { team_text: exportTeam(team), opp: theirs.map(baseName) });
+export const askDoublesBring = (team: PokemonSet[], theirs: PokemonSet[], seconds = 20) =>
+  call<DoublesBring>('/api/doubles_bring', { team_text: exportTeam(team), opp: theirs.map(baseName), seconds });
 
 /** Doubles turn advice: each of your two's options with the network's weights, and the likeliest pairs. */
 export interface DoublesTurn {
   field: string[][]; // [[your left, right], [their left, right]]
   left: { species: string; options: { action: string; p: number }[] } | null;
   right: { species: string; options: { action: string; p: number }[] } | null;
-  pairs: { left: string; right: string; p: number }[];
+  pairs?: { left: string; right: string; p: number }[]; // network only (quick)
   value: number; // -1 .. +1
   warnings: string[];
   run: string;
   update: number;
+  // the search (simulated games)
+  options?: { action: string; left: string | null; right: string | null; mix: number; win: number; prior: number }[];
+  theirs?: { action: string; p: number }[];
+  win?: number;
+  games?: number;
+  seconds?: number;
 }
-export const askDoublesTurn = (team: PokemonSet[], board: Record<string, unknown>) =>
-  call<DoublesTurn>('/api/doubles_turn', { ...board, team_text: exportTeam(team) });
+export const askDoublesTurn = (team: PokemonSet[], board: Record<string, unknown>, seconds = 6) =>
+  call<DoublesTurn>('/api/doubles_turn', { ...board, team_text: exportTeam(team), seconds });
 
 type Position = ReturnType<typeof buildPosition>;
 const withTeam = (team: PokemonSet[], pos: Position) => ({ ...pos, team_text: exportTeam(team) });

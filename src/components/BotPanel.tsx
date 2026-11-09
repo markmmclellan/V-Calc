@@ -999,11 +999,11 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     });
   // Doubles: the doubles bot's instant pick of 4 and the 2 leads (no simulation, so no waiting)
   const doDoublesBring = () =>
-    run('Asking the doubles bot…', async () => {
+    run(`Simulating every likely bring (about ${BRING_SECS} s)…`, async () => {
       if (theirs.length < 6) throw new Error(`Enter all six of the opponent's Pokémon first (${theirs.length} so far).`);
       if (mineAll.length < 6) throw new Error(`The bot picks 4 from your six; you have ${mineAll.length} entered.`);
       const sig = [...mineAll, ...theirs].map((s) => baseName(s)).join(',');
-      setDBring({ ...(await askDoublesBring(mineAll, theirs)), sig });
+      setDBring({ ...(await askDoublesBring(mineAll, theirs, BRING_SECS)), sig });
     });
   // Doubles: put the picked four first in your team and the two leads out
   const useDoublesBring = (o: { lead: string[]; back: string[] }) => {
@@ -1022,7 +1022,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     return [left, right].map((s) => (s && s.species ? s : undefined));
   };
   const doDoublesTurn = () =>
-    run('Asking the doubles bot…', async () => {
+    run(`Simulating this turn (about ${secs} s)…`, async () => {
       const [ml, mr] = dSide(0);
       const [tl, tr] = dSide(1);
       if (!ml && !mr) throw new Error('Put your two Pokémon on the field in the calc (left and right).');
@@ -1055,7 +1055,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
         bring: four.slice(0, 4).map(baseName),
         active_me: out(ml, mr),
         active_opp: out(tl, tr),
-      });
+      }, secs);
       setDTurnRes(res);
     });
   // Start the bring check by itself as soon as their six are in (team preview), so it is ready when you look; once per
@@ -1219,17 +1219,27 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
                         Lead {o.lead[0]} + {o.lead[1]}
                       </strong>
                       <span className="hint"> · back {o.back.join(' + ')}</span>
+                      {o.win != null && (
+                        <div className={'hint' + (o.worst != null && o.worst < 0.35 ? ' ai-bad' : '')}>
+                          picks it {pct(o.p)}
+                          {o.worst != null ? ` · worst ${pct(o.worst)} against their worst-case bring` : ''}
+                        </div>
+                      )}
                     </div>
-                    <Bar v={o.p} />
-                    <span className="ai-pct">{pct(o.p)}</span>
+                    <Bar v={o.win ?? o.p} />
+                    <span className="ai-pct">{pct(o.win ?? o.p)}</span>
                     <button onClick={() => useDoublesBring(o)} title="Put these four first in your team with the two leads out">
                       Use this
                     </button>
                   </div>
                 ))}
                 <p className="hint">
-                  How strongly the bot picks each (it mixes them). Its guess: {pct((dbring.value + 1) / 2)} to win. From {dbring.run} at update{' '}
-                  {dbring.update.toLocaleString()}; still learning, so a rough guide.
+                  {dbring.games
+                    ? `Win chance from ${dbring.games.toLocaleString()} simulated games (${dbring.seconds} s) against what they are likely to bring${
+                        dbring.their_likely?.[0] ? ` (most likely: ${dbring.their_likely[0].lead.join(' + ')} lead, ${dbring.their_likely[0].back.join(' + ')} back)` : ''
+                      }. `
+                    : `How strongly the bot picks each. Its guess: ${pct((dbring.value + 1) / 2)} to win. `}
+                  From {dbring.run} at update {dbring.update.toLocaleString()}; still learning, so a rough guide.
                 </p>
               </div>
             )}
@@ -1252,7 +1262,34 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
                     </div>
                   ) : null;
                 })}
-                {dTurnRes.pairs.length > 1 && (
+                {dTurnRes.options && dTurnRes.options.length > 0 && (
+                  <details open>
+                    <summary>Together (win chance against their likely choices)</summary>
+                    {dTurnRes.options
+                      .filter((o, i) => i < 5 && (i === 0 || o.mix >= 0.02 || i < 3))
+                      .map((o, i) => (
+                        <div key={i} className={'ai-bring' + (i === 0 ? ' top' : '')}>
+                          <div className="ai-opt-main">
+                            <span>{[o.left, o.right].filter(Boolean).join(' + ')}</span>
+                            <span className="hint"> · plays it {pct(o.mix)}</span>
+                          </div>
+                          <Bar v={o.win} />
+                          <span className="ai-pct">{pct(o.win)}</span>
+                        </div>
+                      ))}
+                  </details>
+                )}
+                {dTurnRes.theirs && dTurnRes.theirs.length > 0 && (
+                  <details>
+                    <summary>What they likely do</summary>
+                    {dTurnRes.theirs.slice(0, 5).map((x, i) => (
+                      <div key={i} className="hint">
+                        {pct(x.p)} · {x.action}
+                      </div>
+                    ))}
+                  </details>
+                )}
+                {dTurnRes.pairs && dTurnRes.pairs.length > 1 && (
                   <details>
                     <summary>Together</summary>
                     {dTurnRes.pairs.slice(0, 5).map((x, i) => (
@@ -1264,9 +1301,12 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
                 )}
                 {dTurnRes.warnings.length > 0 && <p className="ai-warn">Left out: {dTurnRes.warnings.join('; ')}</p>}
                 <p className="hint">
-                  Turn {dTurn}, {dTurnRes.field[0].filter(Boolean).join(' + ')} vs {dTurnRes.field[1].filter(Boolean).join(' + ')}. Its guess:{' '}
-                  {pct((dTurnRes.value + 1) / 2)} to win. Their sets are assumed to be the usual doubles builds. Network only (no lookahead), so
-                  a rough guide; press + after each turn.
+                  Turn {dTurn}, {dTurnRes.field[0].filter(Boolean).join(' + ')} vs {dTurnRes.field[1].filter(Boolean).join(' + ')}:{' '}
+                  {pct(dTurnRes.win ?? (dTurnRes.value + 1) / 2)} to win.{' '}
+                  {dTurnRes.games
+                    ? `From ${dTurnRes.games.toLocaleString()} simulated games (${dTurnRes.seconds} s) across guesses of their sets, a few turns deep; the % beside each is how often to pick it (mix it up).`
+                    : 'Network only (no lookahead), a rough guide.'}{' '}
+                  Press + after each turn.
                 </p>
               </div>
             )}

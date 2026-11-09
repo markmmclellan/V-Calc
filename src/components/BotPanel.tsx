@@ -3,7 +3,9 @@ import type { FieldState } from '../lib/calc';
 import {
   askBringCheck,
   askDoublesBring,
+  askDoublesTurn,
   type DoublesBring,
+  type DoublesTurn,
   askCheck,
   askQuick,
   askReplace,
@@ -157,6 +159,8 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
   const [error, setError] = useState('');
   const [bring, setBring] = useState<BringCheck | null>(null);
   const [dbring, setDBring] = useState<(DoublesBring & { sig: string }) | null>(null);
+  const [dTurn, setDTurn] = useState(1);
+  const [dTurnRes, setDTurnRes] = useState<DoublesTurn | null>(null);
   const [solved, setSolved] = useState<(SolveResult & { key: string }) | null>(null);
   const [advice, setAdvice] = useState<(Advice & { key: string }) | null>(null);
   // the last call to the bot: its board and turn, to tell a new turn from the same one
@@ -194,6 +198,8 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     setAdvice(null);
     setBring(null);
     setDBring(null);
+    setDTurn(1);
+    setDTurnRes(null);
     setPicked(null);
     setError('');
     setLive(false);
@@ -999,6 +1005,59 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
       const sig = [...mineAll, ...theirs].map((s) => baseName(s)).join(',');
       setDBring({ ...(await askDoublesBring(mineAll, theirs)), sig });
     });
+  // Doubles: put the picked four first in your team and the two leads out
+  const useDoublesBring = (o: { lead: string[]; back: string[] }) => {
+    const idx = (n: string) => teams[0].sets.findIndex((s) => s.species && baseName(s) === n);
+    const four = [...o.lead, ...o.back].map(idx).filter((i) => i >= 0);
+    if (four.length !== 4) return setError('Could not find those four in your team.');
+    onApplyBring(four, four.slice(0, 2));
+    setDTurn(1);
+    setDTurnRes(null);
+  };
+  // Doubles turn advice: the board as the calc has it (left = the selected Pokémon, right = its partner)
+  const dSide = (side: 0 | 1) => {
+    const t = teams[side];
+    const left = t.sets[t.active];
+    const right = t.partner != null ? t.sets[t.partner] : undefined;
+    return [left, right].map((s) => (s && s.species ? s : undefined));
+  };
+  const doDoublesTurn = () =>
+    run('Asking the doubles bot…', async () => {
+      const [ml, mr] = dSide(0);
+      const [tl, tr] = dSide(1);
+      if (!ml && !mr) throw new Error('Put your two Pokémon on the field in the calc (left and right).');
+      if (!tl && !tr) throw new Error("Put their two Pokémon on the field in the calc.");
+      const kept = mineAll.filter((s) => !skipped.includes(s.species));
+      const four = (kept.length === 4 ? kept : mineAll.slice(0, 4)).slice();
+      for (const s of [ml, mr]) if (s && !four.some((x) => baseName(x) === baseName(s))) four.unshift(s);
+      const pos = buildPosition({ mine: four.slice(0, 4), mineActive: ml ? baseName(ml) : '', theirs, theirActive: tl ? baseName(tl) : '', marks, field, turn: dTurn });
+      // in the calc a Mega is its Mega form, and a fainted Pokémon is at 0%
+      const isMega = (s: PokemonSet) => s.species !== baseName(s);
+      const megas = four.slice(0, 4).filter(isMega).map(baseName);
+      pos.me.mega_evolved = [...new Set([...pos.me.mega_evolved, ...megas])];
+      pos.me.mega_used = pos.me.mega_used || megas.length > 0;
+      for (const s of four.slice(0, 4)) {
+        if (s.hpPercent <= 0) {
+          pos.me.hp[baseName(s)] = 0;
+          (pos.me.hp_abs as Record<string, number>)[baseName(s)] = 0;
+        }
+      }
+      for (const o of pos.opp) {
+        const s = theirs.find((x) => baseName(x) === o.species);
+        if (!s) continue;
+        if (isMega(s)) o.mega = true;
+        if (s.hpPercent <= 0) o.hp = 0;
+      }
+      pos.opp_mega_used = pos.opp_mega_used || pos.opp.some((o) => o.mega);
+      const out = (a?: PokemonSet, b?: PokemonSet) => [a ? baseName(a) : '', b ? baseName(b) : ''];
+      const res = await askDoublesTurn(mineAll, {
+        ...pos,
+        bring: four.slice(0, 4).map(baseName),
+        active_me: out(ml, mr),
+        active_opp: out(tl, tr),
+      });
+      setDTurnRes(res);
+    });
   // Start the bring check by itself as soon as their six are in (team preview), so it is ready when you look; once per
   // pair of teams
   const bringSig = turn === 1 && theirs.length >= 6 && mineAll.length >= 6 ? [...mineAll, ...theirs].map((s) => baseName(s)).join(',') : '';
@@ -1124,7 +1183,95 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
       </header>
 
       <div className="ai-body">
-        {!singles && <p className="ai-warn">The bot plays Singles only. Switch V-Calc to Singles.</p>}
+        {!singles && (
+          <section className="ai-doubles">
+            <p className="hint">
+              Doubles: the doubles bot's instant advice (its network, no simulation yet), from the calc's board: your four, the two out on each
+              side (left = selected, right = partner), HP, status, boosts and the field. The rest of this panel is for Singles.
+            </p>
+            <div className="ai-flags">
+              <button onClick={doDoublesBring} disabled={up !== true || !!busy} title="Team preview: which 4 of your six, and which 2 lead">
+                Which 4?
+              </button>
+              <button onClick={doDoublesTurn} disabled={up !== true || !!busy} title="What each of your two should do this turn">
+                What now?
+              </button>
+              <span className="hint">
+                Turn{' '}
+                <button className="link" onClick={() => setDTurn((t) => Math.max(1, t - 1))} aria-label="Previous turn">
+                  −
+                </button>{' '}
+                {dTurn}{' '}
+                <button className="link" onClick={() => setDTurn((t) => Math.min(60, t + 1))} aria-label="Next turn">
+                  +
+                </button>
+              </span>
+            </div>
+            {dbring && (
+              <div className="ai-result">
+                {dbring.sig !== [...mineAll, ...theirs].map((s) => baseName(s)).join(',') && (
+                  <p className="ai-left">The teams changed since this answer: ask again.</p>
+                )}
+                {dbring.options.map((o, i) => (
+                  <div key={i} className={'ai-bring' + (i === 0 ? ' top' : '')}>
+                    <div className="ai-opt-main">
+                      <strong>
+                        Lead {o.lead[0]} + {o.lead[1]}
+                      </strong>
+                      <span className="hint"> · back {o.back.join(' + ')}</span>
+                    </div>
+                    <Bar v={o.p} />
+                    <span className="ai-pct">{pct(o.p)}</span>
+                    <button onClick={() => useDoublesBring(o)} title="Put these four first in your team with the two leads out">
+                      Use this
+                    </button>
+                  </div>
+                ))}
+                <p className="hint">
+                  How strongly the bot picks each (it mixes them). Its guess: {pct((dbring.value + 1) / 2)} to win. From {dbring.run} at update{' '}
+                  {dbring.update.toLocaleString()}; still learning, so a rough guide.
+                </p>
+              </div>
+            )}
+            {dTurnRes && (
+              <div className="ai-result">
+                {(['left', 'right'] as const).map((k) => {
+                  const r = dTurnRes[k];
+                  return r ? (
+                    <div key={k}>
+                      <h4>{r.species}</h4>
+                      {r.options.slice(0, 4).map((o, i) => (
+                        <div key={i} className={'ai-bring' + (i === 0 ? ' top' : '')}>
+                          <div className="ai-opt-main">
+                            <strong>{o.action}</strong>
+                          </div>
+                          <Bar v={o.p} />
+                          <span className="ai-pct">{pct(o.p)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null;
+                })}
+                {dTurnRes.pairs.length > 1 && (
+                  <details>
+                    <summary>Together</summary>
+                    {dTurnRes.pairs.slice(0, 5).map((x, i) => (
+                      <div key={i} className="hint">
+                        {pct(x.p)} · {x.left} + {x.right}
+                      </div>
+                    ))}
+                  </details>
+                )}
+                {dTurnRes.warnings.length > 0 && <p className="ai-warn">Left out: {dTurnRes.warnings.join('; ')}</p>}
+                <p className="hint">
+                  Turn {dTurn}, {dTurnRes.field[0].filter(Boolean).join(' + ')} vs {dTurnRes.field[1].filter(Boolean).join(' + ')}. Its guess:{' '}
+                  {pct((dTurnRes.value + 1) / 2)} to win. Their sets are assumed to be the usual doubles builds. Network only (no lookahead), so
+                  a rough guide; press + after each turn.
+                </p>
+              </div>
+            )}
+          </section>
+        )}
         {up === false && (
           <p className="ai-warn">
             The bot is not running. Double-click <b>start_gui.bat</b> in the ChampionsAI folder.
@@ -1424,34 +1571,6 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
                 Win chance from {bring.games.toLocaleString()} simulated games against what they are likely to bring
                 {bring.their_likely[0] ? ` (most likely: ${bring.their_likely[0].lead} lead with ${bring.their_likely[0].bring.slice(1).join(' + ')})` : ''}, mixed with
                 any other bring so a surprise is covered.
-              </p>
-            </div>
-          )}
-          <h4>Doubles: which 4?</h4>
-          <p className="hint">For doubles games: the doubles bot picks 4 of your six and the 2 leads. Instant (no simulation).</p>
-          <button onClick={doDoublesBring} disabled={!ready || !!busy}>
-            Doubles: which 4?
-          </button>
-          {dbring && (
-            <div className="ai-result">
-              {dbring.sig !== [...mineAll, ...theirs].map((s) => baseName(s)).join(',') && (
-                <p className="ai-left">The teams changed since this answer: ask again.</p>
-              )}
-              {dbring.options.map((o, i) => (
-                <div key={i} className={'ai-bring' + (i === 0 ? ' top' : '')}>
-                  <div className="ai-opt-main">
-                    <strong>
-                      Lead {o.lead[0]} + {o.lead[1]}
-                    </strong>
-                    <span className="hint"> · back {o.back.join(' + ')}</span>
-                  </div>
-                  <Bar v={o.p} />
-                  <span className="ai-pct">{pct(o.p)}</span>
-                </div>
-              ))}
-              <p className="hint">
-                How strongly the bot picks each option (it mixes them). Its guess at the result: {pct((dbring.value + 1) / 2)} to win. From{' '}
-                {dbring.run} at update {dbring.update.toLocaleString()}; still learning, so a rough guide.
               </p>
             </div>
           )}

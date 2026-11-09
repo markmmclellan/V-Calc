@@ -299,6 +299,20 @@ export interface DoublesBring {
 export const askDoublesBring = (team: PokemonSet[], theirs: PokemonSet[]) =>
   call<DoublesBring>('/api/doubles_bring', { team_text: exportTeam(team), opp: theirs.map(baseName) });
 
+/** Doubles turn advice: each of your two's options with the network's weights, and the likeliest pairs. */
+export interface DoublesTurn {
+  field: string[][]; // [[your left, right], [their left, right]]
+  left: { species: string; options: { action: string; p: number }[] } | null;
+  right: { species: string; options: { action: string; p: number }[] } | null;
+  pairs: { left: string; right: string; p: number }[];
+  value: number; // -1 .. +1
+  warnings: string[];
+  run: string;
+  update: number;
+}
+export const askDoublesTurn = (team: PokemonSet[], board: Record<string, unknown>) =>
+  call<DoublesTurn>('/api/doubles_turn', { ...board, team_text: exportTeam(team) });
+
 type Position = ReturnType<typeof buildPosition>;
 const withTeam = (team: PokemonSet[], pos: Position) => ({ ...pos, team_text: exportTeam(team) });
 

@@ -93,6 +93,41 @@ export interface SeenHit {
   weather: string;
   terrain: string;
   def_screens: boolean[];
+  spread?: boolean; // doubles: a spread move (x0.75)
+  doubles?: boolean; // doubles screens (2/3)
+}
+/** One move's hit in a played doubles turn (the typical run), between the sides. */
+export interface DoublesHit {
+  attacker: 'me' | 'opp';
+  move: string;
+  mine: string;
+  theirs: string;
+  dmg: number;
+  before: number;
+  max_hp: number;
+  after: number; // the target's HP after the whole turn, in that run
+  hits: number;
+  crit: boolean;
+  ko: boolean;
+  spread: boolean;
+  unmeasured: boolean; // Focus Sash, Sturdy, Disguise: not the full roll
+  my_boosts: number[];
+  opp_boosts: number[];
+  my_status: string;
+  opp_status: string;
+  my_mega: boolean;
+  opp_mega: boolean;
+  weather: string;
+  terrain: string;
+  def_screens: boolean[];
+}
+/** Turns left of the field's timed effects (kept by the panel, sent back as field.turns). */
+export interface DoublesTurns {
+  weather: number;
+  terrain: number;
+  trick_room: number;
+  tailwind: number[];
+  screens: number[][];
 }
 /** One move's hit in a played turn, as the engine worked it out (average roll). */
 export interface PlayHit {
@@ -320,6 +355,7 @@ export interface DoublesTurn {
   win?: number;
   games?: number;
   seconds?: number;
+  endgame?: boolean; // few left: every likely option, played to the end
 }
 export const askDoublesTurn = (team: PokemonSet[], board: Record<string, unknown>, seconds = 6) =>
   call<DoublesTurn>('/api/doubles_turn', { ...board, team_text: exportTeam(team), seconds });
@@ -348,9 +384,10 @@ export interface DoublesPlay {
   events: string[];
   me: Record<string, DoublesPlayMon>;
   opp: Record<string, DoublesPlayMon>;
-  field: { weather: string; terrain: string; trick_room: boolean; tailwind: [boolean, boolean]; screens: [boolean, boolean, boolean][] };
+  field: { weather: string; terrain: string; trick_room: boolean; tailwind: [boolean, boolean]; screens: [boolean, boolean, boolean][]; turns?: DoublesTurns };
   replace: [boolean, boolean];
   winner: number | null;
+  hits?: DoublesHit[];
   runs: number;
   warnings: string[];
 }

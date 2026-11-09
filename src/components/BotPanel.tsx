@@ -12,6 +12,9 @@ import {
   type DoublesTurn,
   type DoublesOptions,
   type DoublesPlay,
+  type DoublesHit,
+  type DoublesTurns,
+  type SeenHit,
   askCheck,
   askQuick,
   askReplace,
@@ -24,7 +27,6 @@ import {
   maxHpOf,
   type LikelySets,
   type PlayHit,
-  type SeenHit,
   askSolve,
   sendReport,
   appeared,
@@ -128,6 +130,7 @@ type Advice = { pSwitch?: number; title: string; rows: { sendIn?: string; label:
 const SAME_TURN_MS = 20_000;
 /** Time the bring check may take at team preview. */
 const BRING_SECS = 20;
+const D_AUTO_KEY = 'champions-calc:ai-doubles-auto:v1';
 
 export default function BotPanel({ open, teams, setTeams, field, setField, skipped, singles, battleId, onApplyBring, onResetBattle, onClose, meta }: Props) {
   const [up, setUp] = useState<boolean | null>(null);
@@ -172,6 +175,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
   const [dOther, setDOther] = useState<string[]>(['', '']);
   const [dPlayed, setDPlayed] = useState<DoublesPlay | null>(null);
   const [dReported, setDReported] = useState('');
+  const [dTimers, setDTimers] = useState<DoublesTurns | null>(null);
   const [solved, setSolved] = useState<(SolveResult & { key: string }) | null>(null);
   const [advice, setAdvice] = useState<(Advice & { key: string }) | null>(null);
   // the last call to the bot: its board and turn, to tell a new turn from the same one
@@ -213,6 +217,8 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     setDTurnRes(null);
     setDOpts(null);
     setDPlayed(null);
+    setDTimers(null);
+    dPending.current = null;
     setPicked(null);
     setError('');
     setLive(false);
@@ -1034,14 +1040,69 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     const right = t.partner != null ? t.sets[t.partner] : undefined;
     return [left, right].map((s) => (s && s.species ? s : undefined));
   };
-  const doDoublesTurn = () =>
+  // `auto`: asked by itself (the board may not have your HP corrections yet, so the last turn's hits wait)
+  const doDoublesTurn = (auto = false) =>
     run(`Simulating this turn (about ${secs} s)…`, async () => {
-      setDTurnRes(await askDoublesTurn(mineAll, doublesBoard(), secs));
+      const b = doublesBoard(auto ? {} : takeDoublesHits());
+      dAutoKey.current = boardKey(b);
+      setDTurnRes(await askDoublesTurn(mineAll, b, secs));
     });
+  // Spread reading (doubles): the last played turn's hits, measured once you have set the HP the game showed (the next
+  // time the board is sent). A target hit once that turn only: two hits on one Pokémon cannot be told apart.
+  const dPending = useRef<DoublesHit[] | null>(null);
+  const takeDoublesHits = (): Record<string, SeenHit[]> => {
+    const hs = dPending.current;
+    dPending.current = null;
+    if (!hs || !hs.length) return {};
+    const toObj = (a: number[]) => ({ atk: a[0], def: a[1], spa: a[2], spd: a[3], spe: a[4] });
+    const per: Record<string, number> = {};
+    const tkey = (h: DoublesHit) => (h.attacker === 'opp' ? 'me:' + h.mine : 'opp:' + h.theirs);
+    for (const h of hs) per[tkey(h)] = (per[tkey(h)] ?? 0) + 1;
+    const add: Record<string, SeenHit[]> = {};
+    for (const h of hs) {
+      if (h.hits !== 1 || h.unmeasured || per[tkey(h)] !== 1) continue;
+      const base = {
+        move: h.move, other: h.mine, crit: h.crit, opp_boosts: toObj(h.opp_boosts), my_boosts: toObj(h.my_boosts), opp_status: h.opp_status,
+        my_status: h.my_status, opp_mega: h.opp_mega, my_mega: h.my_mega, weather: h.weather, terrain: h.terrain, def_screens: h.def_screens,
+        spread: h.spread, doubles: true,
+      };
+      if (h.attacker === 'opp') {
+        const s = mineAll.find((x) => baseName(x) === h.mine);
+        const max = s ? maxHpOf(s) : undefined;
+        if (!s || !max) continue;
+        const ko = s.hpPercent <= 0;
+        const cur = ko ? 0 : Math.round((max * s.hpPercent) / 100);
+        const dmg = ko ? h.before : h.dmg + (h.after - cur); // the engine's number, moved by your correction
+        if (dmg <= 0 || (!ko && (dmg < 0.4 * h.dmg || dmg > 2.5 * h.dmg))) continue;
+        (add[h.theirs] ??= []).push({ ...base, dealt_by_opp: true, dmg, my_hp_before: h.before, ko });
+      } else {
+        const s = theirs.find((x) => baseName(x) === h.theirs);
+        if (!s) continue;
+        const ko = s.hpPercent <= 0;
+        const from = (100 * h.before) / h.max_hp;
+        const to = ko ? 0 : Math.max(0, (100 * (h.before - h.dmg)) / h.max_hp + (s.hpPercent - (100 * h.after) / h.max_hp));
+        const pctEngine = (100 * h.dmg) / h.max_hp;
+        if (from - to < 1 || (!ko && (from - to < 0.4 * pctEngine || from - to > 2.5 * pctEngine))) continue;
+        (add[h.theirs] ??= []).push({ ...base, dealt_by_opp: false, pct_from: from, pct_to: to, ko });
+      }
+    }
+    if (Object.keys(add).length) {
+      setMarks((old) => {
+        const out = { ...old };
+        for (const [sp, list] of Object.entries(add)) {
+          const k = `1:${sp}`;
+          const cur = out[k] ?? blankMarks();
+          out[k] = { ...cur, hits: [...(cur.hits ?? []), ...list] };
+        }
+        return out;
+      });
+    }
+    return add;
+  };
   // Play turn (doubles): both sides' choices -> the typical result, written into the calc
   const doDoublesOptions = () =>
     run('Reading the choices…', async () => {
-      const o = await askDoublesOptions(mineAll, doublesBoard());
+      const o = await askDoublesOptions(mineAll, doublesBoard(takeDoublesHits()));
       const strip = (a: string) => a.trim();
       // preselect what the search suggested and what it expects from them
       const pickOf = (list: { index: number; action: string }[], want?: string | null): number =>
@@ -1067,8 +1128,9 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
         const [mv, tgt] = typed.replace(/^mega\s*\+\s*/i, '').split(/\s*(?:→|->)\s*/);
         return { move: mv, target: tgt ?? '', mega, who: k === 0 ? tl?.species : tr?.species };
       });
-      const r = await askDoublesPlay(mineAll, doublesBoard(), dPick.me, theirsSent);
+      const r = await askDoublesPlay(mineAll, doublesBoard(takeDoublesHits()), dPick.me, theirsSent);
       applyDoubles(r);
+      dPending.current = r.hits ?? null;
       setDTurn((t) => Math.min(60, t + 1));
       setDTurnRes(null);
       setDOpts(null);
@@ -1081,6 +1143,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
   // write a doubles result into the calc: HP, status, stat stages, used-up items (yours), the field
   const applyDoubles = (r: DoublesPlay) => {
       setDPlayed(r);
+      if (r.field.turns) setDTimers(r.field.turns);
       for (const s of mineAll) {
         const x = r.me[baseName(s)];
         if (x && x.item_gone && s.item && !mark(0, s).gone) setMark(0, s, { gone: true });
@@ -1106,7 +1169,8 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
         defenderSide: { ...f.defenderSide, isTailwind: r.field.tailwind[1], isReflect: r.field.screens[1][0], isLightScreen: r.field.screens[1][1], isAuroraVeil: r.field.screens[1][2] },
       }));
   };
-  const doublesBoard = () => {
+  // `addHits`: measured hits not yet in the marks (just taken from the last played turn)
+  const doublesBoard = (addHits: Record<string, SeenHit[]> = {}) => {
       const [ml, mr] = dSide(0);
       const [tl, tr] = dSide(1);
       if (!ml && !mr) throw new Error('Put your two Pokémon on the field in the calc (left and right).');
@@ -1131,17 +1195,39 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
         if (!s) continue;
         if (isMega(s)) o.mega = true;
         if (s.hpPercent <= 0) o.hp = 0;
+        if (addHits[o.species]) o.hits = [...o.hits, ...addHits[o.species]];
       }
       pos.opp_mega_used = pos.opp_mega_used || pos.opp.some((o) => o.mega);
       const out = (a?: PokemonSet, b?: PokemonSet) => [a ? baseName(a) : '', b ? baseName(b) : ''];
       return {
         ...pos,
+        // turns left of the timed effects, from the last played turn (an effect switched off in the calc is off)
+        field: dTimers ? { ...pos.field, turns: dTimers } : pos.field,
         bring: four.slice(0, 4).map(baseName),
         active_me: out(ml, mr),
         active_opp: out(tl, tr),
         game: gameId.current,
       };
   };
+  // Auto: ask again shortly after the board stops changing
+  const [dAuto, setDAuto] = useState<boolean>(() => load(D_AUTO_KEY, false));
+  useEffect(() => save(D_AUTO_KEY, dAuto), [dAuto]);
+  const dAutoKey = useRef('');
+  const boardKey = (b: Record<string, unknown>) => JSON.stringify({ ...b, game: undefined });
+  let dKeyNow = '';
+  if (!singles && open) {
+    try {
+      dKeyNow = boardKey(doublesBoard());
+    } catch {
+      dKeyNow = '';
+    }
+  }
+  useEffect(() => {
+    if (!dAuto || singles || !open || up !== true || busy || !dKeyNow || dKeyNow === dAutoKey.current || dOpts) return;
+    const t = window.setTimeout(() => doDoublesTurn(true), 1500);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dAuto, dKeyNow, busy, up, open, singles, dOpts]);
   // Start the bring check by itself as soon as their six are in (team preview), so it is ready when you look; once per
   // pair of teams
   const bringSig = turn === 1 && theirs.length >= 6 && mineAll.length >= 6 ? [...mineAll, ...theirs].map((s) => baseName(s)).join(',') : '';
@@ -1277,9 +1363,13 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
               <button onClick={doDoublesBring} disabled={up !== true || !!busy} title="Team preview: which 4 of your six, and which 2 lead">
                 Which 4?
               </button>
-              <button onClick={doDoublesTurn} disabled={up !== true || !!busy} title="What each of your two should do this turn">
+              <button onClick={() => doDoublesTurn()} disabled={up !== true || !!busy} title="What each of your two should do this turn">
                 What now?
               </button>
+              <label className="check" title="Ask What now? by itself shortly after the board in the calc stops changing">
+                <input type="checkbox" checked={dAuto} onChange={(e) => setDAuto(e.target.checked)} />
+                Auto
+              </label>
               <span className="hint">
                 Turn{' '}
                 <button className="link" onClick={() => setDTurn((t) => Math.max(1, t - 1))} aria-label="Previous turn">
@@ -1388,7 +1478,9 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
                   Turn {dTurn}, {dTurnRes.field[0].filter(Boolean).join(' + ')} vs {dTurnRes.field[1].filter(Boolean).join(' + ')}:{' '}
                   {pct(dTurnRes.win ?? (dTurnRes.value + 1) / 2)} to win. Then "Enter the turn" below.{' '}
                   {dTurnRes.games
-                    ? `From ${dTurnRes.games.toLocaleString()} simulated games (${dTurnRes.seconds} s) across guesses of their sets, a few turns deep; the % beside each is how often to pick it (mix it up).`
+                    ? `From ${dTurnRes.games.toLocaleString()} simulated games (${dTurnRes.seconds} s) across guesses of their sets${
+                        dTurnRes.endgame ? ', endgame: up to 24 likeliest pairs a side, every game played to the end' : ', a few turns deep'
+                      }; the % beside each is how often to pick it (mix it up).`
                     : 'Network only (no lookahead), a rough guide.'}{' '}
                   Play turn moves the turn counter on; otherwise press +.
                 </p>

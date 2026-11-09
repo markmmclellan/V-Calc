@@ -324,6 +324,47 @@ export interface DoublesTurn {
 export const askDoublesTurn = (team: PokemonSet[], board: Record<string, unknown>, seconds = 6) =>
   call<DoublesTurn>('/api/doubles_turn', { ...board, team_text: exportTeam(team), seconds });
 
+/** Doubles Play turn: every choice of the four on the field ([left, right] per side). */
+export interface DoublesOptions {
+  field: string[][];
+  me: { index: number; action: string }[][];
+  opp: { index: number; action: string }[][];
+  warnings: string[];
+}
+export const askDoublesOptions = (team: PokemonSet[], board: Record<string, unknown>) =>
+  call<DoublesOptions>('/api/doubles_options', { ...board, team_text: exportTeam(team) });
+interface DoublesPlayMon {
+  hp_pct: number;
+  hp: number;
+  status: string;
+  boosts: Record<'atk' | 'def' | 'spa' | 'spd' | 'spe', number>;
+  mega: boolean;
+  item_gone: boolean;
+  out: number | null;
+  fainted_share: number; // how often it fainted over the runs
+}
+/** The typical result of a doubles turn (64 runs): the board after it and one run's log. */
+export interface DoublesPlay {
+  events: string[];
+  me: Record<string, DoublesPlayMon>;
+  opp: Record<string, DoublesPlayMon>;
+  field: { weather: string; terrain: string; trick_room: boolean; tailwind: [boolean, boolean]; screens: [boolean, boolean, boolean][] };
+  replace: [boolean, boolean];
+  winner: number | null;
+  runs: number;
+  warnings: string[];
+}
+/** Turn 1: the leads come out (entry abilities, seeds); the board after. */
+export const askDoublesLeads = (team: PokemonSet[], board: Record<string, unknown>) =>
+  call<DoublesPlay>('/api/doubles_leads', { ...board, team_text: exportTeam(team) });
+/** `theirs`: an index from the menu, or a move of theirs typed in ({move, target species, mega}). */
+export const askDoublesPlay = (
+  team: PokemonSet[],
+  board: Record<string, unknown>,
+  mine: number[],
+  theirs: (number | { move: string; target: string; mega: boolean })[],
+) => call<DoublesPlay>('/api/doubles_play', { ...board, team_text: exportTeam(team), mine, theirs });
+
 type Position = ReturnType<typeof buildPosition>;
 const withTeam = (team: PokemonSet[], pos: Position) => ({ ...pos, team_text: exportTeam(team) });
 

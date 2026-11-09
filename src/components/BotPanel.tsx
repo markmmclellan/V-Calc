@@ -168,11 +168,12 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
   const [error, setError] = useState('');
   const [bring, setBring] = useState<BringCheck | null>(null);
   const [dbring, setDBring] = useState<(DoublesBring & { sig: string }) | null>(null);
-  const [dTurn, setDTurn] = useState(1);
+  // doubles uses the same turn counter as singles (the header's)
+  const dTurn = turn;
+  const setDTurn = (f: number | ((t: number) => number)) => setTurnRaw((t) => Math.max(1, Math.min(60, typeof f === 'function' ? f(t) : f)));
   const [dTurnRes, setDTurnRes] = useState<DoublesTurn | null>(null);
   const [dOpts, setDOpts] = useState<DoublesOptions | null>(null);
   const [dPick, setDPick] = useState<{ me: number[]; opp: number[] } | null>(null);
-  const [dOther, setDOther] = useState<string[]>(['', '']);
   const [dPlayed, setDPlayed] = useState<DoublesPlay | null>(null);
   const [dReported, setDReported] = useState('');
   // Play turn: who comes in after a switching move (Parting Shot, U-turn...) or comes back (Revival Blessing), per side
@@ -221,6 +222,9 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     setDPlayed(null);
     setDTimers(null);
     dPending.current = null;
+    setDLeadsDone(false);
+    dFresh.current = {};
+    dLast.current = null;
     setPicked(null);
     setError('');
     setLive(false);
@@ -1035,13 +1039,17 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
       setBring(await askBringCheck(mineAll, theirs, BRING_SECS));
       bringFor.current = sig;
     });
-  // Doubles: the doubles bot's instant pick of 4 and the 2 leads (no simulation, so no waiting)
+  // the two sixes, order aside (a bring answer is for these)
+  const dSig = [...mineAll.map(baseName).sort(), '|', ...theirs.map(baseName).sort()].join(',');
+  const dSigRef = useRef(dSig);
+  dSigRef.current = dSig;
+  // Doubles: which 4 and which 2 lead, from simulated games
   const doDoublesBring = () =>
     run(`Simulating every likely bring (about ${BRING_SECS} s)…`, async () => {
       if (theirs.length < 6) throw new Error(`Enter all six of the opponent's Pokémon first (${theirs.length} so far).`);
       if (mineAll.length < 6) throw new Error(`The bot picks 4 from your six; you have ${mineAll.length} entered.`);
-      const sig = [...mineAll, ...theirs].map((s) => baseName(s)).join(',');
-      setDBring({ ...(await askDoublesBring(mineAll, theirs, BRING_SECS)), sig });
+      const r = await askDoublesBring(mineAll, theirs, BRING_SECS);
+      setDBring({ ...r, sig: dSigRef.current });
     });
   // Doubles: put the picked four first in your team and the two leads out
   const useDoublesBring = (o: { lead: string[]; back: string[] }) => {
@@ -1061,12 +1069,50 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     return [left, right].map((s) => (s && s.species ? s : undefined));
   };
   // `auto`: asked by itself (the board may not have your HP corrections yet, so the last turn's hits wait)
-  const doDoublesTurn = (auto = false) =>
-    run(`Simulating this turn (about ${secs} s)…`, async () => {
-      const b = doublesBoard(auto ? {} : takeDoublesHits());
-      dAutoKey.current = boardKey(b);
+  const doDoublesTurn = (auto = false) => {
+    if (needDLeads) {
+      setLive(true);
+      return doDoublesLeads();
+    }
+    setLive(true);
+    return run(`Simulating this turn (about ${secs} s)…`, async () => {
+      const b0 = doublesBoard(auto ? {} : takeDoublesHits());
+      const t = dAdvance(b0);
+      const b = { ...b0, turn: t, just_in: dMarkFresh(t) };
+      dAutoKey.current = boardKey(b0);
       setDTurnRes(await askDoublesTurn(mineAll, b, secs));
     });
+  };
+  // The turn counts up by itself, as in singles: the board changed (who is out, HP, status, stages, the field) since the
+  // last answer for this turn number, more than a moment after it (not you still entering this turn). Play turn counts
+  // its own turn.
+  const dLast = useRef<{ turnKey: string; hpKey: string; turn: number; at: number } | null>(null);
+  const dPlayedTurn = useRef<number | null>(null);
+  const dKeysOf = (b: ReturnType<typeof doublesBoard>) => ({
+    turnKey: JSON.stringify([b.me.hp, b.me.status, b.me.boosts, b.active_me, b.opp.map((o) => [o.species, o.hp, o.status, o.boosts]), b.active_opp, { ...b.field, turns: undefined }]),
+    hpKey: JSON.stringify([b.me.hp, b.opp.map((o) => [o.species, o.hp]), b.active_me, b.active_opp]),
+  });
+  const dAdvance = (b: ReturnType<typeof doublesBoard>): number => {
+    const k = dKeysOf(b);
+    const now = Date.now();
+    let t = turn;
+    const l = dLast.current;
+    if (dPlayedTurn.current === turn) dPlayedTurn.current = null;
+    else if (l && l.turn === turn && l.turnKey !== k.turnKey && (turn > 1 || l.hpKey !== k.hpKey) && now - l.at > SAME_TURN_MS) t = turn + 1;
+    if (t !== turn) setDTurn(t);
+    dLast.current = { ...k, turn: t, at: now };
+    return t;
+  };
+  // Who just came in (Fake Out, First Impression work on its first turn out): a Pokémon is fresh on the first turn it is
+  // asked about after it came out.
+  const dFresh = useRef<Record<string, number>>({});
+  const dMarkFresh = (t: number): string[] => {
+    const out = [0, 1].flatMap((sd) => dSide(sd as 0 | 1).filter((x): x is PokemonSet => !!x).map((x) => `${sd}:${baseName(x)}`));
+    const next: Record<string, number> = {};
+    for (const k of out) next[k] = dFresh.current[k] ?? t;
+    dFresh.current = next;
+    return out.filter((k) => next[k] === t).map((k) => k.slice(2));
+  };
   // Spread reading (doubles): the last played turn's hits, measured once you have set the HP the game showed (the next
   // time the board is sent). A target hit once that turn only: two hits on one Pokémon cannot be told apart.
   const dPending = useRef<DoublesHit[] | null>(null);
@@ -1119,31 +1165,24 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     }
     return add;
   };
-  // Play turn (doubles): both sides' choices -> the typical result, written into the calc
-  const doDoublesOptions = () =>
-    run('Reading the choices…', async () => {
-      const o = await askDoublesOptions(mineAll, doublesBoard(takeDoublesHits()));
-      const strip = (a: string) => a.trim();
-      // preselect what the search suggested and what it expects from them
-      const pickOf = (list: { index: number; action: string }[], want?: string | null): number =>
-        (want ? list.find((x) => strip(x.action) === strip(want))?.index : undefined) ?? list[0]?.index ?? -1;
-      const best = dTurnRes?.options?.[0];
-      const their = dTurnRes?.theirs?.[0]?.action.split('  |  ') ?? [];
-      setDPick({
-        me: [pickOf(o.me[0], best?.left), pickOf(o.me[1], best?.right)],
-        opp: [pickOf(o.opp[0], their[0]), pickOf(o.opp[1], their.length > 1 ? their[1] : their[0])],
-      });
-      setDOther(['', '']);
-      setDOpts(o);
-      setDPlayed(null);
-      setDPivot({ me: dTurnRes?.pivot?.options[0]?.species ?? '', opp: '' });
-    });
+  // Play turn (doubles): both sides' choices -> the typical result, written into the calc. The menus follow the board
+  // on screen and start on the bot's pick and their likely choice, as in singles.
+  const dDefaults = (o: DoublesOptions) => {
+    const pickOf = (list: { index: number; action: string }[], want?: string | null): number =>
+      (want ? list.find((x) => x.action.trim() === want.trim())?.index : undefined) ?? list[0]?.index ?? -1;
+    const best = dTurnRes?.options?.[0];
+    const their = dTurnRes?.theirs?.[0]?.action.split('  |  ') ?? [];
+    return {
+      me: [pickOf(o.me[0], best?.left), pickOf(o.me[1], best?.right)],
+      opp: [pickOf(o.opp[0], their[0]), pickOf(o.opp[1], their.length > 1 ? their[1] : their[0])],
+    };
+  };
   // the moves after which the side picks who comes in (or, Revival Blessing, who comes back)
   const PIVOTS = ['U-turn', 'Volt Switch', 'Flip Turn', 'Parting Shot', 'Teleport', 'Shed Tail', 'Baton Pass', 'Chilly Reception', 'Revival Blessing'];
   const dPicked = (side: 'me' | 'opp'): string[] =>
     !dOpts || !dPick
       ? []
-      : [0, 1].map((k) => (side === 'opp' && dOther[k].trim() ? dOther[k].trim() : dOpts[side][k].find((o) => o.index === dPick[side][k])?.action ?? ''));
+      : [0, 1].map((k) => dOpts[side][k].find((o) => o.index === dPick[side][k])?.action ?? '');
   const moveOf = (label: string) => label.replace(/^mega\s*\+\s*/i, '').split(' → ')[0].trim();
   const dPivotNeeded = (side: 'me' | 'opp') => dPicked(side).some((l) => PIVOTS.includes(moveOf(l)));
   const dPivotChoices = (side: 'me' | 'opp'): string[] => {
@@ -1154,30 +1193,57 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
   };
   const doDoublesPlay = () =>
     run('Playing the turn…', async () => {
-      if (!dOpts || !dPick) throw new Error('Press "Enter the turn" first.');
-      const [tl, tr] = dSide(1);
-      const theirsSent = [0, 1].map((k) => {
-        const typed = dOther[k].trim();
-        if (!typed) return dPick.opp[k];
-        const mega = /^mega\s*\+\s*/i.test(typed);
-        const [mv, tgt] = typed.replace(/^mega\s*\+\s*/i, '').split(/\s*(?:→|->)\s*/);
-        return { move: mv, target: tgt ?? '', mega, who: k === 0 ? tl?.species : tr?.species };
-      });
-      const board = { ...doublesBoard(takeDoublesHits()), pivot_to: dPivot };
-      const r = await askDoublesPlay(mineAll, board, dPick.me, theirsSent);
-      applyDoubles(r);
+      if (!dOpts || !dPick) throw new Error('The menus are still loading.');
+      const b = doublesBoard(takeDoublesHits());
+      const snap: DSnap = { teams, field, marks, turn, timers: dTimers };
+      const r = await askDoublesPlay(mineAll, { ...b, just_in: dMarkFresh(turn), pivot_to: dPivot }, dPick.me, dPick.opp);
+      applyDoubles(r, snap);
       dPending.current = r.hits ?? null;
-      setDTurn((t) => Math.min(60, t + 1));
+      // this turn is played: the next answer is for the next turn, counted here and not again
+      setDTurn(turn + 1);
+      dPlayedTurn.current = turn + 1;
       setDTurnRes(null);
-      setDOpts(null);
     });
-  // Turn 1: the leads come out (Intimidate, weather / terrain, seeds) and the calc gets the board after
+  // Undo a played turn (or the leads coming in), as in singles
+  type DSnap = { teams: [Team, Team]; field: FieldState; marks: Record<string, Marks>; turn: number; timers: DoublesTurns | null };
+  const dUndo = useRef<DSnap | null>(null);
+  const undoDoubles = () => {
+    const s0 = dUndo.current;
+    if (!s0) return;
+    if (dPlayed?.events[0] === 'Leads come in:') setDLeadsDone(false);
+    setTeams(() => s0.teams);
+    setField(() => s0.field);
+    setMarks(s0.marks);
+    setTurnRaw(s0.turn);
+    setDTimers(s0.timers);
+    dPending.current = null;
+    dPlayedTurn.current = null;
+    dUndo.current = null;
+    setDPlayed(null);
+  };
+  // Turn 1: the leads come out (Intimidate, weather / terrain, seeds) by themselves once all four are out, as in singles
+  const [dLeadsDone, setDLeadsDone] = useState(false);
+  const dOutNow = [...dSide(0), ...dSide(1)];
+  const needDLeads =
+    !singles && turn === 1 && !dLeadsDone && dOutNow.every((x) => !!x) && dOutNow.every((x) => Object.values(x!.boosts).every((v) => !v)) && !dPlayed;
   const doDoublesLeads = () =>
     run('The leads come out…', async () => {
-      applyDoubles(await askDoublesLeads(mineAll, doublesBoard()));
+      const b = doublesBoard();
+      const snap: DSnap = { teams, field, marks, turn, timers: dTimers };
+      const r = await askDoublesLeads(mineAll, { ...b, just_in: dMarkFresh(turn) });
+      setDLeadsDone(true);
+      if (!r.events.length) return;
+      applyDoubles({ ...r, events: ['Leads come in:', ...r.events] }, snap);
     });
+  useEffect(() => {
+    if (!open || up !== true || !live || !needDLeads || busy) return;
+    const t = window.setTimeout(doDoublesLeads, 1500); // after you finish putting the leads out
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, up, live, needDLeads, busy, dOutNow.map((x) => x?.species).join()]);
   // write a doubles result into the calc: HP, status, stat stages, used-up items (yours), the field
-  const applyDoubles = (r: DoublesPlay) => {
+  const applyDoubles = (r: DoublesPlay, snap?: DSnap) => {
+      dUndo.current = snap ?? null;
       setDPlayed(r);
       if (r.field.turns) setDTimers(r.field.turns);
       for (const s of mineAll) {
@@ -1252,6 +1318,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
         bring: four.slice(0, 4).map(baseName),
         active_me: out(ml, mr),
         active_opp: out(tl, tr),
+        opp_sets: oppSetsJson(teams[1].sets),
         game: gameId.current,
       };
   };
@@ -1269,11 +1336,43 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     }
   }
   useEffect(() => {
-    if (!dAuto || singles || !open || up !== true || busy || !dKeyNow || dKeyNow === dAutoKey.current || dOpts) return;
+    if (!dAuto || singles || !open || up !== true || busy || !dKeyNow || dKeyNow === dAutoKey.current || needDLeads) return;
     const t = window.setTimeout(() => doDoublesTurn(true), 1500);
     return () => window.clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dAuto, dKeyNow, busy, up, open, singles, dOpts]);
+  }, [dAuto, dKeyNow, busy, up, open, singles, needDLeads]);
+  const dOptsFor = useRef('');
+  useEffect(() => {
+    if (singles || !open || up !== true || !dKeyNow) return;
+    if (dOptsFor.current === dKeyNow && dOpts) return;
+    const t = window.setTimeout(() => {
+      let b: ReturnType<typeof doublesBoard>;
+      try {
+        b = doublesBoard();
+      } catch {
+        return;
+      }
+      const key = dKeyNow;
+      askDoublesOptions(mineAll, { ...b, just_in: Object.keys(dFresh.current).filter((k) => dFresh.current[k] === turn).map((k) => k.slice(2)) })
+        .then((o) => {
+          dOptsFor.current = key;
+          setDOpts(o);
+          setDPick(dDefaults(o));
+          setDPivot({ me: dTurnRes?.pivot?.options[0]?.species ?? '', opp: '' });
+        })
+        .catch(() => undefined);
+    }, 700);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [singles, open, up, dKeyNow]);
+  // a new answer: back to the bot's suggestions
+  useEffect(() => {
+    if (dOpts) {
+      setDPick(dDefaults(dOpts));
+      setDPivot({ me: dTurnRes?.pivot?.options[0]?.species ?? '', opp: '' });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dTurnRes]);
   // Start the bring check by itself as soon as their six are in (team preview), so it is ready when you look; once per
   // pair of teams
   const bringSig = turn === 1 && theirs.length >= 6 && mineAll.length >= 6 ? [...mineAll, ...theirs].map((s) => baseName(s)).join(',') : '';
@@ -1377,13 +1476,13 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
             Auto
           </label>
         )}
-        <span className="ai-turn" title={singles ? 'Turn number. It counts up by itself when the board changes after an answer.' : 'Turn number. Play turn counts it up (Fake Out works on turn 1).'}>
+        <span className="ai-turn" title="Turn number. It counts up by itself when the board changes after an answer.">
           Turn
-          <button onClick={() => (singles ? setTurn(turn - 1) : setDTurn((t) => Math.max(1, t - 1)))} aria-label="Previous turn">
+          <button onClick={() => setTurn(turn - 1)} aria-label="Previous turn">
             −
           </button>
-          <b>{singles ? turn : dTurn}</b>
-          <button onClick={() => (singles ? setTurn(turn + 1) : setDTurn((t) => Math.min(60, t + 1)))} aria-label="Next turn">
+          <b>{turn}</b>
+          <button onClick={() => setTurn(turn + 1)} aria-label="Next turn">
             +
           </button>
         </span>
@@ -1406,7 +1505,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
       </header>
 
       <div className="ai-body">
-        {!singles && <p className="hint">Doubles: tap two of each side's icons to put them out (left, then right). The bot reads HP, status, stats and the field from here.</p>}
+        {!singles && <p className="hint">Doubles: tap two of each side's icons to put them out (left, then right).</p>}
         {up === false && (
           <p className="ai-warn">
             The bot is not running. Double-click <b>start_gui.bat</b> in the ChampionsAI folder.
@@ -1449,11 +1548,103 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
         <section className="ai-answer">
           {!singles ? (
             <>
+            {dOpts && dPick && !dPlayed?.replace.some(Boolean) && (
+              <div className="ai-play grid">
+                <span className="hint" title="Pick what both sides did, then Play: the turn is played 64 times and the typical result is written into the calc (HP, status, stat changes, the field, who is out). Fix what luck changed by hand.">
+                  Play turn
+                </span>
+                {(['me', 'opp'] as const).map((side) => (
+                  <div key={side} className="ai-play-side">
+                    {[0, 1].map((k) =>
+                      dOpts[side][k].length ? (
+                        <label key={k}>
+                          {side === 'me' ? 'You' : 'They'}: {dOpts.field[side === 'me' ? 0 : 1][k]}
+                          <select
+                            value={dPick[side][k]}
+                            onChange={(e) => setDPick((p) => (p ? { ...p, [side]: p[side].map((x, j) => (j === k ? +e.target.value : x)) } : p))}
+                          >
+                            {dOpts[side][k].map((o) => (
+                              <option key={o.index} value={o.index}>
+                                {o.action}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      ) : null,
+                    )}
+                    {dPivotNeeded(side) && (
+                      <label>
+                        then sends in
+                        <select value={dPivot[side]} onChange={(e) => setDPivot((v) => ({ ...v, [side]: e.target.value }))}>
+                          <option value="">{side === 'me' ? '(the healthiest)' : '(the healthiest seen)'}</option>
+                          {dPivotChoices(side).map((n) => (
+                            <option key={n} value={n}>
+                              {n}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    )}
+                  </div>
+                ))}
+                <button className={'primary ai-main-btn' + (dTurnRes ? ' ai-next' : '')} onClick={doDoublesPlay} disabled={up !== true || !!busy}>
+                  Play
+                </button>
+              </div>
+            )}
+            {dPlayed && (
+              <details className="ai-played" open>
+                <summary>
+                  {dPlayed.events[0] === 'Leads come in:' ? 'Leads came in through the engine (entry abilities and seeds applied).' : `Turn ${turn - 1} played: the typical result of 64 runs. Fix HP, crits or chance effects to match the game.`}{' '}
+                  {dUndo.current && (
+                    <button className="link" onClick={undoDoubles}>
+                      Undo
+                    </button>
+                  )}
+                </summary>
+                <ul>
+                  {dPlayed.events.map((e, i) => (
+                    <li key={i}>{e}</li>
+                  ))}
+                </ul>
+                {(['me', 'opp'] as const).flatMap((side) =>
+                  Object.entries(dPlayed[side])
+                    .filter(([, m]) => m.fainted_share > 0.1 && m.fainted_share < 0.9)
+                    .map(([n, m]) => (
+                      <p key={side + n} className="ai-left">
+                        {n} fainted in {pct(m.fainted_share)} of the runs: check it in the game.
+                      </p>
+                    )),
+                )}
+                {dPlayed.winner != null && <p className="ai-left">{dPlayed.winner === 0 ? 'You win.' : 'They win.'}</p>}
+              </details>
+            )}
             <div className="ai-actions">
-              <button className={'primary ai-main-btn' + (!dTurnRes ? ' ai-next' : '')} onClick={() => doDoublesTurn()} disabled={up !== true || !!busy} title="What each of your two should do this turn">
+              <button className={'primary ai-main-btn' + (!dTurnRes ? ' ai-next' : '')} onClick={() => doDoublesTurn()} disabled={up !== true || !!busy}>
                 {dPlayed?.replace.some(Boolean) ? 'Pick my replacement' : 'Solve this turn'}
               </button>
+              <button
+                className="ai-report"
+                disabled={up !== true}
+                title="Something looks wrong? Saves this board and what the bot said, to fix later"
+                onClick={() => {
+                  let board: Record<string, unknown> = {};
+                  try {
+                    board = doublesBoard();
+                  } catch {
+                    /* an incomplete board is saved as it is */
+                  }
+                  sendDoublesReport(mineAll, board, { turn_answer: dTurnRes, played: dPlayed, bring: dbring })
+                    .then(() => setDReported('Saved'))
+                    .catch((e) => setDReported('Could not save: ' + (e instanceof Error ? e.message : String(e))));
+                  window.setTimeout(() => setDReported(''), 2500);
+                }}
+              >
+                {dReported || 'Report'}
+              </button>
+              {busy && <span className="hint">{busy}</span>}
             </div>
+            {error && <p className="err">{error}</p>}
             {dTurnRes && (
               <div className="ai-result">
                 {(['left', 'right'] as const).map((k) => {
@@ -1527,121 +1718,15 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
                 {dTurnRes.warnings.length > 0 && <p className="ai-warn">Left out: {dTurnRes.warnings.join('; ')}</p>}
                 <p className="hint">
                   Turn {dTurn}, {dTurnRes.field[0].filter(Boolean).join(' + ')} vs {dTurnRes.field[1].filter(Boolean).join(' + ')}:{' '}
-                  {pct(dTurnRes.win ?? (dTurnRes.value + 1) / 2)} to win. Then "Enter the turn" below.{' '}
+                  {pct(dTurnRes.win ?? (dTurnRes.value + 1) / 2)} to win.{' '}
                   {dTurnRes.games
                     ? `From ${dTurnRes.games.toLocaleString()} simulated games (${dTurnRes.seconds} s) across guesses of their sets${
                         dTurnRes.endgame ? ', endgame: up to 24 likeliest pairs a side, every game played to the end' : ', a few turns deep'
                       }; the % beside each is how often to pick it (mix it up).`
                     : 'Network only (no lookahead), a rough guide.'}{' '}
-                  Play turn moves the turn counter on; otherwise press +.
                 </p>
               </div>
             )}
-            <div className="ai-flags" style={{ marginTop: 10 }}>
-              {dTurn === 1 && (
-                <button onClick={doDoublesLeads} disabled={up !== true || !!busy} title="The leads come out: Intimidate, weather and terrain setters, seeds. Writes the result into the calc">
-                  Leads are out
-                </button>
-              )}
-              <button onClick={doDoublesOptions} disabled={up !== true || !!busy} title="Enter what both sides did this turn; the engine plays it and updates the calc">
-                Enter the turn
-              </button>
-              <button
-                className="link"
-                disabled={up !== true}
-                title="Something is off here: saves the board and the bot's last answers on the bot's computer for a later look"
-                onClick={() => {
-                  let board: Record<string, unknown> = {};
-                  try {
-                    board = doublesBoard();
-                  } catch {
-                    /* an incomplete board is saved as it is */
-                  }
-                  sendDoublesReport(mineAll, board, { turn_answer: dTurnRes, played: dPlayed, bring: dbring })
-                    .then(() => setDReported('Saved'))
-                    .catch((e) => setDReported('Could not save: ' + (e instanceof Error ? e.message : String(e))));
-                  window.setTimeout(() => setDReported(''), 2500);
-                }}
-              >
-                Something's off
-              </button>
-              {dReported && <span className="hint">{dReported}</span>}
-            </div>
-            {dOpts && dPick && (
-              <div className="ai-result">
-                {(['me', 'opp'] as const).map((side) => (
-                  <div key={side}>
-                    <h4>{side === 'me' ? 'You' : 'They'}</h4>
-                    {[0, 1].map((k) =>
-                      dOpts[side][k].length ? (
-                        <div key={k} className="ai-flags">
-                          <span>{dOpts.field[side === 'me' ? 0 : 1][k]}</span>
-                          <select
-                            value={dPick[side][k]}
-                            onChange={(e) => setDPick((p) => (p ? { ...p, [side]: p[side].map((x, j) => (j === k ? +e.target.value : x)) } : p))}
-                          >
-                            {dOpts[side][k].map((o) => (
-                              <option key={o.index} value={o.index}>
-                                {o.action}
-                              </option>
-                            ))}
-                          </select>
-                          {side === 'opp' && (
-                            <input
-                              className="ai-other-move"
-                              placeholder="or a move not listed (e.g. Rock Slide, Close Combat → Raichu)"
-                              value={dOther[k]}
-                              onChange={(e) => setDOther((o) => o.map((x, j) => (j === k ? e.target.value : x)))}
-                            />
-                          )}
-                        </div>
-                      ) : null,
-                    )}
-                    {dPivotNeeded(side) && (
-                      <div className="ai-flags">
-                        <span>then sends in</span>
-                        <select value={dPivot[side]} onChange={(e) => setDPivot((v) => ({ ...v, [side]: e.target.value }))}>
-                          <option value="">{side === 'me' ? '(the healthiest)' : '(the healthiest seen)'}</option>
-                          {dPivotChoices(side).map((n) => (
-                            <option key={n} value={n}>
-                              {n}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
-                  </div>
-                ))}
-                <button className="primary ai-main-btn ai-next" onClick={doDoublesPlay} disabled={up !== true || !!busy} title="Play it (64 times, the typical result) and write HP, status, stat changes and the field into the calc">
-                  Play turn
-                </button>
-                <p className="hint">Their menu is their likely set (moves you have seen first). Average luck: the typical result of 64 runs.</p>
-              </div>
-            )}
-            {dPlayed && (
-              <div className="ai-result">
-                <h4>Written into the calc</h4>
-                {dPlayed.events.map((e, i) => (
-                  <div key={i} className="hint">
-                    {e}
-                  </div>
-                ))}
-                {(['me', 'opp'] as const).flatMap((side) =>
-                  Object.entries(dPlayed[side])
-                    .filter(([, m]) => m.fainted_share > 0.1 && m.fainted_share < 0.9)
-                    .map(([n, m]) => (
-                      <p key={side + n} className="ai-left">
-                        {n} fainted in {pct(m.fainted_share)} of the runs: check it in the game.
-                      </p>
-                    )),
-                )}
-                {dPlayed.replace.some(Boolean) && <p className="ai-left">A slot of yours needs a replacement: press Solve this turn to see who to send in.</p>}
-                {dPlayed.winner != null && <p className="ai-left">{dPlayed.winner === 0 ? 'You win.' : 'They win.'}</p>}
-                <p className="hint">Mega Evolution is not changed in the calc: switch the form there if one Mega Evolved.</p>
-              </div>
-            )}
-              {busy && <span className="hint">{busy}</span>}
-              {error && <p className="err">{error}</p>}
             </>
           ) : (
           <>
@@ -1884,7 +1969,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
               </button>
             {dbring && (
               <div className="ai-result">
-                {dbring.sig !== [...mineAll, ...theirs].map((s) => baseName(s)).join(',') && (
+                {dbring.sig !== dSig && (
                   <p className="ai-left">The teams changed since this answer: ask again.</p>
                 )}
                 {dbring.options.map((o, i) => (

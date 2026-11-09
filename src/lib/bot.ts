@@ -365,6 +365,8 @@ export const askDoublesTurn = (team: PokemonSet[], board: Record<string, unknown
 /** Doubles Play turn: every choice of the four on the field ([left, right] per side). */
 export interface DoublesOptions {
   field: string[][];
+  // each one's moves with PP left / max: moves.me[slot], moves.opp[slot]
+  moves?: Record<'me' | 'opp', { name: string; pp: number; max: number }[][]>;
   me: { index: number; action: string }[][];
   opp: { index: number; action: string }[][];
   warnings: string[];

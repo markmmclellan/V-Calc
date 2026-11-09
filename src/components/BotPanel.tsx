@@ -294,13 +294,16 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
       <div className="sd">
         <div className="sd-head">
           {back}
-          What will <b>{who}</b> do?{side === 'opp' ? <span className="hint"> (theirs)</span> : null}
+          What will {side === 'opp' ? 'their ' : ''}
+          <b>{who}</b> do?
         </div>
         <div className="sd-h">Battle</div>
         <div className="sd-moves">
           {moves.map((m) => {
             const info = moveInfo(m);
-            const pp = whoSet ? mark(side === 'me' ? 0 : 1, whoSet).pp?.[m] : undefined;
+            const mv = dOpts.moves?.[side]?.[k]?.find((x) => x.name === m);
+            const counted = whoSet ? mark(side === 'me' ? 0 : 1, whoSet).pp?.[m] : undefined;
+            const pp: [number, number] | undefined = counted ?? (mv ? [mv.pp, mv.max] : undefined);
             const picked = parseAct(list.find((o) => o.index === dPick[side][k])?.action ?? '');
             return (
               <button
@@ -310,7 +313,11 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
               >
                 <span className="sd-mname">{m}</span>
                 <span className="sd-mtype">{info?.type ?? ''}</span>
-                {pp && <span className="sd-mpp">{pp[0]}/{pp[1]}</span>}
+                {pp && (
+                  <span className="sd-mpp">
+                    {pp[0]}/{pp[1]}
+                  </span>
+                )}
               </button>
             );
           })}
@@ -321,22 +328,18 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
             Mega Evolve
           </label>
         )}
-        {switches.length > 0 && (
-          <>
-            <div className="sd-h">Switch</div>
-            <div className="sd-switch">
-              {switches.map((t) => {
-                const st = setOf(side, t);
-                return (
-                  <button key={t} onClick={() => choose(side, k, { kind: 'switch', to: t })}>
-                    {st && <Sprite species={st.species} size={24} />}
-                    {t}
-                  </button>
-                );
-              })}
-            </div>
-          </>
-        )}
+        <div className="sd-h sw">Switch</div>
+        <div className="sd-switch">
+          {(side === 'me' ? mine.map(baseName) : [...new Set([...dOpts.field[1].filter(Boolean), ...switches])]).map((t) => {
+            const st = setOf(side, t);
+            return (
+              <button key={t} disabled={!switches.includes(t)} onClick={() => choose(side, k, { kind: 'switch', to: t })}>
+                {st && <Sprite species={st.species} size={24} />}
+                {t}
+              </button>
+            );
+          })}
+        </div>
       </div>
     );
   };
@@ -1919,6 +1922,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
             doubles={!singles}
             minePartner={!singles ? dSide(0)[1] : undefined}
             theirPartner={!singles && oppLeadsReady ? dSide(1)[1] : undefined}
+            showdown={!singles}
             mark={mark}
             setMark={setMark}
             isAppeared={(s) => appeared(s, mark(1, s), isTheirOut(s))}
@@ -1932,25 +1936,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
             timers={timers}
             onTimer={tapTimer}
           />
-          {!oppLeadsReady && (
-            <p className="ai-left">
-              Tap the {LEADS_N === 1 ? 'Pokémon they led with' : `two Pokémon they led with (${oppLeads.length}/2)`}: their icons, top right.{' '}
-              <button className="link" onClick={() => setPhase('preview')}>
-                Back to team preview
-              </button>
-            </p>
-          )}
-          <p className="hint">
-            Tap a team icon when it comes in, drag an HP bar (or type the number), tap the move it just used. Changes here are the calc's own HP,
-            status, stats and field.
-          </p>
-        </section>
-        )}
-        </div>
-        <div className="ai-col">
-
-        <section className="ai-answer">
-          {!singles ? (
+          {!singles && (
             <>
             {dOpts && dPick && !dPlayed?.replace.some(Boolean) && (
               <div className="ai-play ai-dplay">
@@ -1981,21 +1967,51 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
                 </button>
               </div>
             )}
+            </>
+          )}
+          {!oppLeadsReady && (
+            <p className="ai-left">
+              Tap the {LEADS_N === 1 ? 'Pokémon they led with' : `two Pokémon they led with (${oppLeads.length}/2)`}: their icons, top right.{' '}
+              <button className="link" onClick={() => setPhase('preview')}>
+                Back to team preview
+              </button>
+            </p>
+          )}
+          <p className="hint">
+            Tap a team icon when it comes in, drag an HP bar (or type the number), tap the move it just used. Changes here are the calc's own HP,
+            status, stats and field.
+          </p>
+        </section>
+        )}
+        </div>
+        <div className="ai-col">
+
+        <section className="ai-answer">
+          {!singles ? (
+            <>
             {dPlayed && (
-              <details className="ai-played" open>
-                <summary>
-                  {dPlayed.events[0] === 'Leads come in:' ? 'Leads came in through the engine (entry abilities and seeds applied).' : `Turn ${turn - 1} played: the typical result of 64 runs. Fix HP, crits or chance effects to match the game.`}{' '}
+              <div className="sdl">
+                {dPlayed.events.map((e, i) =>
+                  e.startsWith('--- Turn') ? (
+                    <div key={i} className="sdl-turn">
+                      {e.replace(/-/g, '').trim()}
+                    </div>
+                  ) : (
+                    <div key={i} className={'sdl-line' + (e.startsWith('   ') ? ' sub' : '')}>
+                      {e}
+                    </div>
+                  ),
+                )}
+                <div className="hint">
+                  {dPlayed.events[0] === 'Leads come in:' || dPlayed.events[0]?.endsWith('sent in:')
+                    ? 'Through the engine (entry abilities applied); the turn does not move on.'
+                    : 'The typical result of 64 runs. Fix HP, crits or chance effects to match the game.'}{' '}
                   {dUndo.current && (
                     <button className="link" onClick={undoDoubles}>
                       Undo
                     </button>
                   )}
-                </summary>
-                <ul>
-                  {dPlayed.events.map((e, i) => (
-                    <li key={i}>{e}</li>
-                  ))}
-                </ul>
+                </div>
                 {(['me', 'opp'] as const).flatMap((side) =>
                   Object.entries(dPlayed[side])
                     .filter(([, m]) => m.fainted_share > 0.1 && m.fainted_share < 0.9)
@@ -2006,7 +2022,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
                     )),
                 )}
                 {dPlayed.winner != null && <p className="ai-left">{dPlayed.winner === 0 ? 'You win.' : 'They win.'}</p>}
-              </details>
+              </div>
             )}
             <div className="ai-actions">
               <button className={'primary ai-main-btn' + (!dTurnRes ? ' ai-next' : '')} onClick={() => doDoublesTurn()} disabled={up !== true || !!busy}>

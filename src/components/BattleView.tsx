@@ -20,6 +20,8 @@ interface Props {
   doubles?: boolean;
   minePartner?: PokemonSet;
   theirPartner?: PokemonSet;
+  /** Doubles drawn as Showdown does: small name / HP bars over the sprites (tap one to edit it), the teams at the sides */
+  showdown?: boolean;
   mark: (side: 0 | 1, s: PokemonSet) => Marks;
   setMark: (side: 0 | 1, s: PokemonSet, patch: Partial<Marks>) => void;
   isAppeared: (s: PokemonSet) => boolean;
@@ -183,6 +185,8 @@ export default function BattleView(p: Props) {
     return () => document.removeEventListener('mousedown', close);
   }, [menu]);
   const toggle = (m: string) => setMenu((o) => (o === m ? '' : m));
+  // Showdown view: whose full box (HP, status, stats, effects, last move) is open over the field
+  const [edit, setEdit] = useState('');
   /** Turns left on a timed effect; tap for one less (wraps 1 → 8 for Light Clay, Damp Rock…). */
   const tm = (k: string) =>
     p.timers[k] !== undefined ? (
@@ -496,6 +500,125 @@ export default function BattleView(p: Props) {
       </>
     );
   };
+
+  /** Showdown's bar over a Pokémon: name, level, HP bar and %, status; tap it to edit that Pokémon. */
+  const sdBar = (side: 0 | 1, s: PokemonSet, id: string) => {
+    const m = p.mark(side, s);
+    const pct = m.ko ? 0 : s.hpPercent;
+    const st = STATUS.find((x) => x[0] === s.status) ?? STATUS[0];
+    const boosts = STATS.filter(([k]) => s.boosts[k]);
+    return (
+      <button className={'sdf-bar' + (edit === id ? ' on' : '')} title="Tap to edit HP, status, stats, effects" onClick={() => setEdit((e) => (e === id ? '' : id))}>
+        <span className="sdf-name">
+          {shown(s, m.mega)}
+          {m.mega ? <span className="sdf-tag mega">Mega</span> : null}
+          <span className="sdf-lv">L50</span>
+        </span>
+        <span className="sdf-hp">
+          <span className={'sdf-hpfill' + (pct <= 20 ? ' red' : pct <= 50 ? ' yellow' : '')} style={{ width: `${Math.max(0, Math.min(100, pct))}%` }} />
+        </span>
+        <span className="sdf-pct">{m.ko ? 'KO' : `${Math.round(pct)}%`}</span>
+        <span className="sdf-tags">
+          {st[0] && <span className={`sdf-tag st ${st[0]}`}>{st[1]}</span>}
+          {boosts.map(([k, l]) => (
+            <span key={k} className={'sdf-tag ' + (s.boosts[k] > 0 ? 'up' : 'down')}>
+              {boostLabel(s.boosts[k])} {l}
+            </span>
+          ))}
+        </span>
+      </button>
+    );
+  };
+  /** A side's team, in a column at its edge (Showdown's trainer side): tap the one that comes in. */
+  const sdParty = (side: 0 | 1, list: PokemonSet[], outs: (PokemonSet | undefined)[]) => (
+    <div className={`sdf-party ${side ? 'opp' : 'me'}`}>
+      {list.map((s) => {
+        const m = p.mark(side, s);
+        const isOut = outs.some((o) => !!o && baseName(o) === baseName(s));
+        const unseen = side === 1 && !isOut && !p.isAppeared(s);
+        return (
+          <button
+            key={baseName(s)}
+            className={'bv-icon' + (isOut ? ' out' : '') + (m.ko ? ' ko' : '') + (unseen ? ' unseen' : '')}
+            title={`${s.species}${m.ko ? ' (fainted)' : ''}: tap when it comes in`}
+            onClick={() => p.sendOut(side, s)}
+          >
+            <Sprite species={s.species} size={30} />
+            <span>{m.ko ? 'KO' : `${Math.round(s.hpPercent)}%`}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+  if (p.showdown) {
+    const opp = [p.theirActive, p.theirPartner];
+    const me = [p.mineActive, p.minePartner];
+    const openSide = edit.startsWith('1') ? 1 : 0;
+    const openSlot = edit.endsWith('b') ? 1 : 0;
+    const openMon = edit ? (openSide ? opp : me)[openSlot] : undefined;
+    return (
+      <div className="bv-wrap" ref={root}>
+        <div className="sdf-wrap">
+          {sdParty(0, p.mine, me)}
+          <div className="bv sdf">
+            {f.terrain && <div className={`bv-terrain ${f.terrain.toLowerCase()}`} aria-hidden />}
+            {f.weather && <div className={`bv-weather ${f.weather.toLowerCase().split(' ')[0]}`} aria-hidden />}
+            {f.isTrickRoom && <div className="bv-tr" aria-hidden />}
+            {sideArt(1)}
+            {sideArt(0)}
+            <div className="sdf-turn">Turn {p.turn}</div>
+            <div className="bv-field">
+              <span className="bv-anchor">
+                <button className="bv-tag bv-open" onClick={() => toggle('field')} title="Weather, terrain, Trick Room">
+                  {fieldBits.length ? fieldBits : '+ field'}
+                </button>
+                {menu === 'field' && (
+                  <div className="bv-menu bv-fieldmenu">
+                    <div className="hint">Weather</div>
+                    {WEATHERS.map((w) => (
+                      <button key={w || 'none'} className={f.weather === w ? 'on' : ''} onClick={() => p.setField((o) => ({ ...o, weather: w }))}>
+                        {w || 'None'}
+                      </button>
+                    ))}
+                    <div className="hint">Terrain</div>
+                    {TERRAINS.map((t) => (
+                      <button key={t || 'none'} className={f.terrain === t ? 'on' : ''} onClick={() => p.setField((o) => ({ ...o, terrain: t }))}>
+                        {t || 'None'}
+                      </button>
+                    ))}
+                    <button className={f.isTrickRoom ? 'on' : ''} onClick={() => p.setField((o) => ({ ...o, isTrickRoom: !o.isTrickRoom }))}>
+                      Trick Room
+                    </button>
+                  </div>
+                )}
+              </span>
+            </div>
+            {opp.map((s, i) => (
+              <div key={'o' + i} className={`sdf-mon opp s${i}`}>
+                {s ? sdBar(1, s, i ? '1b' : '1') : <span className="sdf-empty">Tap the one they send out</span>}
+                {s && <FrontSprite species={shown(s, p.mark(1, s).mega)} size={96} />}
+              </div>
+            ))}
+            {me.map((s, i) => (
+              <div key={'m' + i} className={`sdf-mon me s${i}`}>
+                {s ? sdBar(0, s, i ? '0b' : '0') : <span className="sdf-empty">Tap your Pokémon that is out</span>}
+                {s && <BackSprite species={shown(s, p.mark(0, s).mega)} size={120} />}
+              </div>
+            ))}
+            {openMon && (
+              <div className="sdf-edit">
+                <button className="icon close sdf-close" onClick={() => setEdit('')} aria-label="Close">
+                  ✕
+                </button>
+                {statBox(openSide as 0 | 1, openMon, openSlot)}
+              </div>
+            )}
+          </div>
+          {sdParty(1, p.theirs, opp)}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="bv-wrap" ref={root}>

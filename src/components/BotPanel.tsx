@@ -176,6 +176,32 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
   const [dPick, setDPick] = useState<{ me: number[]; opp: number[] } | null>(null);
   const [dPlayed, setDPlayed] = useState<DoublesPlay | null>(null);
   const [dReported, setDReported] = useState('');
+  // Play turn: what you saw happen to each of the four's moves (First / Missed / Crit / Didn't move), as in singles
+  const [dOutcome, setDOutcome] = useState<{ me: Outcome[]; opp: Outcome[] }>({ me: [{}, {}], opp: [{}, {}] });
+  const toggleDOutcome = (side: 'me' | 'opp', k: number, f: keyof Outcome) =>
+    setDOutcome((o) => {
+      const n = { me: o.me.map((x) => ({ ...x })), opp: o.opp.map((x) => ({ ...x })) };
+      n[side][k][f] = !n[side][k][f];
+      // only one of the four can be the one that went first
+      if (f === 'first' && n[side][k].first) for (const sd of ['me', 'opp'] as const) for (const j of [0, 1]) if (sd !== side || j !== k) n[sd][j].first = false;
+      return n;
+    });
+  const dOutcomeChips = (side: 'me' | 'opp', k: number) => (
+    <span className="ai-outcome">
+      {(
+        [
+          ['first', 'First', 'It moved first in its priority bracket (a speed tie, or the bot has the speed wrong)'],
+          ['miss', 'Missed', 'Its move missed'],
+          ['crit', 'Crit', 'Its hits were critical hits'],
+          ['no_move', "Didn't move", 'Flinched, fully paralysed, asleep... it did not move this turn'],
+        ] as [keyof Outcome, string, string][]
+      ).map(([f, l, t]) => (
+        <button key={f} className={'bv-tag' + (dOutcome[side][k][f] ? ' on' : '')} title={t} onClick={() => toggleDOutcome(side, k, f)}>
+          {l}
+        </button>
+      ))}
+    </span>
+  );
   // Play turn: who comes in after a switching move (Parting Shot, U-turn...) or comes back (Revival Blessing), per side
   const [dPivot, setDPivot] = useState<{ me: string; opp: string }>({ me: '', opp: '' });
   const [dTimers, setDTimers] = useState<DoublesTurns | null>(null);
@@ -1196,7 +1222,8 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
       if (!dOpts || !dPick) throw new Error('The menus are still loading.');
       const b = doublesBoard(takeDoublesHits());
       const snap: DSnap = { teams, field, marks, turn, timers: dTimers };
-      const r = await askDoublesPlay(mineAll, { ...b, just_in: dMarkFresh(turn), pivot_to: dPivot }, dPick.me, dPick.opp);
+      const r = await askDoublesPlay(mineAll, { ...b, just_in: dMarkFresh(turn), pivot_to: dPivot, outcomes: dOutcome }, dPick.me, dPick.opp);
+      setDOutcome({ me: [{}, {}], opp: [{}, {}] });
       applyDoubles(r, snap);
       dPending.current = r.hits ?? null;
       // this turn is played: the next answer is for the next turn, counted here and not again
@@ -1569,6 +1596,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
                               </option>
                             ))}
                           </select>
+                          {dOutcomeChips(side, k)}
                         </label>
                       ) : null,
                     )}

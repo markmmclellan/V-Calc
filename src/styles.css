@@ -731,3 +731,28 @@ td.v-loses, .bg-verdict.v-loses { background: color-mix(in srgb, var(--bad) 38%,
 .ai-pick .bv-move.on { outline: 2px solid var(--accent, #5b9cff); }
 .ai-pick .bv-tag { cursor: pointer; }
 .ai-pick .bv-tag.on, .ai-prev-mon .bv-tag.on { background: var(--accent); color: #07101f; border-color: var(--accent); }
+
+/* AI panel (doubles): Showdown-style choice, one Pokémon at a time */
+.sd { border: 1px solid var(--line); border-radius: 8px; padding: 8px; background: var(--panel-2); display: flex; flex-direction: column; gap: 6px; }
+.sd-head { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.sd-back { font-size: 12px; padding: 2px 8px; }
+.sd-h { font-weight: 700; font-style: italic; color: #e8a33a; font-size: 14px; }
+.sd-moves { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; }
+.sd-move { position: relative; display: flex; flex-direction: column; align-items: center; padding: 6px 4px 14px; border-radius: 4px; border: 1px solid rgba(255, 255, 255, 0.15); color: #fff; cursor: pointer; }
+.sd-move.on { outline: 2px solid #fff; }
+.sd-mname { font-size: 14px; }
+.sd-mtype { position: absolute; left: 4px; bottom: 1px; font-size: 10px; opacity: 0.8; }
+.sd-mpp { position: absolute; right: 4px; bottom: 1px; font-size: 10px; opacity: 0.8; }
+.sd-switch { display: flex; flex-wrap: wrap; gap: 4px; }
+.sd-switch button, .sd-target { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; }
+.sd-targets { display: grid; grid-template-columns: repeat(2, max-content); gap: 4px; }
+.sd-target:disabled { opacity: 0.4; }
+.sd-mega { font-size: 12px; }
+.sd-summary { display: flex; flex-direction: column; gap: 2px; }
+.sd-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12px; padding: 2px 4px; border-radius: 4px; }
+.sd-row.now { background: rgba(91, 156, 255, 0.12); }
+.sd-t-normal { background: #4d4b3c; } .sd-t-fire { background: #7a3b1c; } .sd-t-water { background: #2d4f86; } .sd-t-grass { background: #3e6b2a; }
+.sd-t-electric { background: #7a6a14; } .sd-t-ice { background: #3f7676; } .sd-t-fighting { background: #6e1f1a; } .sd-t-poison { background: #5b2a5f; }
+.sd-t-ground { background: #75663a; } .sd-t-flying { background: #4f4f86; } .sd-t-psychic { background: #7a2f4c; } .sd-t-bug { background: #55611b; }
+.sd-t-rock { background: #64582a; } .sd-t-ghost { background: #3d3360; } .sd-t-dragon { background: #3e2a85; } .sd-t-dark { background: #3b2f27; }
+.sd-t-steel { background: #5a5a6e; } .sd-t-fairy { background: #7a4a66; }

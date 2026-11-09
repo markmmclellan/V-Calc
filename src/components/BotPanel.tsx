@@ -45,7 +45,7 @@ import {
   type SolveResult,
   type Vol,
 } from '../lib/bot';
-import { calcStats, type PokemonSet } from '../lib/model';
+import { calcStats, moveInfo, type PokemonSet } from '../lib/model';
 import { metaFor, type Meta } from '../lib/data';
 import { megaFor } from '../lib/showdown';
 
@@ -230,62 +230,131 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     // another choice: what was ticked for the old one goes
     setDOutcome((o) => ({ ...o, [side]: o[side].map((x, j) => (j === k ? {} : x)) }));
   };
-  const dPicker = (side: 'me' | 'opp', k: number) => {
-    const list = dOpts?.[side][k] ?? [];
-    if (!list.length || !dPick) return null;
-    const cur = parseAct(list.find((o) => o.index === dPick[side][k])?.action ?? '');
+  // Showdown's way: one Pokémon at a time ("What will X do?"), then "Where should X aim <move>?" for a move with a
+  // choice of target; yours first, then theirs; then Play. Each starts on the bot's pick.
+  const [dStep, setDStep] = useState(0);
+  const [dAim, setDAim] = useState<{ move: string; mega: boolean } | null>(null);
+  const [dMegaOn, setDMegaOn] = useState<Record<string, boolean>>({});
+  const dSlots = (['me', 'opp'] as const).flatMap((side) => [0, 1].filter((k) => (dOpts?.[side][k].length ?? 0) > 0).map((k) => ({ side, k })));
+  const setOf = (side: 'me' | 'opp', name: string) => (side === 'me' ? mineAll : theirs).find((x) => baseName(x) === name);
+  const choose = (side: 'me' | 'opp', k: number, want: Parameters<typeof pickIdx>[2]) => {
+    pickIdx(side, k, want);
+    setDAim(null);
+    setDStep((i) => i + 1);
+  };
+  const sdChooser = () => {
+    if (!dOpts || !dPick) return null;
+    const cur = dSlots[dStep];
+    if (!cur) return null;
+    const { side, k } = cur;
+    const list = dOpts[side][k];
     const acts = list.map((o) => parseAct(o.action));
-    const moves = [...new Set(acts.filter((a) => a.kind === 'move' && !a.mega).map((a) => a.move))];
-    for (const a of acts) if (a.kind === 'move' && !moves.includes(a.move)) moves.push(a.move);
+    const who = dOpts.field[side === 'me' ? 0 : 1][k];
+    const whoSet = setOf(side, who);
+    const key = `${side}${k}`;
     const canMega = acts.some((a) => a.mega);
-    const targets = cur.kind === 'move' ? [...new Set(acts.filter((a) => a.kind === 'move' && a.move === cur.move && a.mega === cur.mega && a.target).map((a) => a.target))] : [];
+    const mega = !!dMegaOn[key] && canMega;
+    const moves = [...new Set(acts.filter((a) => a.kind === 'move').map((a) => a.move))];
     const switches = acts.filter((a) => a.kind === 'switch').map((a) => a.to);
-    const who = dOpts!.field[side === 'me' ? 0 : 1][k];
-    return (
-      <div key={side + k} className="ai-pick">
-        <div className="ai-pick-head">
-          <strong>{who}</strong>
-          {canMega && (
-            <button
-              className={'bv-tag' + (cur.mega ? ' on' : '')}
-              title="Mega Evolve this turn"
-              onClick={() => pickIdx(side, k, { kind: 'move', mega: !cur.mega, move: cur.kind === 'move' ? cur.move : moves[0], target: cur.target })}
-            >
-              Mega
-            </button>
-          )}
-        </div>
-        <div className="ai-pick-moves">
-          {moves.map((m) => (
-            <button key={m} className={'bv-move' + (cur.kind === 'move' && cur.move === m ? ' on' : '')} onClick={() => pickIdx(side, k, { kind: 'move', mega: cur.mega, move: m, target: cur.target })}>
-              {m}
-            </button>
-          ))}
-        </div>
-        {targets.length > 1 && (
-          <div className="ai-pick-row">
-            <span className="hint">at</span>
-            {targets.map((t) => (
-              <button key={t} className={'bv-tag' + (cur.target === t ? ' on' : '')} onClick={() => pickIdx(side, k, { kind: 'move', mega: cur.mega, move: cur.move, target: t })}>
-                {t}
-              </button>
-            ))}
+    const targetsOf = (m: string) => [...new Set(acts.filter((a) => a.kind === 'move' && a.move === m && a.mega === mega && a.target).map((a) => a.target))];
+    const back =
+      dStep > 0 || dAim ? (
+        <button className="sd-back" onClick={() => (dAim ? setDAim(null) : setDStep((i) => Math.max(0, i - 1)))}>
+          ‹ Back
+        </button>
+      ) : null;
+    if (dAim) {
+      const targets = targetsOf(dAim.move);
+      const foes = dOpts.field[side === 'me' ? 1 : 0];
+      const own = dOpts.field[side === 'me' ? 0 : 1];
+      const cell = (name: string, mine: boolean) => {
+        const ok = !!name && targets.includes(name);
+        const st = name ? setOf(mine === (side === 'me') ? 'me' : 'opp', name) : undefined;
+        return (
+          <button key={(mine ? 'o' : 'f') + name} className="sd-target" disabled={!ok} onClick={() => choose(side, k, { kind: 'move', mega: dAim.mega, move: dAim.move, target: name })}>
+            {st && <Sprite species={st.species} size={26} />}
+            {name || '—'}
+          </button>
+        );
+      };
+      return (
+        <div className="sd">
+          <div className="sd-head">
+            {back}
+            Where should <b>{who}</b> aim <b>{dAim.move}</b>?
           </div>
+          <div className="sd-targets">
+            {foes.map((n) => cell(n, false))}
+            {own.map((n) => cell(n, true))}
+          </div>
+        </div>
+      );
+    }
+    return (
+      <div className="sd">
+        <div className="sd-head">
+          {back}
+          What will <b>{who}</b> do?{side === 'opp' ? <span className="hint"> (theirs)</span> : null}
+        </div>
+        <div className="sd-h">Battle</div>
+        <div className="sd-moves">
+          {moves.map((m) => {
+            const info = moveInfo(m);
+            const pp = whoSet ? mark(side === 'me' ? 0 : 1, whoSet).pp?.[m] : undefined;
+            const picked = parseAct(list.find((o) => o.index === dPick[side][k])?.action ?? '');
+            return (
+              <button
+                key={m}
+                className={`sd-move sd-t-${(info?.type ?? 'Normal').toLowerCase()}` + (picked.kind === 'move' && picked.move === m ? ' on' : '')}
+                onClick={() => (targetsOf(m).length > 1 ? setDAim({ move: m, mega }) : choose(side, k, { kind: 'move', mega, move: m, target: targetsOf(m)[0] }))}
+              >
+                <span className="sd-mname">{m}</span>
+                <span className="sd-mtype">{info?.type ?? ''}</span>
+                {pp && <span className="sd-mpp">{pp[0]}/{pp[1]}</span>}
+              </button>
+            );
+          })}
+        </div>
+        {canMega && (
+          <label className="check sd-mega">
+            <input type="checkbox" checked={mega} onChange={(e) => setDMegaOn((o) => ({ ...o, [key]: e.target.checked }))} />
+            Mega Evolve
+          </label>
         )}
         {switches.length > 0 && (
-          <div className="ai-pick-row">
-            <span className="hint">switch</span>
-            {switches.map((t) => (
-              <button key={t} className={'bv-tag' + (cur.kind === 'switch' && cur.to === t ? ' on' : '')} onClick={() => pickIdx(side, k, { kind: 'switch', to: t })}>
-                {t}
-              </button>
-            ))}
-          </div>
+          <>
+            <div className="sd-h">Switch</div>
+            <div className="sd-switch">
+              {switches.map((t) => {
+                const st = setOf(side, t);
+                return (
+                  <button key={t} onClick={() => choose(side, k, { kind: 'switch', to: t })}>
+                    {st && <Sprite species={st.species} size={24} />}
+                    {t}
+                  </button>
+                );
+              })}
+            </div>
+          </>
         )}
-        {dOutcomeChips(side, k)}
       </div>
     );
   };
+  // the four choices so far (tap one to change it), with what you saw happen
+  const sdSummary = () =>
+    !dOpts || !dPick
+      ? null
+      : dSlots.map(({ side, k }, i) => {
+          const label = dOpts[side][k].find((o) => o.index === dPick[side][k])?.action ?? '';
+          return (
+            <div key={side + k} className={'sd-row' + (i === dStep ? ' now' : '')}>
+              <button className="link" onClick={() => (setDStep(i), setDAim(null))} title="Change this one">
+                <b>{dOpts.field[side === 'me' ? 0 : 1][k]}</b>: {label}
+              </button>
+              {dOutcomeChips(side, k)}
+            </div>
+          );
+        });
   const dOutcomeChips = (side: 'me' | 'opp', k: number) => {
     const spread = dSpreadTargets(side, k);
     const one = (f: keyof Outcome, l: string, t: string) => (
@@ -1614,6 +1683,9 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
           dOptsFor.current = key;
           setDOpts(o);
           setDPick(dDefaults(o));
+          setDStep(0);
+          setDAim(null);
+          setDMegaOn({});
           setDPivot({ me: dTurnRes?.pivot?.options[0]?.species ?? '', opp: '' });
         })
         .catch(() => undefined);
@@ -1624,6 +1696,13 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
   // a new answer: back to the bot's suggestions
   useEffect(() => {
     if (dOpts) {
+      const d = dDefaults(dOpts);
+      const m: Record<string, boolean> = {};
+      for (const side of ['me', 'opp'] as const)
+        for (const k of [0, 1]) if (dOpts[side][k].find((o) => o.index === d[side][k])?.action.startsWith('Mega + ')) m[`${side}${k}`] = true;
+      setDMegaOn(m);
+      setDStep(0);
+      setDAim(null);
       setDPick(dDefaults(dOpts));
       setDPivot({ me: dTurnRes?.pivot?.options[0]?.species ?? '', opp: '' });
     }
@@ -1878,10 +1957,10 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
                 <span className="hint" title="Pick what both sides did, then Play: the turn is played 64 times and the typical result is written into the calc (HP, status, stat changes, the field, who is out). Fix what luck changed by hand.">
                   Play turn
                 </span>
+                {sdChooser()}
+                <div className="sd-summary">{sdSummary()}</div>
                 {(['me', 'opp'] as const).map((side) => (
-                  <div key={side} className="ai-play-side ai-pick-side">
-                    <span className="hint">{side === 'me' ? 'You' : 'They'}</span>
-                    <div className="ai-pick-pair">{[0, 1].map((k) => dPicker(side, k))}</div>
+                  <div key={'pv' + side}>
                     {dPivotNeeded(side) && (
                       <label>
                         then sends in

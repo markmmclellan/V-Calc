@@ -570,6 +570,16 @@ td.v-loses, .bg-verdict.v-loses { background: color-mix(in srgb, var(--bad) 38%,
 .bv-stat.opp { left: 10px; top: 44px; }
 .bv-stat.raised { z-index: 12; }
 .bv-stat.me { right: 10px; bottom: 8px; }
+/* doubles: two out per side, their info boxes stacked */
+.bv.duo { height: 640px; }
+.bv-stats { position: absolute; z-index: 3; display: flex; flex-direction: column; gap: 6px; width: min(330px, 56%); }
+.bv-stats.opp { left: 10px; top: 44px; }
+.bv-stats.me { right: 10px; bottom: 8px; }
+.bv-stats .bv-stat { position: relative; left: auto; right: auto; top: auto; bottom: auto; width: 100%; }
+.bv.duo .bv-mon.opp { width: 230px; right: 30px; top: 60px; }
+.bv.duo .bv-mon.me { width: 290px; left: 16px; bottom: 60px; }
+.bv.duo .bv-pad.opp { right: 24px; top: 186px; width: 250px; }
+.bv.duo .bv-pad.me { left: 10px; bottom: 50px; width: 310px; }
 .bv-name { display: flex; align-items: center; gap: 6px; }
 .bv-name strong { font-size: 14px; margin-right: auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .bv-flags { display: flex; gap: 3px; }

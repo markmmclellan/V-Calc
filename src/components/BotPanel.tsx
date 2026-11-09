@@ -240,10 +240,12 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
 
   const mineAll = teams[0].sets.filter((s) => s.species);
   const theirs = teams[1].sets.filter((s) => s.species);
+  // singles: bring 3; doubles: bring 4
+  const BRING_N = singles ? 3 : 4;
   const defaultBrought = useMemo(() => {
     const kept = mineAll.filter((s) => !skipped.includes(s.species));
-    return (kept.length === 3 ? kept : mineAll.slice(0, 3)).map(baseName);
-  }, [mineAll, skipped]);
+    return (kept.length === BRING_N ? kept : mineAll.slice(0, BRING_N)).map(baseName);
+  }, [mineAll, skipped, BRING_N]);
   const brought = picked ?? defaultBrought;
   const mine = brought.map((n) => mineAll.find((s) => baseName(s) === n)).filter((s): s is PokemonSet => !!s);
   const mineActive = teams[0].sets[teams[0].active];
@@ -320,7 +322,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
   const toggleBrought = (name: string) =>
     setPicked((old) => {
       const cur = old ?? defaultBrought;
-      return cur.includes(name) ? cur.filter((n) => n !== name) : cur.length >= 3 ? cur : [...cur, name];
+      return cur.includes(name) ? cur.filter((n) => n !== name) : cur.length >= BRING_N ? cur : [...cur, name];
     });
 
   // The game is under way once you tap who is out or ask for a turn. Until then (team preview, entering their six, looking
@@ -342,6 +344,21 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
       return next;
     });
   const sendOut = (side: 0 | 1, s: PokemonSet) => {
+    if (!singles) {
+      setLive(true);
+      if (side === 1) markAppeared(s);
+      setTeams((old) => {
+        const t = old[side];
+        const i = t.sets.indexOf(s);
+        if (i < 0 || i === t.active || i === t.partner) return old;
+        const down = (k: number | undefined) => k == null || !t.sets[k]?.species || t.sets[k].hpPercent <= 0 || mark(side, t.sets[k]).ko;
+        const next: [Team, Team] = [old[0], old[1]];
+        // the left slot when it is down; else the right one when it is down or empty; else the left one
+        next[side] = down(t.active) ? { ...t, active: i } : down(t.partner) ? { ...t, partner: i } : { ...t, active: i };
+        return next;
+      });
+      return;
+    }
     // a replacement after a faint: through the engine, so Stealth Rock, Spikes, Intimidate and the like apply
     const out = side === 0 ? mineActive : theirActive;
     if (out && out.species && baseName(out) !== baseName(s) && mark(side, out).ko && rawBoard && ready) {
@@ -1032,6 +1049,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     const four = [...o.lead, ...o.back].map(idx).filter((i) => i >= 0);
     if (four.length !== 4) return setError('Could not find those four in your team.');
     onApplyBring(four, four.slice(0, 2));
+    setPicked([...o.lead, ...o.back]);
     setDTurn(1);
     setDTurnRes(null);
   };
@@ -1131,8 +1149,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
   const dPivotChoices = (side: 'me' | 'opp'): string[] => {
     const revive = dPicked(side).some((l) => moveOf(l) === 'Revival Blessing');
     const out = dSide(side === 'me' ? 0 : 1).map((s) => (s ? baseName(s) : ''));
-    const kept = mineAll.filter((s) => !skipped.includes(s.species));
-    const pool = side === 'me' ? (kept.length === 4 ? kept : mineAll.slice(0, 4)) : theirs;
+    const pool = side === 'me' ? mine : theirs;
     return pool.filter((s) => !out.includes(baseName(s)) && (revive ? s.hpPercent <= 0 : s.hpPercent > 0)).map(baseName);
   };
   const doDoublesPlay = () =>
@@ -1196,13 +1213,16 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
       }));
   };
   // `addHits`: measured hits not yet in the marks (just taken from the last played turn)
+  // out on their side now (doubles: either slot)
+  const isTheirOut = (s: PokemonSet) =>
+    (!!theirActive && baseName(s) === baseName(theirActive)) || (!singles && !!dSide(1)[1] && baseName(s) === baseName(dSide(1)[1]!));
   const doublesBoard = (addHits: Record<string, SeenHit[]> = {}) => {
       const [ml, mr] = dSide(0);
       const [tl, tr] = dSide(1);
       if (!ml && !mr) throw new Error('Put your two Pokémon on the field in the calc (left and right).');
       if (!tl && !tr) throw new Error("Put their two Pokémon on the field in the calc.");
-      const kept = mineAll.filter((s) => !skipped.includes(s.species));
-      const four = (kept.length === 4 ? kept : mineAll.slice(0, 4)).slice();
+      // the four you brought (Team setup), the two out always among them
+      const four = (mine.length ? mine : mineAll.slice(0, 4)).slice();
       for (const s of [ml, mr]) if (s && !four.some((x) => baseName(x) === baseName(s))) four.unshift(s);
       const pos = buildPosition({ mine: four.slice(0, 4), mineActive: ml ? baseName(ml) : '', theirs, theirActive: tl ? baseName(tl) : '', marks, field, turn: dTurn });
       // in the calc a Mega is its Mega form, and a fainted Pokémon is at 0%
@@ -1346,17 +1366,24 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     <section className="ai-wide" aria-label="AI advice" ref={rootRef}>
       <header className="ai-dock-head">
         <h2>AI advice</h2>
-        <label className="check ai-auto" title="Solve again by itself a moment after you change the board">
-          <input type="checkbox" checked={auto} onChange={(e) => setAuto(e.target.checked)} />
-          Auto
-        </label>
-        <span className="ai-turn" title="Turn number. It counts up by itself when the board changes after an answer.">
+        {singles ? (
+          <label className="check ai-auto" title="Solve again by itself a moment after you change the board">
+            <input type="checkbox" checked={auto} onChange={(e) => setAuto(e.target.checked)} />
+            Auto
+          </label>
+        ) : (
+          <label className="check ai-auto" title="Solve again by itself a moment after the board stops changing">
+            <input type="checkbox" checked={dAuto} onChange={(e) => setDAuto(e.target.checked)} />
+            Auto
+          </label>
+        )}
+        <span className="ai-turn" title={singles ? 'Turn number. It counts up by itself when the board changes after an answer.' : 'Turn number. Play turn counts it up (Fake Out works on turn 1).'}>
           Turn
-          <button onClick={() => setTurn(turn - 1)} aria-label="Previous turn">
+          <button onClick={() => (singles ? setTurn(turn - 1) : setDTurn((t) => Math.max(1, t - 1)))} aria-label="Previous turn">
             −
           </button>
-          <b>{turn}</b>
-          <button onClick={() => setTurn(turn + 1)} aria-label="Next turn">
+          <b>{singles ? turn : dTurn}</b>
+          <button onClick={() => (singles ? setTurn(turn + 1) : setDTurn((t) => Math.min(60, t + 1)))} aria-label="Next turn">
             +
           </button>
         </span>
@@ -1379,70 +1406,54 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
       </header>
 
       <div className="ai-body">
-        {!singles && (
-          <section className="ai-doubles">
-            <p className="hint">
-              Doubles: the doubles bot's instant advice (its network, no simulation yet), from the calc's board: your four, the two out on each
-              side (left = selected, right = partner), HP, status, boosts and the field. The rest of this panel is for Singles.
-            </p>
-            <div className="ai-flags">
-              <button onClick={doDoublesBring} disabled={up !== true || !!busy} title="Team preview: which 4 of your six, and which 2 lead">
-                Which 4?
+        {!singles && <p className="hint">Doubles: tap two of each side's icons to put them out (left, then right). The bot reads HP, status, stats and the field from here.</p>}
+        {up === false && (
+          <p className="ai-warn">
+            The bot is not running. Double-click <b>start_gui.bat</b> in the ChampionsAI folder.
+            <button onClick={() => pingBot().then(setUp)}>Check again</button>
+          </p>
+        )}
+
+        <div className="ai-grid">
+        <div className="ai-col">
+        <section className="ai-board">
+          <BattleView
+            mine={mine}
+            theirs={theirs}
+            mineActive={mine.some((s) => mineActive && baseName(s) === baseName(mineActive)) ? mineActive : undefined}
+            theirActive={theirActive?.species ? theirActive : undefined}
+            doubles={!singles}
+            minePartner={!singles ? dSide(0)[1] : undefined}
+            theirPartner={!singles ? dSide(1)[1] : undefined}
+            mark={mark}
+            setMark={setMark}
+            isAppeared={(s) => appeared(s, mark(1, s), isTheirOut(s))}
+            vol={vol}
+            turn={turn}
+            patchVol={patchVol}
+            patchSet={patchSet}
+            sendOut={sendOut}
+            field={field}
+            setField={setField}
+            timers={timers}
+            onTimer={tapTimer}
+          />
+          <p className="hint">
+            Tap a team icon when it comes in, drag an HP bar (or type the number), tap the move it just used. Changes here are the calc's own HP,
+            status, stats and field.
+          </p>
+        </section>
+        </div>
+        <div className="ai-col">
+
+        <section className="ai-answer">
+          {!singles ? (
+            <>
+            <div className="ai-actions">
+              <button className={'primary ai-main-btn' + (!dTurnRes ? ' ai-next' : '')} onClick={() => doDoublesTurn()} disabled={up !== true || !!busy} title="What each of your two should do this turn">
+                {dPlayed?.replace.some(Boolean) ? 'Pick my replacement' : 'Solve this turn'}
               </button>
-              <button onClick={() => doDoublesTurn()} disabled={up !== true || !!busy} title="What each of your two should do this turn">
-                What now?
-              </button>
-              <label className="check" title="Ask What now? by itself shortly after the board in the calc stops changing">
-                <input type="checkbox" checked={dAuto} onChange={(e) => setDAuto(e.target.checked)} />
-                Auto
-              </label>
-              <span className="hint">
-                Turn{' '}
-                <button className="link" onClick={() => setDTurn((t) => Math.max(1, t - 1))} aria-label="Previous turn">
-                  −
-                </button>{' '}
-                {dTurn}{' '}
-                <button className="link" onClick={() => setDTurn((t) => Math.min(60, t + 1))} aria-label="Next turn">
-                  +
-                </button>
-              </span>
             </div>
-            {dbring && (
-              <div className="ai-result">
-                {dbring.sig !== [...mineAll, ...theirs].map((s) => baseName(s)).join(',') && (
-                  <p className="ai-left">The teams changed since this answer: ask again.</p>
-                )}
-                {dbring.options.map((o, i) => (
-                  <div key={i} className={'ai-bring' + (i === 0 ? ' top' : '')}>
-                    <div className="ai-opt-main">
-                      <strong>
-                        Lead {o.lead[0]} + {o.lead[1]}
-                      </strong>
-                      <span className="hint"> · back {o.back.join(' + ')}</span>
-                      {o.win != null && (
-                        <div className={'hint' + (o.worst != null && o.worst < 0.35 ? ' ai-bad' : '')}>
-                          picks it {pct(o.p)}
-                          {o.worst != null ? ` · worst ${pct(o.worst)} against their worst-case bring` : ''}
-                        </div>
-                      )}
-                    </div>
-                    <Bar v={o.win ?? o.p} />
-                    <span className="ai-pct">{pct(o.win ?? o.p)}</span>
-                    <button onClick={() => useDoublesBring(o)} title="Put these four first in your team with the two leads out">
-                      Use this
-                    </button>
-                  </div>
-                ))}
-                <p className="hint">
-                  {dbring.games
-                    ? `Win chance from ${dbring.games.toLocaleString()} simulated games (${dbring.seconds} s) against what they are likely to bring${
-                        dbring.their_likely?.[0] ? ` (most likely: ${dbring.their_likely[0].lead.join(' + ')} lead, ${dbring.their_likely[0].back.join(' + ')} back)` : ''
-                      }. `
-                    : `How strongly the bot picks each. Its guess: ${pct((dbring.value + 1) / 2)} to win. `}
-                  From {dbring.run} at update {dbring.update.toLocaleString()}; still learning, so a rough guide.
-                </p>
-              </div>
-            )}
             {dTurnRes && (
               <div className="ai-result">
                 {(['left', 'right'] as const).map((k) => {
@@ -1526,7 +1537,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
                 </p>
               </div>
             )}
-            <div className="ai-flags">
+            <div className="ai-flags" style={{ marginTop: 10 }}>
               {dTurn === 1 && (
                 <button onClick={doDoublesLeads} disabled={up !== true || !!busy} title="The leads come out: Intimidate, weather and terrain setters, seeds. Writes the result into the calc">
                   Leads are out
@@ -1601,7 +1612,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
                     )}
                   </div>
                 ))}
-                <button onClick={doDoublesPlay} disabled={up !== true || !!busy} title="Play it (64 times, the typical result) and write HP, status, stat changes and the field into the calc">
+                <button className="primary ai-main-btn ai-next" onClick={doDoublesPlay} disabled={up !== true || !!busy} title="Play it (64 times, the typical result) and write HP, status, stat changes and the field into the calc">
                   Play turn
                 </button>
                 <p className="hint">Their menu is their likely set (moves you have seen first). Average luck: the typical result of 64 runs.</p>
@@ -1624,50 +1635,16 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
                       </p>
                     )),
                 )}
-                {dPlayed.replace.some(Boolean) && <p className="ai-left">A slot of yours needs a replacement: press What now? to see who to send in.</p>}
+                {dPlayed.replace.some(Boolean) && <p className="ai-left">A slot of yours needs a replacement: press Solve this turn to see who to send in.</p>}
                 {dPlayed.winner != null && <p className="ai-left">{dPlayed.winner === 0 ? 'You win.' : 'They win.'}</p>}
                 <p className="hint">Mega Evolution is not changed in the calc: switch the form there if one Mega Evolved.</p>
               </div>
             )}
-          </section>
-        )}
-        {up === false && (
-          <p className="ai-warn">
-            The bot is not running. Double-click <b>start_gui.bat</b> in the ChampionsAI folder.
-            <button onClick={() => pingBot().then(setUp)}>Check again</button>
-          </p>
-        )}
-
-        <div className="ai-grid">
-        <div className="ai-col">
-        <section className="ai-board">
-          <BattleView
-            mine={mine}
-            theirs={theirs}
-            mineActive={mine.some((s) => mineActive && baseName(s) === baseName(mineActive)) ? mineActive : undefined}
-            theirActive={theirActive?.species ? theirActive : undefined}
-            mark={mark}
-            setMark={setMark}
-            isAppeared={(s) => appeared(s, mark(1, s), !!theirActive && baseName(s) === baseName(theirActive))}
-            vol={vol}
-            turn={turn}
-            patchVol={patchVol}
-            patchSet={patchSet}
-            sendOut={sendOut}
-            field={field}
-            setField={setField}
-            timers={timers}
-            onTimer={tapTimer}
-          />
-          <p className="hint">
-            Tap a team icon when it comes in, drag an HP bar (or type the number), tap the move it just used. Changes here are the calc's own HP,
-            status, stats and field.
-          </p>
-        </section>
-        </div>
-        <div className="ai-col">
-
-        <section className="ai-answer">
+              {busy && <span className="hint">{busy}</span>}
+              {error && <p className="err">{error}</p>}
+            </>
+          ) : (
+          <>
           {ready && board && !myKo && (
             <div className="ai-play grid">
               <span className="hint" title="Pick what both sides did, then Play: the turn runs with average luck (middle damage roll, no crits, chance effects only when likely) and the board updates itself. Fix what luck changed (HP, a crit, a burn) by hand.">
@@ -1850,6 +1827,8 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
               (slower; shows the win rate if they stay in or switch)
             </p>
           )}
+          </>
+          )}
         </section>
         {Object.keys(likely).length > 0 && (
           <section className="ai-reads">
@@ -1898,6 +1877,50 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
             <p className="ai-left">Also on last game's team: {carried.join(', ')}. Still on this team?</p>
           )}
           {bring && bringFor.current && bringFor.current !== bringSig && <p className="ai-left">The teams changed since this answer: asking again…</p>}
+          {!singles ? (
+            <>
+              <button onClick={doDoublesBring} disabled={up !== true || !!busy} title="Which 4 of your six, and which 2 lead: simulated games">
+                What should I bring?
+              </button>
+            {dbring && (
+              <div className="ai-result">
+                {dbring.sig !== [...mineAll, ...theirs].map((s) => baseName(s)).join(',') && (
+                  <p className="ai-left">The teams changed since this answer: ask again.</p>
+                )}
+                {dbring.options.map((o, i) => (
+                  <div key={i} className={'ai-bring' + (i === 0 ? ' top' : '')}>
+                    <div className="ai-opt-main">
+                      <strong>
+                        Lead {o.lead[0]} + {o.lead[1]}
+                      </strong>
+                      <span className="hint"> · back {o.back.join(' + ')}</span>
+                      {o.win != null && (
+                        <div className={'hint' + (o.worst != null && o.worst < 0.35 ? ' ai-bad' : '')}>
+                          picks it {pct(o.p)}
+                          {o.worst != null ? ` · worst ${pct(o.worst)} against their worst-case bring` : ''}
+                        </div>
+                      )}
+                    </div>
+                    <Bar v={o.win ?? o.p} />
+                    <span className="ai-pct">{pct(o.win ?? o.p)}</span>
+                    <button onClick={() => useDoublesBring(o)} title="Put these four first in your team with the two leads out">
+                      Use this
+                    </button>
+                  </div>
+                ))}
+                <p className="hint">
+                  {dbring.games
+                    ? `Win chance from ${dbring.games.toLocaleString()} simulated games (${dbring.seconds} s) against what they are likely to bring${
+                        dbring.their_likely?.[0] ? ` (most likely: ${dbring.their_likely[0].lead.join(' + ')} lead, ${dbring.their_likely[0].back.join(' + ')} back)` : ''
+                      }. `
+                    : `How strongly the bot picks each. Its guess: ${pct((dbring.value + 1) / 2)} to win. `}
+                  From {dbring.run} at update {dbring.update.toLocaleString()}; still learning, so a rough guide.
+                </p>
+              </div>
+            )}
+            </>
+          ) : (
+          <>
           <button onClick={doBring} disabled={!ready || !!busy}>
             What should I bring?
           </button>
@@ -1933,7 +1956,11 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
               </p>
             </div>
           )}
-          <h4>The three you brought ({brought.length}/3)</h4>
+          </>
+          )}
+          <h4>
+            The {singles ? 'three' : 'four'} you brought ({brought.length}/{BRING_N})
+          </h4>
           <div className="ai-flags">
             {mineAll.map((s) => {
               const name = baseName(s);
@@ -1946,13 +1973,13 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
             })}
           </div>
           <h4>Opposing Pokémon that have appeared</h4>
-          <p className="hint">Ticked by itself when one comes in. They bring three of six, so the rest are treated as possible picks.</p>
+          <p className="hint">Ticked by itself when one comes in. They bring {singles ? 'three' : 'four'} of six, so the rest are treated as possible picks.</p>
           <div className="ai-flags">
             {theirs.map((s) => {
               const name = baseName(s);
               return (
                 <label key={'a' + name} className="check">
-                  <input type="checkbox" checked={appeared(s, mark(1, s), !!theirActive && name === baseName(theirActive))} onChange={(e) => setMark(1, s, { seen: e.target.checked })} />
+                  <input type="checkbox" checked={appeared(s, mark(1, s), isTheirOut(s))} onChange={(e) => setMark(1, s, { seen: e.target.checked })} />
                   {name}
                 </label>
               );

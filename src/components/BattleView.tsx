@@ -16,6 +16,10 @@ interface Props {
   theirs: PokemonSet[]; // their six
   mineActive?: PokemonSet;
   theirActive?: PokemonSet;
+  /** Doubles: the second Pokémon out on each side (the right slot) */
+  doubles?: boolean;
+  minePartner?: PokemonSet;
+  theirPartner?: PokemonSet;
   mark: (side: 0 | 1, s: PokemonSet) => Marks;
   setMark: (side: 0 | 1, s: PokemonSet, patch: Partial<Marks>) => void;
   isAppeared: (s: PokemonSet) => boolean;
@@ -205,7 +209,8 @@ export default function BattleView(p: Props) {
   const layers = (side: 0 | 1, k: 'spikes' | 'toxicSpikes') => p.field[sideKey(side)][k] || 0;
 
   /** Name, HP, status, stat stages and effects of the Pokémon that is out. */
-  const statBox = (side: 0 | 1, s: PokemonSet | undefined) => {
+  const statBox = (side: 0 | 1, s: PokemonSet | undefined, slot = 0) => {
+    const id = slot ? `${side}b` : `${side}`;
     if (!s) return <div className={`bv-stat ${side ? 'opp' : 'me'}`}>{side ? 'Tap the one they send out' : 'Tap your Pokémon that is out'}</div>;
     const m = p.mark(side, s);
     const max = side === 0 ? maxHpOf(s) : undefined;
@@ -265,7 +270,7 @@ export default function BattleView(p: Props) {
         </button>,
       );
     return (
-      <div className={`bv-stat ${side ? 'opp' : 'me'}${menu.endsWith(`-${side}`) ? ' raised' : ''}`}>
+      <div className={`bv-stat ${side ? 'opp' : 'me'}${menu.endsWith(`-${id}`) ? ' raised' : ''}`}>
         <div className="bv-name">
           <strong>{shown(s, m.mega)}</strong>
           <span className="bv-flags">
@@ -294,10 +299,10 @@ export default function BattleView(p: Props) {
         </div>
         <div className="bv-tags">
           <span className="bv-anchor">
-            <button className={`bv-tag status bv-open ${st[0] || 'none'}`} title="Status" onClick={() => toggle(`status-${side}`)}>
+            <button className={`bv-tag status bv-open ${st[0] || 'none'}`} title="Status" onClick={() => toggle(`status-${id}`)}>
               {st[0] ? st[1] : 'Status'}
             </button>
-            {menu === `status-${side}` && (
+            {menu === `status-${id}` && (
               <div className="bv-menu">
                 {STATUS.map(([v, , l]) => (
                   <button
@@ -315,10 +320,10 @@ export default function BattleView(p: Props) {
             )}
           </span>
           <span className="bv-anchor">
-            <button className="bv-tag boost bv-open" title="Stat stages" onClick={() => toggle(`boosts-${side}`)}>
+            <button className="bv-tag boost bv-open" title="Stat stages" onClick={() => toggle(`boosts-${id}`)}>
               {boosts.length ? boosts.map(([k, l]) => `${boostLabel(s.boosts[k])} ${l}`).join(' ') : 'Stats ±'}
             </button>
-            {menu === `boosts-${side}` && (
+            {menu === `boosts-${id}` && (
               <div className="bv-menu bv-boosts">
                 {STATS.map(([k, l]) => (
                   <div key={k} className="bv-boost">
@@ -336,10 +341,10 @@ export default function BattleView(p: Props) {
           </span>
           {tags}
           <span className="bv-anchor">
-            <button className="bv-tag add bv-open" title="Add an effect" onClick={() => toggle(`fx-${side}`)}>
+            <button className="bv-tag add bv-open" title="Add an effect" onClick={() => toggle(`fx-${id}`)}>
               + effect
             </button>
-            {menu === `fx-${side}` && (
+            {menu === `fx-${id}` && (
               <div className="bv-menu">
                 {SIDE_FX.map(([k, l]) => (
                   <button key={k} className={sideState[k] ? 'on' : ''} onClick={() => setSide(side, k, !sideState[k])}>
@@ -383,11 +388,11 @@ export default function BattleView(p: Props) {
   };
 
   /** Team icons: tap the one that comes in. Theirs that have not appeared are faded. */
-  const party = (side: 0 | 1, list: PokemonSet[], out: PokemonSet | undefined) => (
+  const party = (side: 0 | 1, list: PokemonSet[], out: PokemonSet | undefined, out2?: PokemonSet) => (
     <div className={`bv-party ${side ? 'opp' : 'me'}`}>
       {list.map((s) => {
         const m = p.mark(side, s);
-        const isOut = !!out && baseName(s) === baseName(out);
+        const isOut = (!!out && baseName(s) === baseName(out)) || (!!out2 && baseName(s) === baseName(out2));
         const unseen = side === 1 && !isOut && !p.isAppeared(s);
         return (
           <button
@@ -494,7 +499,7 @@ export default function BattleView(p: Props) {
 
   return (
     <div className="bv-wrap" ref={root}>
-      <div className="bv">
+      <div className={'bv' + (p.doubles ? ' duo' : '')}>
         {f.terrain && <div className={`bv-terrain ${f.terrain.toLowerCase()}`} aria-hidden />}
         {f.weather && <div className={`bv-weather ${f.weather.toLowerCase().split(' ')[0]}`} aria-hidden />}
         {f.isTrickRoom && <div className="bv-tr" aria-hidden />}
@@ -526,14 +531,39 @@ export default function BattleView(p: Props) {
             )}
           </span>
         </div>
-        {party(1, p.theirs, p.theirActive)}
-        {statBox(1, p.theirActive)}
-        <div className="bv-pad opp" />
-        <div className="bv-mon opp">{p.theirActive && <FrontSprite species={shown(p.theirActive, p.mark(1, p.theirActive).mega)} size={110} />}</div>
-        <div className="bv-pad me" />
-        <div className="bv-mon me">{p.mineActive && <BackSprite species={shown(p.mineActive, p.mark(0, p.mineActive).mega)} size={140} />}</div>
-        {statBox(0, p.mineActive)}
-        {party(0, p.mine, p.mineActive)}
+        {p.doubles ? (
+          <>
+            {party(1, p.theirs, p.theirActive, p.theirPartner)}
+            <div className="bv-stats opp">
+              {statBox(1, p.theirActive, 0)}
+              {statBox(1, p.theirPartner, 1)}
+            </div>
+            <div className="bv-pad opp" />
+            <div className="bv-mon opp">
+              {[p.theirActive, p.theirPartner].map((s, i) => (s ? <FrontSprite key={i} species={shown(s, p.mark(1, s).mega)} size={96} /> : null))}
+            </div>
+            <div className="bv-pad me" />
+            <div className="bv-mon me">
+              {[p.mineActive, p.minePartner].map((s, i) => (s ? <BackSprite key={i} species={shown(s, p.mark(0, s).mega)} size={120} /> : null))}
+            </div>
+            <div className="bv-stats me">
+              {statBox(0, p.mineActive, 0)}
+              {statBox(0, p.minePartner, 1)}
+            </div>
+            {party(0, p.mine, p.mineActive, p.minePartner)}
+          </>
+        ) : (
+          <>
+            {party(1, p.theirs, p.theirActive)}
+            {statBox(1, p.theirActive)}
+            <div className="bv-pad opp" />
+            <div className="bv-mon opp">{p.theirActive && <FrontSprite species={shown(p.theirActive, p.mark(1, p.theirActive).mega)} size={110} />}</div>
+            <div className="bv-pad me" />
+            <div className="bv-mon me">{p.mineActive && <BackSprite species={shown(p.mineActive, p.mark(0, p.mineActive).mega)} size={140} />}</div>
+            {statBox(0, p.mineActive)}
+            {party(0, p.mine, p.mineActive)}
+          </>
+        )}
       </div>
     </div>
   );

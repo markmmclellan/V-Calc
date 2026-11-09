@@ -710,3 +710,10 @@ td.v-loses, .bg-verdict.v-loses { background: color-mix(in srgb, var(--bad) 38%,
 .bv-wind.me { left: 30px; bottom: 70px; }
 @keyframes bv-wind { to { background-position: 60px 30%, 90px 70%; } }
 @media (prefers-reduced-motion: reduce) { .bv-weather, .bv-wind { animation: none; } }
+
+/* AI panel: team preview */
+.ai-preview h3 { margin: 0 0 6px; }
+.ai-prev-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 10px; }
+.ai-prev-mon { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px; min-width: 92px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel-2); font-size: 12px; }
+.ai-prev-mon.on { border-color: var(--accent, #5b9cff); }
+.ai-prev-btns { display: flex; gap: 4px; }

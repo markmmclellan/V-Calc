@@ -46,6 +46,7 @@ import {
 } from '../lib/bot';
 import { calcStats, type PokemonSet } from '../lib/model';
 import { metaFor, type Meta } from '../lib/data';
+import { megaFor } from '../lib/showdown';
 
 /** Abilities that set the weather or terrain when their holder comes in. */
 const ON_ENTRY: Record<string, { weather?: string; terrain?: string }> = {
@@ -282,6 +283,9 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     setDLeadsDone(false);
     dFresh.current = {};
     dLast.current = null;
+    setPhase('preview');
+    setPrevSel({ bring: [], leads: [] });
+    setOppLeads([]);
     setPicked(null);
     setError('');
     setLive(false);
@@ -303,6 +307,51 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
   const theirs = teams[1].sets.filter((s) => s.species);
   // singles: bring 3; doubles: bring 4
   const BRING_N = singles ? 3 : 4;
+  // Team preview, as in the game: you pick the ones you bring and your lead(s), start the battle, then tap the lead(s)
+  // they sent out. Nothing is taken from whatever happens to be selected in the calc.
+  const LEADS_N = singles ? 1 : 2;
+  const theirsCount = teams[1].sets.filter((x) => x.species).length;
+  const [phase, setPhase] = useState<'preview' | 'battle'>('preview');
+  const [prevSel, setPrevSel] = useState<{ bring: string[]; leads: string[] }>({ bring: [], leads: [] });
+  const [oppLeads, setOppLeads] = useState<string[]>([]);
+  const oppLeadsReady = phase === 'battle' && oppLeads.length >= Math.min(LEADS_N, Math.max(1, theirsCount));
+  const togglePrevBring = (n: string) =>
+    setPrevSel((o) =>
+      o.bring.includes(n)
+        ? { bring: o.bring.filter((x) => x !== n), leads: o.leads.filter((x) => x !== n) }
+        : o.bring.length >= BRING_N
+          ? o
+          : { ...o, bring: [...o.bring, n] },
+    );
+  const togglePrevLead = (n: string) =>
+    setPrevSel((o) =>
+      o.leads.includes(n)
+        ? { ...o, leads: o.leads.filter((x) => x !== n) }
+        : o.leads.length >= LEADS_N
+          ? o
+          : { bring: o.bring.includes(n) || o.bring.length >= BRING_N ? o.bring : [...o.bring, n], leads: o.bring.includes(n) || o.bring.length < BRING_N ? [...o.leads, n] : o.leads },
+    );
+  // the ones holding their Mega Stone among these (only one can Mega Evolve in a battle)
+  const megaHolders = (names: string[]) =>
+    names.filter((n) => {
+      const x = mineAll.find((m) => baseName(m) === n);
+      return !!x && (x.species !== baseName(x) || !!megaFor(baseName(x), x.item));
+    });
+  const startBattle = () => {
+    const { bring: b, leads: l } = prevSel;
+    if (b.length !== BRING_N || l.length !== LEADS_N) return setError(`Pick ${BRING_N} to bring and ${LEADS_N === 1 ? 'your lead' : 'your 2 leads'} first.`);
+    const order = [...l, ...b.filter((n) => !l.includes(n))];
+    const idx = order.map((n) => teams[0].sets.findIndex((x) => x.species && baseName(x) === n));
+    if (idx.some((i) => i < 0)) return setError('Could not find those in your team.');
+    onApplyBring(idx, idx.slice(0, LEADS_N));
+    setPicked(order);
+    setOppLeads([]);
+    setLive(false);
+    setLeadsDone(false);
+    setDLeadsDone(false);
+    setError('');
+    setPhase('battle');
+  };
   const defaultBrought = useMemo(() => {
     const kept = mineAll.filter((s) => !skipped.includes(s.species));
     return (kept.length === BRING_N ? kept : mineAll.slice(0, BRING_N)).map(baseName);
@@ -405,6 +454,23 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
       return next;
     });
   const sendOut = (side: 0 | 1, s: PokemonSet) => {
+    if (side === 1 && phase === 'battle' && !oppLeadsReady) {
+      const name = baseName(s);
+      if (oppLeads.includes(name)) return;
+      markAppeared(s);
+      const k = oppLeads.length;
+      setOppLeads((o) => [...o, name]);
+      setTeams((old) => {
+        const i = old[1].sets.indexOf(s);
+        if (i < 0) return old;
+        const next: [Team, Team] = [old[0], old[1]];
+        next[1] = k === 0 ? { ...old[1], active: i, partner: undefined } : { ...old[1], partner: i };
+        return next;
+      });
+      // all their leads in: the battle is under way (the leads' entry abilities follow by themselves)
+      if (k + 1 >= LEADS_N) setLive(true);
+      return;
+    }
     if (!singles) {
       setLive(true);
       if (side === 1) markAppeared(s);
@@ -978,7 +1044,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [coreKey, played]);
   const noBoosts = (s?: PokemonSet) => !s || Object.values(s.boosts).every((v) => !v);
-  const needLeads = turn === 1 && !leadsDone && !!rawBoard && !!mineActive?.species && !!theirActive?.species && !played && noBoosts(mineActive) && noBoosts(theirActive); // (weather alone is no sign: V-Calc sets it itself for Sand Stream, Drought...)
+  const needLeads = phase === 'battle' && oppLeadsReady && turn === 1 && !leadsDone && !!rawBoard && !!mineActive?.species && !!theirActive?.species && !played && noBoosts(mineActive) && noBoosts(theirActive); // (weather alone is no sign: V-Calc sets it itself for Sand Stream, Drought...)
   const doLeads = () =>
     runPlay(async () => {
       if (!rawBoard) return;
@@ -1015,6 +1081,8 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
 
   /** Ask the bot about the current board: the replacement if yours fainted, otherwise the turn as a guessing game. */
   const solveNow = () => {
+    if (phase === 'preview') return setError('Team preview: pick your bring and lead, then Start battle.');
+    if (!oppLeadsReady) return setError("Tap the Pokémon they led with (their icons, top right).");
     if (!board) {
       setError(boardProblem);
       return;
@@ -1110,6 +1178,10 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     });
   // Doubles: put the picked four first in your team and the two leads out
   const useDoublesBring = (o: { lead: string[]; back: string[] }) => {
+    if (phase === 'preview') {
+      setPrevSel({ bring: [...o.lead, ...o.back], leads: [...o.lead] });
+      return;
+    }
     const idx = (n: string) => teams[0].sets.findIndex((s) => s.species && baseName(s) === n);
     const four = [...o.lead, ...o.back].map(idx).filter((i) => i >= 0);
     if (four.length !== 4) return setError('Could not find those four in your team.');
@@ -1127,6 +1199,8 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
   };
   // `auto`: asked by itself (the board may not have your HP corrections yet, so the last turn's hits wait)
   const doDoublesTurn = (auto = false) => {
+    if (phase === 'preview') return setError('Team preview: pick your bring and leads, then Start battle.');
+    if (!oppLeadsReady) return setError('Tap the two Pokémon they led with (their icons, top right).');
     if (needDLeads) {
       setLive(true);
       return doDoublesLeads();
@@ -1253,7 +1327,9 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
       if (!dOpts || !dPick) throw new Error('The menus are still loading.');
       const b = doublesBoard(takeDoublesHits());
       const snap: DSnap = { teams, field, marks, turn, timers: dTimers };
-      const r = await askDoublesPlay(mineAll, { ...b, just_in: dMarkFresh(turn), pivot_to: dPivot, outcomes: dOutcome }, dPick.me, dPick.opp);
+      const leadsFirst = needDLeads;
+      const r = await askDoublesPlay(mineAll, { ...b, just_in: dMarkFresh(turn), pivot_to: dPivot, outcomes: dOutcome, leads_first: leadsFirst }, dPick.me, dPick.opp);
+      if (leadsFirst) setDLeadsDone(true);
       setDOutcome({ me: [{}, {}], opp: [{}, {}] });
       applyDoubles(r, snap);
       dPending.current = r.hits ?? null;
@@ -1283,7 +1359,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
   const [dLeadsDone, setDLeadsDone] = useState(false);
   const dOutNow = [...dSide(0), ...dSide(1)];
   const needDLeads =
-    !singles && turn === 1 && !dLeadsDone && dOutNow.every((x) => !!x) && dOutNow.every((x) => Object.values(x!.boosts).every((v) => !v)) && !dPlayed;
+    !singles && phase === 'battle' && oppLeadsReady && turn === 1 && !dLeadsDone && dOutNow.every((x) => !!x) && dOutNow.every((x) => Object.values(x!.boosts).every((v) => !v)) && !dPlayed;
   const doDoublesLeads = () =>
     run('The leads come out…', async () => {
       const b = doublesBoard();
@@ -1307,6 +1383,11 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
       for (const s of mineAll) {
         const x = r.me[baseName(s)];
         if (x && x.item_gone && s.item && !mark(0, s).gone) setMark(0, s, { gone: true });
+        if (x?.mega && !mark(0, s).mega) setMark(0, s, { mega: true });
+      }
+      for (const s of theirs) {
+        const x = r.opp[baseName(s)];
+        if (x?.mega && !mark(1, s).mega) setMark(1, s, { mega: true });
       }
       setTeams((old) => {
         const upd = (t: Team, side: 'me' | 'opp'): Team => {
@@ -1349,11 +1430,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
       const four = (mine.length ? mine : mineAll.slice(0, 4)).slice();
       for (const s of [ml, mr]) if (s && !four.some((x) => baseName(x) === baseName(s))) four.unshift(s);
       const pos = buildPosition({ mine: four.slice(0, 4), mineActive: ml ? baseName(ml) : '', theirs, theirActive: tl ? baseName(tl) : '', marks, field, turn: dTurn });
-      // in the calc a Mega is its Mega form, and a fainted Pokémon is at 0%
-      const isMega = (s: PokemonSet) => s.species !== baseName(s);
-      const megas = four.slice(0, 4).filter(isMega).map(baseName);
-      pos.me.mega_evolved = [...new Set([...pos.me.mega_evolved, ...megas])];
-      pos.me.mega_used = pos.me.mega_used || megas.length > 0;
+      // Mega Evolved: the Mega mark (as singles; a holder shown in its Mega form has not Mega Evolved yet). Fainted: 0%
       for (const s of four.slice(0, 4)) {
         if (s.hpPercent <= 0) {
           pos.me.hp[baseName(s)] = 0;
@@ -1363,7 +1440,6 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
       for (const o of pos.opp) {
         const s = theirs.find((x) => baseName(x) === o.species);
         if (!s) continue;
-        if (isMega(s)) o.mega = true;
         if (s.hpPercent <= 0) o.hp = 0;
         if (addHits[o.species]) o.hits = [...o.hits, ...addHits[o.species]];
       }
@@ -1451,7 +1527,11 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, ready, bringSig, busy, bring, sameAsLast]);
 
-  const useBring = (o: { bring: string[] }) => {
+  const useBring = (o: { bring: string[]; lead?: string }) => {
+    if (phase === 'preview') {
+      setPrevSel({ bring: o.bring, leads: o.lead ? [o.lead] : [o.bring[0]] });
+      return;
+    }
     const idx = o.bring.map((n) => mineAll.findIndex((s) => baseName(s) === n)).filter((i) => i >= 0);
     onApplyBring(idx, [0]);
     setPicked(null);
@@ -1573,15 +1653,60 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
 
         <div className="ai-grid">
         <div className="ai-col">
+        {phase === 'preview' ? (
+          <section className="ai-board ai-preview">
+            <h3>Team preview</h3>
+            <p className="hint">Their six</p>
+            <div className="ai-prev-row">
+              {theirs.map((x) => (
+                <span key={'t' + baseName(x)} className="ai-prev-mon">
+                  <Sprite species={x.species} size={44} />
+                  <span>{baseName(x)}</span>
+                </span>
+              ))}
+            </div>
+            <p className="hint">
+              Your six: pick {BRING_N} to bring ({prevSel.bring.length}/{BRING_N}) and {LEADS_N === 1 ? 'your lead' : 'your 2 leads'} ({prevSel.leads.length}/{LEADS_N}), or
+              take the bot's pick from What should I bring? (Use this).
+            </p>
+            <div className="ai-prev-row">
+              {mineAll.map((x) => {
+                const n = baseName(x);
+                const b = prevSel.bring.includes(n);
+                const l = prevSel.leads.includes(n);
+                return (
+                  <span key={'m' + n} className={'ai-prev-mon' + (b ? ' on' : '')}>
+                    <Sprite species={x.species} size={44} />
+                    <span>{n}</span>
+                    <span className="ai-prev-btns">
+                      <button className={'bv-tag' + (b ? ' on' : '')} onClick={() => togglePrevBring(n)}>
+                        Bring
+                      </button>
+                      <button className={'bv-tag' + (l ? ' on' : '')} onClick={() => togglePrevLead(n)}>
+                        Lead
+                      </button>
+                    </span>
+                  </span>
+                );
+              })}
+            </div>
+            {megaHolders(prevSel.bring).length > 1 && (
+              <p className="ai-left">Only one of {megaHolders(prevSel.bring).join(' and ')} can Mega Evolve (one Mega per battle).</p>
+            )}
+            <button className="primary ai-main-btn ai-next" disabled={prevSel.bring.length !== BRING_N || prevSel.leads.length !== LEADS_N} onClick={startBattle}>
+              Start battle
+            </button>
+          </section>
+        ) : (
         <section className="ai-board">
           <BattleView
             mine={mine}
             theirs={theirs}
             mineActive={mine.some((s) => mineActive && baseName(s) === baseName(mineActive)) ? mineActive : undefined}
-            theirActive={theirActive?.species ? theirActive : undefined}
+            theirActive={theirActive?.species && oppLeadsReady ? theirActive : undefined}
             doubles={!singles}
             minePartner={!singles ? dSide(0)[1] : undefined}
-            theirPartner={!singles ? dSide(1)[1] : undefined}
+            theirPartner={!singles && oppLeadsReady ? dSide(1)[1] : undefined}
             mark={mark}
             setMark={setMark}
             isAppeared={(s) => appeared(s, mark(1, s), isTheirOut(s))}
@@ -1595,11 +1720,20 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
             timers={timers}
             onTimer={tapTimer}
           />
+          {!oppLeadsReady && (
+            <p className="ai-left">
+              Tap the {LEADS_N === 1 ? 'Pokémon they led with' : `two Pokémon they led with (${oppLeads.length}/2)`}: their icons, top right.{' '}
+              <button className="link" onClick={() => setPhase('preview')}>
+                Back to team preview
+              </button>
+            </p>
+          )}
           <p className="hint">
             Tap a team icon when it comes in, drag an HP bar (or type the number), tap the move it just used. Changes here are the calc's own HP,
             status, stats and field.
           </p>
         </section>
+        )}
         </div>
         <div className="ai-col">
 
@@ -2042,6 +2176,9 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
                         Lead {o.lead[0]} + {o.lead[1]}
                       </strong>
                       <span className="hint"> · back {o.back.join(' + ')}</span>
+                      {megaHolders([...o.lead, ...o.back]).length > 1 && (
+                        <div className="hint ai-bad">Only one of {megaHolders([...o.lead, ...o.back]).join(' and ')} can Mega Evolve.</div>
+                      )}
                       {o.win != null && (
                         <div className={'hint' + (o.worst != null && o.worst < 0.35 ? ' ai-bad' : '')}>
                           picks it {pct(o.p)}
@@ -2084,6 +2221,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
                       )}
                       <strong>Lead {o.lead}</strong>
                       <span className="hint"> + {o.bring.filter((n) => n !== o.lead).join(', ')}</span>
+                      {megaHolders(o.bring).length > 1 && <div className="hint ai-bad">Only one of {megaHolders(o.bring).join(' and ')} can Mega Evolve.</div>}
                       {o.worst != null && o.worst_vs && (
                         <div className={'hint' + (o.worst < 0.35 ? ' ai-bad' : '')}>
                           Worst: {pct(o.worst)} if they bring {o.worst_vs.join(', ')}

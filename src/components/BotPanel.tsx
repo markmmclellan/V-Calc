@@ -154,7 +154,8 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
   const patchVol = (side: 0 | 1, patch: Partial<Vol>) =>
     setVol((old) => {
       const next: [Vol, Vol] = [old[0], old[1]];
-      next[side] = { ...old[side], ...patch, who: outNames[side] || old[side].who };
+      // the Pokémon it is for: the one tapped (doubles has two a side), else the one out
+      next[side] = { ...old[side], ...patch, who: patch.who || outNames[side] || old[side].who };
       // The first move since it came in (Protean / Libero take its type). A pick made while it is still on its first
       // turn out replaces it, so fixing a wrong tap works; after that it stays.
       if ('last_move' in patch) {
@@ -1890,7 +1891,10 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     const cv = c.turn >= 0 && passed >= 0 ? c[side][name] : undefined;
     const left = cv?.disabled && cv.left ? cv.left - passed : 0;
     const man = dManual[`${side}:${name}`];
-    const disabled = man && man.disabled !== undefined ? man.disabled : left > 0 ? cv!.disabled! : null;
+    // the battle view's Disabled tag (one per side, for the Pokémon it was set on)
+    const bv = vol[side === 'me' ? 0 : 1];
+    const bvDis = bv.who === name && bv.disabled ? bv.disabled : null;
+    const disabled = man && man.disabled !== undefined ? man.disabled : bvDis ?? (left > 0 ? cv!.disabled! : null);
     return {
       cursed: man?.cursed ?? !!cv?.cursed,
       disabled,

@@ -247,7 +247,7 @@ export default function BattleView(p: Props) {
           Transformed: {p.vol[side].transformed}
         </span>,
       );
-    if (p.vol[side].disabled)
+    if (p.vol[side].disabled && (!p.vol[side].who || p.vol[side].who === baseName(s)))
       tags.push(
         <button key="dis" className="bv-tag fx" title="Tap to remove" onClick={() => p.patchVol(side, { disabled: undefined })}>
           Disabled: {p.vol[side].disabled}
@@ -377,7 +377,7 @@ export default function BattleView(p: Props) {
                   className={p.vol[side].disabled ? 'on' : ''}
                   disabled={!p.vol[side].disabled && !p.vol[side].last_move}
                   title={p.vol[side].last_move ? `${p.vol[side].last_move} can't be used for a few turns` : 'Pick its last move below first'}
-                  onClick={() => p.patchVol(side, { disabled: p.vol[side].disabled ? undefined : p.vol[side].last_move })}
+                  onClick={() => p.patchVol(side, { disabled: p.vol[side].disabled ? undefined : p.vol[side].last_move, who: baseName(s) })}
                 >
                   Disable{p.vol[side].last_move ? ` (${p.vol[side].last_move})` : ''}
                 </button>

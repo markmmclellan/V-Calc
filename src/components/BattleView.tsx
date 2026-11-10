@@ -31,6 +31,8 @@ interface Props {
   /** the panel's turn number: tapping the last move again on a later turn records it again instead of clearing it */
   turn: number;
   patchVol: (side: 0 | 1, patch: Partial<Vol>) => void;
+  /** Doubles: the effects on this Pokémon (else p.vol[side]) */
+  volOf?: (side: 0 | 1, s: PokemonSet) => Vol;
   patchSet: (side: 0 | 1, s: PokemonSet, patch: Partial<PokemonSet>) => void;
   sendOut: (side: 0 | 1, s: PokemonSet) => void;
   field: FieldState;
@@ -204,6 +206,9 @@ export default function BattleView(p: Props) {
       </span>
     ) : null;
 
+  // effects on one Pokémon (doubles keeps them per Pokémon; singles one per side)
+  const vv = (side: 0 | 1, s?: PokemonSet): Vol => (s && p.volOf ? p.volOf(side, s) : p.vol[side]);
+  const pv = (side: 0 | 1, s: PokemonSet | undefined, patch: Partial<Vol>) => p.patchVol(side, s ? { ...patch, who: baseName(s) } : patch);
   const sideKey = (side: 0 | 1) => (side === 0 ? 'attackerSide' : 'defenderSide');
   const setSide = (side: 0 | 1, k: keyof SideState, v: boolean | number) =>
     p.setField((f) => ({ ...f, [sideKey(side)]: { ...f[sideKey(side)], [k]: v } }));
@@ -241,37 +246,37 @@ export default function BattleView(p: Props) {
             {layers(side, k) > 1 ? ` ×${layers(side, k)}` : ''}
           </button>,
         );
-    if (p.vol[side].transformed)
+    if (vv(side, s).transformed)
       tags.push(
         <span key="tf" className="bv-tag fx" title="Transform / Imposter: it copied this Pokémon (types, stats, moves)">
-          Transformed: {p.vol[side].transformed}
+          Transformed: {vv(side, s).transformed}
         </span>,
       );
-    if (p.vol[side].disabled && (!p.vol[side].who || p.vol[side].who === baseName(s)))
+    if (vv(side, s).disabled && (!vv(side, s).who || vv(side, s).who === baseName(s)))
       tags.push(
-        <button key="dis" className="bv-tag fx" title="Tap to remove" onClick={() => p.patchVol(side, { disabled: undefined })}>
-          Disabled: {p.vol[side].disabled}
+        <button key="dis" className="bv-tag fx" title="Tap to remove" onClick={() => pv(side, s, { disabled: undefined })}>
+          Disabled: {vv(side, s).disabled}
         </button>,
       );
-    const ch = p.vol[side].charging;
+    const ch = vv(side, s).charging;
     if (ch)
       tags.push(
-        <button key="charging" className="bv-tag fx" title={`${ch} lands next turn. Tap to remove`} onClick={() => p.patchVol(side, { charging: undefined, charge_turn: undefined })}>
+        <button key="charging" className="bv-tag fx" title={`${ch} lands next turn. Tap to remove`} onClick={() => pv(side, s, { charging: undefined, charge_turn: undefined })}>
           {CHARGE_MOVES[ch] ?? 'Charging'} ({ch})
         </button>,
       );
     for (const [k, l] of VOL_FX)
-      if (p.vol[side][k])
+      if (vv(side, s)[k])
         tags.push(
-          <button key={k} className="bv-tag fx" title="Tap to remove" onClick={() => p.patchVol(side, { [k]: false })}>
+          <button key={k} className="bv-tag fx" title="Tap to remove" onClick={() => pv(side, s, { [k]: false })}>
             {l}
             {tm(`v${side}:${k}`)}
           </button>,
         );
-    if (p.vol[side].encore)
+    if (vv(side, s).encore)
       tags.push(
-        <button key="enc" className="bv-tag fx" title="Tap to remove" onClick={() => p.patchVol(side, { encore: undefined })}>
-          Encore: {p.vol[side].encore}
+        <button key="enc" className="bv-tag fx" title="Tap to remove" onClick={() => pv(side, s, { encore: undefined })}>
+          Encore: {vv(side, s).encore}
           {tm(`v${side}:encore`)}
         </button>,
       );
@@ -369,25 +374,25 @@ export default function BattleView(p: Props) {
                   </button>
                 ))}
                 {VOL_FX.map(([k, l]) => (
-                  <button key={k} className={p.vol[side][k] ? 'on' : ''} onClick={() => p.patchVol(side, { [k]: !p.vol[side][k] })}>
+                  <button key={k} className={vv(side, s)[k] ? 'on' : ''} onClick={() => pv(side, s, { [k]: !vv(side, s)[k] })}>
                     {l}
                   </button>
                 ))}
                 <button
-                  className={p.vol[side].disabled ? 'on' : ''}
-                  disabled={!p.vol[side].disabled && !p.vol[side].last_move}
-                  title={p.vol[side].last_move ? `${p.vol[side].last_move} can't be used for a few turns` : 'Pick its last move below first'}
-                  onClick={() => p.patchVol(side, { disabled: p.vol[side].disabled ? undefined : p.vol[side].last_move, who: baseName(s) })}
+                  className={vv(side, s).disabled ? 'on' : ''}
+                  disabled={!vv(side, s).disabled && !vv(side, s).last_move}
+                  title={vv(side, s).last_move ? `${vv(side, s).last_move} can't be used for a few turns` : 'Pick its last move below first'}
+                  onClick={() => pv(side, s, { disabled: vv(side, s).disabled ? undefined : vv(side, s).last_move })}
                 >
-                  Disable{p.vol[side].last_move ? ` (${p.vol[side].last_move})` : ''}
+                  Disable{vv(side, s).last_move ? ` (${vv(side, s).last_move})` : ''}
                 </button>
                 <button
-                  className={p.vol[side].encore ? 'on' : ''}
-                  disabled={!p.vol[side].encore && !p.vol[side].last_move}
-                  title={p.vol[side].last_move ? `Encored into ${p.vol[side].last_move}` : 'Pick its last move below first'}
-                  onClick={() => p.patchVol(side, { encore: p.vol[side].encore ? undefined : p.vol[side].last_move })}
+                  className={vv(side, s).encore ? 'on' : ''}
+                  disabled={!vv(side, s).encore && !vv(side, s).last_move}
+                  title={vv(side, s).last_move ? `Encored into ${vv(side, s).last_move}` : 'Pick its last move below first'}
+                  onClick={() => pv(side, s, { encore: vv(side, s).encore ? undefined : vv(side, s).last_move })}
                 >
-                  Encore{p.vol[side].last_move ? ` (${p.vol[side].last_move})` : ''}
+                  Encore{vv(side, s).last_move ? ` (${vv(side, s).last_move})` : ''}
                 </button>
               </div>
             )}
@@ -423,23 +428,23 @@ export default function BattleView(p: Props) {
   /** "Last move": tap the move it just used (theirs also counts as seen). */
   const moves = (side: 0 | 1, s: PokemonSet | undefined) => {
     if (!s) return null;
-    const last = p.vol[side].last_move;
+    const last = vv(side, s).last_move;
     const m = p.mark(side, s);
     return (
       <div className="bv-moves">
         <span className="hint">
-          Last move{p.vol[side].first_move && p.vol[side].first_move !== last ? ` (first: ${p.vol[side].first_move})` : ''}
+          Last move{vv(side, s).first_move && vv(side, s).first_move !== last ? ` (first: ${vv(side, s).first_move})` : ''}
         </span>
         {s.moves.map((mv, k) =>
           mv ? (
             <button
               key={k}
-              className={'bv-move' + (last === mv ? ' on' : '') + (last === mv && p.vol[side].last_move_turn !== p.turn ? ' old' : '') + (side === 1 && m.moves[k] ? ' seen' : '')}
-              title={last === mv && p.vol[side].last_move_turn !== p.turn ? 'Used on an earlier turn: tap if it used it again' : side === 1 && m.moves[k] ? 'Seen' : 'Tap if it just used this'}
+              className={'bv-move' + (last === mv ? ' on' : '') + (last === mv && vv(side, s).last_move_turn !== p.turn ? ' old' : '') + (side === 1 && m.moves[k] ? ' seen' : '')}
+              title={last === mv && vv(side, s).last_move_turn !== p.turn ? 'Used on an earlier turn: tap if it used it again' : side === 1 && m.moves[k] ? 'Seen' : 'Tap if it just used this'}
               onClick={() => {
                 // tapped again this turn: a mis-tap, clear it; on a later turn: it used the same move again
-                const same = last === mv && p.vol[side].last_move_turn === p.turn;
-                p.patchVol(side, { last_move: same ? undefined : mv });
+                const same = last === mv && vv(side, s).last_move_turn === p.turn;
+                pv(side, s, { last_move: same ? undefined : mv });
                 if (side === 1 && !same && !m.moves[k]) p.setMark(1, s, { moves: m.moves.map((x, j) => (j === k ? true : x)) });
               }}
             >

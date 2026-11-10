@@ -151,8 +151,17 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
   // Turns left of timed effects, counted down as the turn number goes up (see TIMED). Keys: 'weather', 'terrain', 'tr',
   // '<side>:<field flag>' (Tailwind, screens), 'v<side>:<effect>' (Taunt, Encore, Yawn).
   const [timers, setTimers] = useState<Record<string, number>>({});
+  // doubles: effects per Pokémon ('0:Raichu'), since two are out a side
+  const [dVolMap, setDVolMap] = useState<Record<string, Vol>>({});
   const patchVol = (side: 0 | 1, patch: Partial<Vol>) =>
-    setVol((old) => {
+    !singles && patch.who
+      ? setDVolMap((o) => {
+          const k = `${side}:${patch.who}`;
+          const next = { ...(o[k] ?? {}), ...patch };
+          if ('last_move' in patch) next.last_move_turn = patch.last_move ? turn : undefined;
+          return { ...o, [k]: next };
+        })
+      : setVol((old) => {
       const next: [Vol, Vol] = [old[0], old[1]];
       // the Pokémon it is for: the one tapped (doubles has two a side), else the one out
       next[side] = { ...old[side], ...patch, who: patch.who || outNames[side] || old[side].who };
@@ -482,6 +491,9 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     setDPlayed(null);
     dPending.current = null;
     setDLeadsDone(false);
+    setDVolMap({});
+    setDManual({});
+    dCarry.current = { turn: -1, me: {}, opp: {} };
     dFresh.current = {};
     dLast.current = null;
     setPhase('preview');
@@ -1698,6 +1710,23 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
             .map(([n, m]) => [n, { cursed: !!m.cursed, disabled: m.disabled?.[0] ?? null, left: m.disabled?.[1] }]),
         );
       dCarry.current = { turn: turn + 1, me: vols(r.me), opp: vols(r.opp) };
+      setDVolMap((o) => {
+        const next = { ...o };
+        (['me', 'opp'] as const).forEach((sd, i) => {
+          for (const [n, m] of Object.entries(r[sd])) {
+            if (m.out == null) continue;
+            const k = `${i}:${n}`;
+            next[k] = {
+              ...(next[k] ?? {}),
+              who: n,
+              last_move: m.last_move ?? next[k]?.last_move,
+              last_move_turn: m.last_move ? turn : next[k]?.last_move_turn,
+              disabled: m.disabled?.[0] ?? undefined,
+            };
+          }
+        });
+        return next;
+      });
       dLogTurn.current = turn + 1;
       // what the turn settled replaces your marks
       setDManual({});
@@ -1882,6 +1911,13 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
       }));
       return Object.keys(keep).length === Object.keys(o).length ? o : keep;
     });
+    setDVolMap((o) => {
+      const keep = Object.fromEntries(Object.entries(o).filter(([k]) => {
+        const [sd, n] = k.split(':');
+        return (sd === '0' ? out.me : out.opp).includes(n);
+      }));
+      return Object.keys(keep).length === Object.keys(o).length ? o : keep;
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dOutKey]);
   /** Cursed / disabled for one that is out now: your marks first, else what the engine left after the last played turn. */
@@ -1892,8 +1928,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     const left = cv?.disabled && cv.left ? cv.left - passed : 0;
     const man = dManual[`${side}:${name}`];
     // the battle view's Disabled tag (one per side, for the Pokémon it was set on)
-    const bv = vol[side === 'me' ? 0 : 1];
-    const bvDis = bv.who === name && bv.disabled ? bv.disabled : null;
+    const bvDis = dVolMap[`${side === 'me' ? 0 : 1}:${name}`]?.disabled ?? null;
     const disabled = man && man.disabled !== undefined ? man.disabled : bvDis ?? (left > 0 ? cv!.disabled! : null);
     return {
       cursed: man?.cursed ?? !!cv?.cursed,
@@ -2248,6 +2283,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
             setMark={setMark}
             isAppeared={(s) => appeared(s, mark(1, s), isTheirOut(s))}
             vol={vol}
+            volOf={singles ? undefined : (sd, x) => dVolMap[`${sd}:${baseName(x)}`] ?? { who: baseName(x) }}
             turn={turn}
             patchVol={patchVol}
             patchSet={patchSet}

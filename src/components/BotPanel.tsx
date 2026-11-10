@@ -23,6 +23,7 @@ import {
   askPlayTurn,
   askSendIn,
   askLikelySets,
+  askDoublesLikelySets,
   askLeads,
   logBoard,
   oppSetsJson,
@@ -1688,6 +1689,34 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     const pool = side === 'me' ? mine : theirs;
     return pool.filter((s) => !out.includes(baseName(s)) && (revive ? s.hpPercent <= 0 : s.hpPercent > 0)).map(baseName);
   };
+  // doubles: their likely builds from the hits measured; a set entered that cannot explain them takes the likeliest
+  // nature and stat points (as singles)
+  useEffect(() => {
+    if (singles) return;
+    if (hitsSig === '{}' || up !== true) {
+      setLikely({});
+      return;
+    }
+    let b: ReturnType<typeof doublesBoard>;
+    try {
+      b = doublesBoard();
+    } catch {
+      return;
+    }
+    askDoublesLikelySets(mineAll, b)
+      .then((r) => {
+        setLikely(r);
+        for (const [sp, l] of Object.entries(r)) {
+          const bd = l.builds[0];
+          const s = teams[1].sets.find((x) => x.species && baseName(x) === sp);
+          if (!bd || !s || l.entered_fits !== false) continue;
+          const spread = { hp: bd.sp[0], atk: bd.sp[1], def: bd.sp[2], spa: bd.sp[3], spd: bd.sp[4], spe: bd.sp[5] };
+          patchSet(1, s, { nature: bd.nature, sp: spread });
+        }
+      })
+      .catch(() => setLikely({}));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hitsSig, singles, up]);
   const doDoublesPlay = () =>
     run('Playing the turn…', async () => {
       if (!dOpts || !dPick) throw new Error('The menus are still loading.');
@@ -1779,6 +1808,9 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
   // write a doubles result into the calc: HP, status, stat stages, used-up items (yours), the field
   const applyDoubles = (r: DoublesPlay, snap?: DSnap, advance = false) => {
       dUndo.current = snap ?? null;
+      // entry hazards on a side, as the engine left them (older servers send none: kept as they are)
+      const dHazards = (sd: 0 | 1) =>
+        r.field.stealth_rock ? { isSR: r.field.stealth_rock[sd], spikes: r.field.spikes?.[sd] ?? 0, toxicSpikes: r.field.toxic_spikes?.[sd] ?? 0 } : {};
       setDPlayed(r);
       // turns left as the engine counted them (Damp Rock and the like); a played turn also counts the rest down
       const tt = r.field.turns;
@@ -1818,7 +1850,9 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
             if (!x.pp) continue;
             const k = `${i}:${n}`;
             const pp = i === 0 ? x.pp : Object.fromEntries(Object.entries(x.pp).filter(([mv]) => (x.revealed_moves ?? []).includes(mv)));
-            out[k] = { ...(out[k] ?? blankMarks()), pp };
+            const cur = out[k] ?? blankMarks();
+            // theirs: item and ability now known for sure once shown
+            out[k] = { ...cur, pp, item: cur.item || (i === 1 && !!x.revealed_item), ability: cur.ability || (i === 1 && !!x.revealed_ability) };
           }
         });
         return out;
@@ -1844,6 +1878,8 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
               charge_turn: v.charging ? turn : undefined,
               disabled: v.disabled ?? undefined,
               transformed: v.transformed ?? undefined,
+              leech_seed: v.leech_seed || undefined,
+              bound: v.bound || undefined,
               first_move: v.first_move ?? undefined,
               last_move: v.last_move ?? undefined,
               // a played turn: its move was used this turn; a send-in keeps when it was last used
@@ -1895,7 +1931,11 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
               // yours exactly (the game shows your HP as a number), theirs as shown
               const hpPercent = x.hp === 0 ? 0 : side === 'me' && x.max_hp ? Math.max(0.1, (100 * x.hp) / x.max_hp) : Math.max(1, Math.round(x.hp_pct));
               const abilityOn = x.disguise_broken && s.ability === 'Disguise' ? true : s.abilityOn; // V-Calc's "Disguise broken"
-              return { ...s, hpPercent, abilityOn, status: x.status as PokemonSet["status"], boosts: { atk: b.atk, def: b.def, spa: b.spa, spd: b.spd, spe: b.spe } };
+              // theirs: an item or ability they showed replaces the guess (as singles)
+              const shown: Partial<PokemonSet> = {};
+              if (side === 'opp' && x.revealed_item) shown.item = x.revealed_item;
+              if (side === 'opp' && x.revealed_ability) shown.ability = x.revealed_ability;
+              return { ...s, ...shown, hpPercent, abilityOn, status: x.status as PokemonSet["status"], boosts: { atk: b.atk, def: b.def, spa: b.spa, spd: b.spd, spe: b.spe } };
             }),
           };
         };
@@ -1906,8 +1946,8 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
         weather: r.field.weather as FieldState['weather'],
         terrain: r.field.terrain as FieldState['terrain'],
         isTrickRoom: r.field.trick_room,
-        attackerSide: { ...f.attackerSide, isTailwind: r.field.tailwind[0], isReflect: r.field.screens[0][0], isLightScreen: r.field.screens[0][1], isAuroraVeil: r.field.screens[0][2] },
-        defenderSide: { ...f.defenderSide, isTailwind: r.field.tailwind[1], isReflect: r.field.screens[1][0], isLightScreen: r.field.screens[1][1], isAuroraVeil: r.field.screens[1][2] },
+        attackerSide: { ...f.attackerSide, ...dHazards(0), isTailwind: r.field.tailwind[0], isReflect: r.field.screens[0][0], isLightScreen: r.field.screens[0][1], isAuroraVeil: r.field.screens[0][2] },
+        defenderSide: { ...f.defenderSide, ...dHazards(1), isTailwind: r.field.tailwind[1], isReflect: r.field.screens[1][0], isLightScreen: r.field.screens[1][1], isAuroraVeil: r.field.screens[1][2] },
       }));
   };
   // `addHits`: measured hits not yet in the marks (just taken from the last played turn)

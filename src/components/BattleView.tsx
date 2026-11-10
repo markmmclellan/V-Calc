@@ -208,6 +208,9 @@ export default function BattleView(p: Props) {
 
   // effects on one Pokémon (doubles keeps them per Pokémon; singles one per side)
   const vv = (side: 0 | 1, s?: PokemonSet): Vol => (s && p.volOf ? p.volOf(side, s) : p.vol[side]);
+  // doubles: Leech Seed and binding are on one Pokémon, not the side
+  const sideFx = p.volOf ? SIDE_FX.filter(([k]) => k !== 'isSeeded' && k !== 'isBound') : SIDE_FX;
+  const volFx: [keyof Vol, string][] = p.volOf ? [...VOL_FX, ['leech_seed', 'Leech Seed'], ['bound', 'Bound']] : VOL_FX;
   const pv = (side: 0 | 1, s: PokemonSet | undefined, patch: Partial<Vol>) => p.patchVol(side, s ? { ...patch, who: baseName(s) } : patch);
   const sideKey = (side: 0 | 1) => (side === 0 ? 'attackerSide' : 'defenderSide');
   const setSide = (side: 0 | 1, k: keyof SideState, v: boolean | number) =>
@@ -230,7 +233,7 @@ export default function BattleView(p: Props) {
     const boosts = STATS.filter(([k]) => s.boosts[k]);
     const sideState = p.field[sideKey(side)];
     const tags: ReactNode[] = [];
-    for (const [k, l] of SIDE_FX)
+    for (const [k, l] of sideFx)
       if (sideState[k])
         tags.push(
           <button key={k} className="bv-tag fx" title="Tap to remove" onClick={() => setSide(side, k, false)}>
@@ -265,7 +268,7 @@ export default function BattleView(p: Props) {
           {CHARGE_MOVES[ch] ?? 'Charging'} ({ch})
         </button>,
       );
-    for (const [k, l] of VOL_FX)
+    for (const [k, l] of volFx)
       if (vv(side, s)[k])
         tags.push(
           <button key={k} className="bv-tag fx" title="Tap to remove" onClick={() => pv(side, s, { [k]: false })}>
@@ -362,7 +365,7 @@ export default function BattleView(p: Props) {
             </button>
             {menu === `fx-${id}` && (
               <div className="bv-menu">
-                {SIDE_FX.map(([k, l]) => (
+                {sideFx.map(([k, l]) => (
                   <button key={k} className={sideState[k] ? 'on' : ''} onClick={() => setSide(side, k, !sideState[k])}>
                     {l}
                   </button>
@@ -373,7 +376,7 @@ export default function BattleView(p: Props) {
                     {layers(side, k) ? ` ×${layers(side, k)}` : ''}
                   </button>
                 ))}
-                {VOL_FX.map(([k, l]) => (
+                {volFx.map(([k, l]) => (
                   <button key={k} className={vv(side, s)[k] ? 'on' : ''} onClick={() => pv(side, s, { [k]: !vv(side, s)[k] })}>
                     {l}
                   </button>

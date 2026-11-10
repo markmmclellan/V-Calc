@@ -393,7 +393,9 @@ interface DoublesPlayMon {
   pp?: Record<string, [number, number]>; // PP left of each move: [left, max]
   revealed_moves?: string[]; // moves it has been seen using
   disguise_broken?: boolean;
-  vol?: PlaySide['vol']; // effects on it (when out)
+  vol?: PlaySide['vol'] & { leech_seed?: boolean; bound?: boolean }; // effects on it (when out)
+  revealed_item?: string | null; // its item, once it showed itself (Leftovers, Life Orb, a berry eaten...)
+  revealed_ability?: string | null; // its ability, once it showed itself (Intimidate, Levitate...)
 }
 export type DoublesPlayMonT = DoublesPlayMon;
 /** The typical result of a doubles turn (64 runs): the board after it and one run's log. */
@@ -401,7 +403,19 @@ export interface DoublesPlay {
   events: string[];
   me: Record<string, DoublesPlayMon>;
   opp: Record<string, DoublesPlayMon>;
-  field: { weather: string; terrain: string; trick_room: boolean; tailwind: [boolean, boolean]; screens: [boolean, boolean, boolean][]; turns?: DoublesTurns };
+  field: {
+    weather: string;
+    terrain: string;
+    trick_room: boolean;
+    tailwind: [boolean, boolean];
+    screens: [boolean, boolean, boolean][];
+    turns?: DoublesTurns;
+    // entry hazards [yours, theirs]
+    stealth_rock?: [boolean, boolean];
+    spikes?: [number, number];
+    toxic_spikes?: [number, number];
+    sticky_web?: [boolean, boolean];
+  };
   replace: [boolean, boolean];
   winner: number | null;
   hits?: DoublesHit[];
@@ -552,6 +566,9 @@ export const askLeads = (team: PokemonSet[], pos: Position, theirSets: PokemonSe
 
 /** The opposing Pokémon's most likely builds, given the hits measured so far. */
 export const askLikelySets = (team: PokemonSet[], pos: Position) => call<LikelySets>('/api/likely_sets', withTeam(team, pos));
+/** Doubles: their likely builds from the hits measured (as askLikelySets). */
+export const askDoublesLikelySets = (team: PokemonSet[], board: Record<string, unknown>) =>
+  call<LikelySets>('/api/doubles_likely_sets', { ...board, team_text: exportTeam(team) });
 
 export const askSendIn = (team: PokemonSet[], pos: Position, side: 'me' | 'opp', species: string, theirSets: PokemonSet[] = []) =>
   call<PlayResult>('/api/send_in', {

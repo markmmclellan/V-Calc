@@ -1692,7 +1692,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     run('Playing the turn…', async () => {
       if (!dOpts || !dPick) throw new Error('The menus are still loading.');
       const b = doublesBoard(takeDoublesHits());
-      const snap: DSnap = { teams, field, marks, turn, timers };
+      const snap: DSnap = { teams, field, marks, turn, timers, dvol: dVolMap };
       const leadsFirst = needDLeads;
       const r = await askDoublesPlay(mineAll, { ...b, just_in: dMarkFresh(turn), pivot_to: dPivot, outcomes: dOutcome, leads_first: leadsFirst }, dPick.me, dPick.opp);
       if (leadsFirst) setDLeadsDone(true);
@@ -1710,45 +1710,6 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
             .map(([n, m]) => [n, { cursed: !!m.cursed, disabled: m.disabled?.[0] ?? null, left: m.disabled?.[1] }]),
         );
       dCarry.current = { turn: turn + 1, me: vols(r.me), opp: vols(r.opp) };
-      // their moves used this turn are seen (as singles): one their set lacks takes the place of one not seen yet
-      for (const [n, m] of Object.entries(r.opp)) {
-        const mv = m.out != null ? m.last_move : null;
-        const x = mv && mv !== 'Struggle' ? theirs.find((t) => baseName(t) === n) : undefined;
-        if (!x || !mv) continue;
-        const moves = [...x.moves];
-        const seen = [...mark(1, x).moves];
-        let i = moves.indexOf(mv);
-        if (i < 0) {
-          i = moves.findIndex((y, j) => !seen[j] || !y);
-          if (i < 0) continue;
-          moves[i] = mv;
-          // by name: the played turn has just replaced the set objects
-          setTeams((old) => {
-            const next: [Team, Team] = [old[0], old[1]];
-            next[1] = { ...old[1], sets: old[1].sets.map((y) => (y.species && baseName(y) === n ? { ...y, moves } : y)) };
-            return next;
-          });
-        }
-        seen[i] = true;
-        setMark(1, x, { moves: seen });
-      }
-      setDVolMap((o) => {
-        const next = { ...o };
-        (['me', 'opp'] as const).forEach((sd, i) => {
-          for (const [n, m] of Object.entries(r[sd])) {
-            if (m.out == null) continue;
-            const k = `${i}:${n}`;
-            next[k] = {
-              ...(next[k] ?? {}),
-              who: n,
-              last_move: m.last_move ?? next[k]?.last_move,
-              last_move_turn: m.last_move ? turn : next[k]?.last_move_turn,
-              disabled: m.disabled?.[0] ?? undefined,
-            };
-          }
-        });
-        return next;
-      });
       dLogTurn.current = turn + 1;
       // what the turn settled replaces your marks
       setDManual({});
@@ -1758,7 +1719,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
       setDTurnRes(null);
     });
   // Undo a played turn (or the leads coming in), as in singles
-  type DSnap = { teams: [Team, Team]; field: FieldState; marks: Record<string, Marks>; turn: number; timers: Record<string, number> };
+  type DSnap = { teams: [Team, Team]; field: FieldState; marks: Record<string, Marks>; turn: number; timers: Record<string, number>; dvol: Record<string, Vol> };
   const dUndo = useRef<DSnap | null>(null);
   const undoDoubles = () => {
     const s0 = dUndo.current;
@@ -1767,6 +1728,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     setTeams(() => s0.teams);
     setField(() => s0.field);
     setMarks(s0.marks);
+    setDVolMap(s0.dvol);
     if (s0.turn !== turn) pendingTimers.current = () => s0.timers;
     else setTimers(s0.timers);
     setTurnRaw(s0.turn);
@@ -1786,7 +1748,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
       const b = doublesBoard();
       // one of theirs not seen yet: it is one of their four now
       const opp = b.opp.map((o) => (side === 1 && o.species === baseName(x) ? { ...o, seen: true } : o));
-      const snap: DSnap = { teams, field, marks, turn, timers };
+      const snap: DSnap = { teams, field, marks, turn, timers, dvol: dVolMap };
       if (side === 1) markAppeared(x);
       const r = await askDoublesSendIn(mineAll, { ...b, opp }, side === 0 ? 'me' : 'opp', slot, baseName(x));
       // added under the turn's log (it is part of the same turn), not in place of it
@@ -1802,7 +1764,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
   const doDoublesLeads = () =>
     run('The leads come out…', async () => {
       const b = doublesBoard();
-      const snap: DSnap = { teams, field, marks, turn, timers };
+      const snap: DSnap = { teams, field, marks, turn, timers, dvol: dVolMap };
       const r = await askDoublesLeads(mineAll, { ...b, just_in: dMarkFresh(turn) });
       setDLeadsDone(true);
       if (!r.events.length) return;
@@ -1848,6 +1810,75 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
         const x = r.opp[baseName(s)];
         if (x?.mega && !mark(1, s).mega) setMark(1, s, { mega: true });
       }
+      // PP left: yours all, theirs only of moves they were seen using (as singles)
+      setMarks((old) => {
+        const out = { ...old };
+        (['me', 'opp'] as const).forEach((sd, i) => {
+          for (const [n, x] of Object.entries(r[sd])) {
+            if (!x.pp) continue;
+            const k = `${i}:${n}`;
+            const pp = i === 0 ? x.pp : Object.fromEntries(Object.entries(x.pp).filter(([mv]) => (x.revealed_moves ?? []).includes(mv)));
+            out[k] = { ...(out[k] ?? blankMarks()), pp };
+          }
+        });
+        return out;
+      });
+      // effects on each one out (Taunt, Encore, Yawn, Substitute, confusion, a charging move, last move, Disable)
+      setDVolMap((o) => {
+        const next: Record<string, Vol> = {};
+        (['me', 'opp'] as const).forEach((sd, i) => {
+          for (const [n, x] of Object.entries(r[sd])) {
+            if (x.out == null || !x.vol) continue;
+            const k = `${i}:${n}`;
+            const v = x.vol;
+            const same = o[k]?.last_move === v.last_move;
+            next[k] = {
+              who: n,
+              yawn: v.yawn || undefined,
+              taunt: v.taunt || undefined,
+              encore: v.encore ?? undefined,
+              substitute: v.substitute || undefined,
+              trapped: v.trapped || undefined,
+              confused: v.confused || undefined,
+              charging: v.charging ?? undefined,
+              charge_turn: v.charging ? turn : undefined,
+              disabled: v.disabled ?? undefined,
+              transformed: v.transformed ?? undefined,
+              first_move: v.first_move ?? undefined,
+              last_move: v.last_move ?? undefined,
+              // a played turn: its move was used this turn; a send-in keeps when it was last used
+              last_move_turn: v.last_move ? (advance || !same ? turn : o[k]?.last_move_turn) : undefined,
+            };
+          }
+        });
+        return next;
+      });
+      // their moves seen: one their set lacks takes the place of one not seen yet (as singles)
+      for (const [n, x] of Object.entries(r.opp)) {
+        const used = [...new Set([...(x.revealed_moves ?? []), ...(advance && x.out != null && x.last_move ? [x.last_move] : [])])].filter((m) => m !== 'Struggle');
+        const st = theirs.find((t) => baseName(t) === n);
+        if (!st || !used.length) continue;
+        const moves = [...st.moves];
+        const seen = [...mark(1, st).moves];
+        let changed = false;
+        for (const mv of used) {
+          let i = moves.indexOf(mv);
+          if (i < 0) {
+            i = moves.findIndex((y, j) => (!seen[j] || !y) && !used.includes(y));
+            if (i < 0) continue;
+            moves[i] = mv;
+            changed = true;
+          }
+          seen[i] = true;
+        }
+        if (changed)
+          setTeams((old) => {
+            const next: [Team, Team] = [old[0], old[1]];
+            next[1] = { ...old[1], sets: old[1].sets.map((y) => (y.species && baseName(y) === n ? { ...y, moves } : y)) };
+            return next;
+          });
+        setMark(1, st, { moves: seen });
+      }
       setTeams((old) => {
         const upd = (t: Team, side: 'me' | 'opp'): Team => {
           // who is out after the turn (a switching move brought someone in): left = selected, right = partner
@@ -1861,7 +1892,10 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
               const x = s.species ? r[side][baseName(s)] : undefined;
               if (!x) return s;
               const b = x.boosts;
-              return { ...s, hpPercent: Math.round(x.hp_pct), status: x.status as PokemonSet["status"], boosts: { atk: b.atk, def: b.def, spa: b.spa, spd: b.spd, spe: b.spe } };
+              // yours exactly (the game shows your HP as a number), theirs as shown
+              const hpPercent = x.hp === 0 ? 0 : side === 'me' && x.max_hp ? Math.max(0.1, (100 * x.hp) / x.max_hp) : Math.max(1, Math.round(x.hp_pct));
+              const abilityOn = x.disguise_broken && s.ability === 'Disguise' ? true : s.abilityOn; // V-Calc's "Disguise broken"
+              return { ...s, hpPercent, abilityOn, status: x.status as PokemonSet["status"], boosts: { atk: b.atk, def: b.def, spa: b.spa, spd: b.spd, spe: b.spe } };
             }),
           };
         };
@@ -2005,13 +2039,14 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
         ...pos,
         opp: pos.opp.map((o) => {
           const x = oppStreak[o.species] ? { ...o, protect_streak: oppStreak[o.species] } : o;
-          return theirOut.includes(o.species) ? { ...x, ...vol('opp', o.species) } : x;
+          return theirOut.includes(o.species) ? { ...x, ...vol('opp', o.species), volatile: dVolMap[`1:${o.species}`] ?? {} } : { ...x, volatile: {} };
         }),
         me: {
           ...pos.me,
           protect_streak: keepOut(st.me, out(ml, mr)),
           cursed: Object.fromEntries(myOut.map((n) => [n, vol('me', n).cursed])),
           disabled: Object.fromEntries(myOut.map((n) => [n, vol('me', n).disabled])),
+          vol: Object.fromEntries(myOut.map((n) => [n, dVolMap[`0:${n}`] ?? {}])),
         },
         // turns left of the timed effects, as the panel counts them (an effect switched off in the calc is off)
         field: { ...pos.field, turns: dTurnsLeft() },

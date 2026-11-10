@@ -388,6 +388,12 @@ interface DoublesPlayMon {
   cursed?: boolean; // a Ghost's Curse: loses 1/4 each turn while it stays in
   disabled?: [string, number] | null; // the move it cannot use, and turns left
   last_move?: string | null; // the move it used last
+  max_hp?: number;
+  fainted?: boolean;
+  pp?: Record<string, [number, number]>; // PP left of each move: [left, max]
+  revealed_moves?: string[]; // moves it has been seen using
+  disguise_broken?: boolean;
+  vol?: PlaySide['vol']; // effects on it (when out)
 }
 export type DoublesPlayMonT = DoublesPlayMon;
 /** The typical result of a doubles turn (64 runs): the board after it and one run's log. */

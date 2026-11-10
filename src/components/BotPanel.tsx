@@ -310,7 +310,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
         <div className="sd-h">Battle</div>
         <div className="sd-moves">
           {moves.map((m) => {
-            const info = moveInfo(m);
+            const ty = shownType(m, whoSet);
             const mv = dOpts.moves?.[side]?.[k]?.find((x) => x.name === m);
             const counted = whoSet ? mark(side === 'me' ? 0 : 1, whoSet).pp?.[m] : undefined;
             const pp: [number, number] | undefined = counted ?? (mv ? [mv.pp, mv.max] : undefined);
@@ -318,11 +318,11 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
             return (
               <button
                 key={m}
-                className={`sd-move sd-t-${(info?.type ?? 'Normal').toLowerCase()}` + (picked.kind === 'move' && picked.move === m ? ' on' : '')}
+                className={`sd-move sd-t-${(ty ?? 'Normal').toLowerCase()}` + (picked.kind === 'move' && picked.move === m ? ' on' : '')}
                 onClick={() => (targetsOf(m).length > 1 ? setDAim({ move: m, mega }) : choose(side, k, { kind: 'move', mega, move: m, target: targetsOf(m)[0] }))}
               >
                 <span className="sd-mname">{m}</span>
-                <span className="sd-mtype">{info?.type ?? ''}</span>
+                <span className="sd-mtype">{ty ?? ''}</span>
                 {pp && (
                   <span className="sd-mpp">
                     {pp[0]}/{pp[1]}
@@ -397,7 +397,20 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
   };
   // Play turn: who comes in after a switching move (Parting Shot, U-turn...) or comes back (Revival Blessing), per side
   const [dPivot, setDPivot] = useState<{ me: string; opp: string }>({ me: '', opp: '' });
-  const [dTimers, setDTimers] = useState<DoublesTurns | null>(null);
+  /** The type a move is used as here: Weather Ball takes the weather's (Mega Sol: Fire), Terrain Pulse the terrain's. */
+  const shownType = (m: string, who?: PokemonSet): string | undefined => {
+    const base = moveInfo(m)?.type;
+    if (m === 'Weather Ball') {
+      const w = who?.ability === 'Mega Sol' ? 'Sun' : field.weather;
+      const t = ({ Sun: 'Fire', 'Harsh Sunshine': 'Fire', Rain: 'Water', 'Heavy Rain': 'Water', Sand: 'Rock', Snow: 'Ice', Hail: 'Ice' } as Record<string, string>)[w ?? ''];
+      return t ?? base;
+    }
+    if (m === 'Terrain Pulse' && field.terrain) {
+      const t = ({ Electric: 'Electric', Grassy: 'Grass', Misty: 'Fairy', Psychic: 'Psychic' } as Record<string, string>)[field.terrain];
+      return t ?? base;
+    }
+    return base;
+  };
   const [solved, setSolved] = useState<(SolveResult & { key: string }) | null>(null);
   const [advice, setAdvice] = useState<(Advice & { key: string }) | null>(null);
   // the last call to the bot: its board and turn, to tell a new turn from the same one
@@ -439,7 +452,6 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     setDTurnRes(null);
     setDOpts(null);
     setDPlayed(null);
-    setDTimers(null);
     dPending.current = null;
     setDLeadsDone(false);
     dFresh.current = {};
@@ -1039,17 +1051,17 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
         <div className="sd-h">Battle</div>
         <div className="sd-moves">
           {moves.map((m) => {
-            const info = moveInfo(m);
+            const ty = shownType(m, who);
             const pp = mark(sd, who).pp?.[m];
             const label = mega && opts.includes(`${m} + Mega Evolve`) ? `${m} + Mega Evolve` : m;
             return (
               <button
                 key={m}
-                className={`sd-move sd-t-${(info?.type ?? 'Normal').toLowerCase()}` + (cur.replace(/ \+ Mega Evolve$/, '') === m ? ' on' : '')}
+                className={`sd-move sd-t-${(ty ?? 'Normal').toLowerCase()}` + (cur.replace(/ \+ Mega Evolve$/, '') === m ? ' on' : '')}
                 onClick={() => sPick(sd, label)}
               >
                 <span className="sd-mname">{m}</span>
-                <span className="sd-mtype">{info?.type ?? ''}</span>
+                <span className="sd-mtype">{ty ?? ''}</span>
                 {pp && (
                   <span className="sd-mpp">
                     {pp[0]}/{pp[1]}
@@ -1640,12 +1652,12 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     run('Playing the turn…', async () => {
       if (!dOpts || !dPick) throw new Error('The menus are still loading.');
       const b = doublesBoard(takeDoublesHits());
-      const snap: DSnap = { teams, field, marks, turn, timers: dTimers };
+      const snap: DSnap = { teams, field, marks, turn, timers };
       const leadsFirst = needDLeads;
       const r = await askDoublesPlay(mineAll, { ...b, just_in: dMarkFresh(turn), pivot_to: dPivot, outcomes: dOutcome, leads_first: leadsFirst }, dPick.me, dPick.opp);
       if (leadsFirst) setDLeadsDone(true);
       setDOutcome({ me: [{}, {}], opp: [{}, {}] });
-      applyDoubles(r, snap);
+      applyDoubles(r, snap, true);
       dPending.current = r.hits ?? null;
       // who Protected this turn (and still is out): their next Protect works 1 time in 3
       const streaks = (x: Record<string, { out: number | null; protect_streak?: number }>) =>
@@ -1657,7 +1669,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
       setDTurnRes(null);
     });
   // Undo a played turn (or the leads coming in), as in singles
-  type DSnap = { teams: [Team, Team]; field: FieldState; marks: Record<string, Marks>; turn: number; timers: DoublesTurns | null };
+  type DSnap = { teams: [Team, Team]; field: FieldState; marks: Record<string, Marks>; turn: number; timers: Record<string, number> };
   const dUndo = useRef<DSnap | null>(null);
   const undoDoubles = () => {
     const s0 = dUndo.current;
@@ -1666,8 +1678,9 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     setTeams(() => s0.teams);
     setField(() => s0.field);
     setMarks(s0.marks);
+    if (s0.turn !== turn) pendingTimers.current = () => s0.timers;
+    else setTimers(s0.timers);
     setTurnRaw(s0.turn);
-    setDTimers(s0.timers);
     dPending.current = null;
     dPlayedTurn.current = null;
     dUndo.current = null;
@@ -1681,7 +1694,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
       const b = doublesBoard();
       // one of theirs not seen yet: it is one of their four now
       const opp = b.opp.map((o) => (side === 1 && o.species === baseName(x) ? { ...o, seen: true } : o));
-      const snap: DSnap = { teams, field, marks, turn, timers: dTimers };
+      const snap: DSnap = { teams, field, marks, turn, timers };
       if (side === 1) markAppeared(x);
       const r = await askDoublesSendIn(mineAll, { ...b, opp }, side === 0 ? 'me' : 'opp', slot, baseName(x));
       applyDoubles({ ...r, events: [`${baseName(x)} sent in:`, ...r.events] }, snap);
@@ -1694,7 +1707,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
   const doDoublesLeads = () =>
     run('The leads come out…', async () => {
       const b = doublesBoard();
-      const snap: DSnap = { teams, field, marks, turn, timers: dTimers };
+      const snap: DSnap = { teams, field, marks, turn, timers };
       const r = await askDoublesLeads(mineAll, { ...b, just_in: dMarkFresh(turn) });
       setDLeadsDone(true);
       if (!r.events.length) return;
@@ -1707,10 +1720,30 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, up, live, needDLeads, busy, dOutNow.map((x) => x?.species).join()]);
   // write a doubles result into the calc: HP, status, stat stages, used-up items (yours), the field
-  const applyDoubles = (r: DoublesPlay, snap?: DSnap) => {
+  const applyDoubles = (r: DoublesPlay, snap?: DSnap, advance = false) => {
       dUndo.current = snap ?? null;
       setDPlayed(r);
-      if (r.field.turns) setDTimers(r.field.turns);
+      // turns left as the engine counted them (Damp Rock and the like); a played turn also counts the rest down
+      const tt = r.field.turns;
+      if (tt) {
+        const sync = (old: Record<string, number>) => {
+          const next: Record<string, number> = {};
+          for (const [k, v] of Object.entries(old)) next[k] = advance ? Math.max(1, v - 1) : v;
+          const put = (k: string, n: number) => {
+            if (n > 0 && next[k] !== undefined) next[k] = n;
+          };
+          put('weather', tt.weather);
+          put('terrain', tt.terrain);
+          put('tr', tt.trick_room);
+          ([0, 1] as const).forEach((sd) => {
+            put(`${sd}:isTailwind`, tt.tailwind[sd]);
+            (['isReflect', 'isLightScreen', 'isAuroraVeil'] as const).forEach((k, i) => put(`${sd}:${k}`, tt.screens[sd][i]));
+          });
+          return next;
+        };
+        if (advance) pendingTimers.current = sync;
+        else setTimers(sync);
+      }
       for (const s of mineAll) {
         const x = r.me[baseName(s)];
         if (x && x.item_gone && s.item && !mark(0, s).gone) setMark(0, s, { gone: true });
@@ -1789,6 +1822,16 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     (!!theirActive && baseName(s) === baseName(theirActive)) || (!singles && !!dSide(1)[1] && baseName(s) === baseName(dSide(1)[1]!));
   // Protects in a row from the last played turn, by name: sent with the next turn's board while the same ones are out
   const dStreak = useRef<{ turn: number; me: Record<string, number>; opp: Record<string, number> }>({ turn: -1, me: {}, opp: {} });
+  const dTurnsLeft = (): DoublesTurns => {
+    const t = (k: string) => timersNow.current[k] ?? 0;
+    return {
+      weather: t('weather'),
+      terrain: t('terrain'),
+      trick_room: t('tr'),
+      tailwind: [t('0:isTailwind'), t('1:isTailwind')],
+      screens: ([0, 1] as const).map((sd) => [t(`${sd}:isReflect`), t(`${sd}:isLightScreen`), t(`${sd}:isAuroraVeil`)]),
+    };
+  };
   const doublesBoard = (addHits: Record<string, SeenHit[]> = {}) => {
       const [ml, mr] = dSide(0);
       const [tl, tr] = dSide(1);
@@ -1820,8 +1863,8 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
         ...pos,
         opp: pos.opp.map((o) => (oppStreak[o.species] ? { ...o, protect_streak: oppStreak[o.species] } : o)),
         me: { ...pos.me, protect_streak: keepOut(st.me, out(ml, mr)) },
-        // turns left of the timed effects, from the last played turn (an effect switched off in the calc is off)
-        field: dTimers ? { ...pos.field, turns: dTimers } : pos.field,
+        // turns left of the timed effects, as the panel counts them (an effect switched off in the calc is off)
+        field: { ...pos.field, turns: dTurnsLeft() },
         bring: four.slice(0, 4).map(baseName),
         active_me: out(ml, mr),
         active_opp: out(tl, tr),

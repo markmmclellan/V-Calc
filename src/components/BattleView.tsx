@@ -20,6 +20,8 @@ interface Props {
   doubles?: boolean;
   minePartner?: PokemonSet;
   theirPartner?: PokemonSet;
+  /** Their Pokémon is really their Zoroark (Illusion): swaps it in place; given when their six include one not out */
+  onIllusion?: (s: PokemonSet) => void;
   /** Doubles drawn as Showdown does: small name / HP bars over the sprites (tap one to edit it), the teams at the sides */
   showdown?: boolean;
   mark: (side: 0 | 1, s: PokemonSet) => Marks;
@@ -287,6 +289,11 @@ export default function BattleView(p: Props) {
             <button className={'bv-flag ko' + (m.ko ? ' on' : '')} title="It fainted" onClick={() => p.setMark(side, s, { ko: !m.ko })}>
               Fainted
             </button>
+            {side === 1 && p.onIllusion && !baseName(s).startsWith('Zoroark') && (
+              <button className="bv-flag" title="It was their Zoroark in disguise (Illusion): put Zoroark here instead, with this HP, status and stat changes" onClick={() => p.onIllusion!(s)}>
+                Zoroark!
+              </button>
+            )}
           </span>
         </div>
         <div className="bv-hprow">

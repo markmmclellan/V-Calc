@@ -1612,6 +1612,41 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
       }));
   };
   // `addHits`: measured hits not yet in the marks (just taken from the last played turn)
+  // Illusion: what you took for `s` was their Zoroark. Zoroark takes its place with its HP, status and stat changes; what
+  // was put down to `s` while disguised (moves, measured hits) is dropped, since it was Zoroark's.
+  const revealIllusion = (s: PokemonSet) => {
+    const z = theirs.find((x) => baseName(x).startsWith('Zoroark') && !isTheirOut(x) && !mark(1, x).ko);
+    if (!z) return setError("Enter their Zoroark in their six first.");
+    setTeams((old) => {
+      const t = old[1];
+      const i = t.sets.indexOf(s);
+      const j = t.sets.indexOf(z);
+      if (i < 0 || j < 0) return old;
+      const sets = t.sets.map((x, k) =>
+        k === j
+          ? { ...x, hpPercent: s.hpPercent, status: s.status, boosts: { ...s.boosts } }
+          : k === i
+            ? { ...x, hpPercent: 100, status: '' as PokemonSet['status'], boosts: { atk: 0, def: 0, spa: 0, spd: 0, spe: 0 } }
+            : x,
+      );
+      const next: [Team, Team] = [old[0], old[1]];
+      next[1] = { ...t, sets, active: t.active === i ? j : t.active, partner: t.partner === i ? j : t.partner };
+      return next;
+    });
+    setMarks((old) => {
+      const o = { ...old };
+      const ks = `1:${baseName(s)}`;
+      const kz = `1:${baseName(z)}`;
+      o[kz] = { ...(o[kz] ?? blankMarks()), seen: true };
+      // it may never have been out at all
+      o[ks] = { ...(o[ks] ?? blankMarks()), seen: false, moves: [false, false, false, false], hits: [] };
+      return o;
+    });
+    // same time out as the disguise had (Fake Out and the like)
+    const f = dFresh.current[`1:${baseName(s)}`];
+    if (f != null) dFresh.current[`1:${baseName(z)}`] = f;
+    setOppLeads((l) => l.map((n) => (n === baseName(s) ? baseName(z) : n)));
+  };
   // out on their side now (doubles: either slot)
   const isTheirOut = (s: PokemonSet) =>
     (!!theirActive && baseName(s) === baseName(theirActive)) || (!singles && !!dSide(1)[1] && baseName(s) === baseName(dSide(1)[1]!));
@@ -1923,6 +1958,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
             minePartner={!singles ? dSide(0)[1] : undefined}
             theirPartner={!singles && oppLeadsReady ? dSide(1)[1] : undefined}
             showdown={!singles}
+            onIllusion={theirs.some((x) => baseName(x).startsWith('Zoroark') && !isTheirOut(x) && !mark(1, x).ko) ? revealIllusion : undefined}
             mark={mark}
             setMark={setMark}
             isAppeared={(s) => appeared(s, mark(1, s), isTheirOut(s))}

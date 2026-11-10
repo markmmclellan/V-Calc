@@ -277,10 +277,11 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
       const foes = dOpts.field[side === 'me' ? 1 : 0];
       const own = dOpts.field[side === 'me' ? 0 : 1];
       const cell = (name: string, mine: boolean) => {
-        const ok = !!name && targets.includes(name);
+        // the engine names a Mega Evolved target by its Mega form ("Charizard-Mega-Y"); the field by its base name
+        const tgt = name ? targets.find((t) => t === name || t.startsWith(name + '-Mega')) : undefined;
         const st = name ? setOf(mine === (side === 'me') ? 'me' : 'opp', name) : undefined;
         return (
-          <button key={(mine ? 'o' : 'f') + name} className="sd-target" disabled={!ok} onClick={() => choose(side, k, { kind: 'move', mega: dAim.mega, move: dAim.move, target: name })}>
+          <button key={(mine ? 'o' : 'f') + name} className="sd-target" disabled={!tgt} onClick={() => choose(side, k, { kind: 'move', mega: dAim.mega, move: dAim.move, target: tgt })}>
             {st && <Sprite species={st.species} size={26} />}
             {name || '—'}
           </button>
@@ -2269,20 +2270,30 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
             {error && <p className="err">{error}</p>}
             {dTurnRes && (
               <div className="ai-result">
-                {(['left', 'right'] as const).map((k) => {
+                {(['left', 'right'] as const).map((k, slot) => {
                   const r = dTurnRes[k];
+                  // an empty slot (yours fainted): its options are who to send in, each with a button that does it
+                  const empty = !r?.species;
                   return r ? (
                     <div key={k}>
-                      <h4>{r.species}</h4>
-                      {r.options.slice(0, 4).map((o, i) => (
+                      <h4>{r.species || 'Send in'}</h4>
+                      {r.options.slice(0, 4).map((o, i) => {
+                        const to = empty && o.action.startsWith('Switch to ') ? mineAll.find((x) => baseName(x) === o.action.slice(10)) : undefined;
+                        return (
                         <div key={i} className={'ai-bring' + (i === 0 ? ' top' : '')}>
                           <div className="ai-opt-main">
                             <strong>{o.action}</strong>
+                            {to && (
+                              <button className={'ai-sendin' + (i === 0 ? ' ai-next' : '')} disabled={!!busy} onClick={() => doDoublesSendIn(0, slot, to)} title="Sends it in through the engine: entry abilities apply; the turn does not move on">
+                                Send in
+                              </button>
+                            )}
                           </div>
                           <Bar v={o.p} />
                           <span className="ai-pct">{pct(o.p)}</span>
                         </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   ) : null;
                 })}

@@ -244,7 +244,10 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
   // what you picked this turn, slot by slot: kept when the menus or the bot's answer come again (an edited set, a fixed
   // HP), so a change mid-turn does not send you back to the start. A new turn forgets it.
   const dTouched = useRef<{ turn: number; picks: Record<string, { who: string; action: string }> }>({ turn: 0, picks: {} });
-  const dSlots = (['me', 'opp'] as const).flatMap((side) => [0, 1].filter((k) => (dOpts?.[side][k].length ?? 0) > 0).map((k) => ({ side, k })));
+  // a slot left empty by a faint is not asked about (its replacement goes in with Send in / They sent in)
+  const dSlots = (['me', 'opp'] as const).flatMap((side) =>
+    [0, 1].filter((k) => (dOpts?.[side][k].length ?? 0) > 0 && !!dOpts?.field[side === 'me' ? 0 : 1][k]).map((k) => ({ side, k })),
+  );
   const setOf = (side: 'me' | 'opp', name: string) => (side === 'me' ? mineAll : theirs).find((x) => baseName(x) === name);
   const choose = (side: 'me' | 'opp', k: number, want: Parameters<typeof pickIdx>[2]) => {
     pickIdx(side, k, want);
@@ -2309,6 +2312,30 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
                   );
                 })()
               ) : null}
+              {!busy &&
+                phase === 'battle' &&
+                (() => {
+                  // one of yours fainted: who to send in, the bot's pick first when it has one
+                  const t = teams[0];
+                  const downK = [t.active, t.partner].findIndex((i) => i != null && !!t.sets[i]?.species && (t.sets[i].hpPercent <= 0 || mark(0, t.sets[i]).ko));
+                  if (downK < 0) return null;
+                  const out = [t.active, t.partner].filter((i) => i != null).map((i) => baseName(t.sets[i!]));
+                  const pool = (mine.length ? mine : mineAll.slice(0, 4)).filter((x) => !mark(0, x).ko && x.hpPercent > 0 && !out.includes(baseName(x)));
+                  if (!pool.length) return null;
+                  const r = dTurnRes?.[downK === 0 ? 'left' : 'right'];
+                  const top = r && !r.species ? r.options[0]?.action.replace(/^Switch to /, '') : undefined;
+                  const order = top ? [...pool].sort((x, y) => (baseName(y) === top ? 1 : 0) - (baseName(x) === top ? 1 : 0)) : pool;
+                  return (
+                    <span className="ai-theirsend">
+                      <span className="hint">You send in:</span>
+                      {order.map((x, i) => (
+                        <button key={baseName(x)} className={i === 0 && (top || order.length === 1) ? 'ai-next' : ''} onClick={() => doDoublesSendIn(0, downK, x)} title="Sends it in through the engine: entry abilities apply; the turn does not move on">
+                          {baseName(x)}
+                        </button>
+                      ))}
+                    </span>
+                  );
+                })()}
             </div>
             {error && <p className="err">{error}</p>}
             {dTurnRes && (

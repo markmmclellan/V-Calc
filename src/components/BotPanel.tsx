@@ -1646,6 +1646,10 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
       setDOutcome({ me: [{}, {}], opp: [{}, {}] });
       applyDoubles(r, snap);
       dPending.current = r.hits ?? null;
+      // who Protected this turn (and still is out): their next Protect works 1 time in 3
+      const streaks = (x: Record<string, { out: number | null; protect_streak?: number }>) =>
+        Object.fromEntries(Object.entries(x).filter(([, m]) => m.out != null && (m.protect_streak ?? 0) > 0).map(([n, m]) => [n, m.protect_streak!]));
+      dStreak.current = { turn: turn + 1, me: streaks(r.me), opp: streaks(r.opp) };
       // this turn is played: the next answer is for the next turn, counted here and not again
       setDTurn(turn + 1);
       dPlayedTurn.current = turn + 1;
@@ -1666,6 +1670,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     dPending.current = null;
     dPlayedTurn.current = null;
     dUndo.current = null;
+    dStreak.current = { turn: -1, me: {}, opp: {} };
     setDPlayed(null);
   };
   // A replacement after a faint (as singles' send-in): through the engine, so Intimidate, weather and seeds apply; the
@@ -1781,6 +1786,8 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
   // out on their side now (doubles: either slot)
   const isTheirOut = (s: PokemonSet) =>
     (!!theirActive && baseName(s) === baseName(theirActive)) || (!singles && !!dSide(1)[1] && baseName(s) === baseName(dSide(1)[1]!));
+  // Protects in a row from the last played turn, by name: sent with the next turn's board while the same ones are out
+  const dStreak = useRef<{ turn: number; me: Record<string, number>; opp: Record<string, number> }>({ turn: -1, me: {}, opp: {} });
   const doublesBoard = (addHits: Record<string, SeenHit[]> = {}) => {
       const [ml, mr] = dSide(0);
       const [tl, tr] = dSide(1);
@@ -1805,8 +1812,13 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
       }
       pos.opp_mega_used = pos.opp_mega_used || pos.opp.some((o) => o.mega);
       const out = (a?: PokemonSet, b?: PokemonSet) => [a ? baseName(a) : '', b ? baseName(b) : ''];
+      const st = dStreak.current.turn === dTurn ? dStreak.current : { me: {}, opp: {} as Record<string, number> };
+      const keepOut = (m: Record<string, number>, outNow: string[]) => Object.fromEntries(Object.entries(m).filter(([n]) => outNow.includes(n)));
+      const oppStreak = keepOut(st.opp, out(tl, tr));
       return {
         ...pos,
+        opp: pos.opp.map((o) => (oppStreak[o.species] ? { ...o, protect_streak: oppStreak[o.species] } : o)),
+        me: { ...pos.me, protect_streak: keepOut(st.me, out(ml, mr)) },
         // turns left of the timed effects, from the last played turn (an effect switched off in the calc is off)
         field: dTimers ? { ...pos.field, turns: dTimers } : pos.field,
         bring: four.slice(0, 4).map(baseName),

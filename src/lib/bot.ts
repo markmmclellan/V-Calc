@@ -384,6 +384,7 @@ interface DoublesPlayMon {
   item_gone: boolean;
   out: number | null;
   fainted_share: number; // how often it fainted over the runs
+  protect_streak?: number; // Protects in a row up to this turn (its next one works 1 time in 3^n)
 }
 /** The typical result of a doubles turn (64 runs): the board after it and one run's log. */
 export interface DoublesPlay {

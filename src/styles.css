@@ -810,3 +810,8 @@ td.v-loses, .bg-verdict.v-loses { background: color-mix(in srgb, var(--bad) 38%,
 .ai-dplay .sd, .ai-dplay .sd-summary { width: 100%; }
 .ai-dplay .sd-summary .sd-row { justify-content: flex-start; }
 .sdf-close { right: -12px; top: -12px; border-radius: 50%; background: var(--panel-2); border: 1px solid var(--line); }
+
+/* Singles drawn as Showdown: one a side */
+.sdf.solo .sdf-mon.opp.s0 { right: 70px; top: 22px; }
+.sdf.solo .sdf-mon.me.s0 { left: 60px; bottom: 6px; }
+.sd-switch button.on { outline: 2px solid #fff; }

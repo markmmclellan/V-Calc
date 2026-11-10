@@ -558,8 +558,9 @@ export default function BattleView(p: Props) {
     </div>
   );
   if (p.showdown) {
-    const opp = [p.theirActive, p.theirPartner];
-    const me = [p.mineActive, p.minePartner];
+    // singles: one a side
+    const opp = p.doubles ? [p.theirActive, p.theirPartner] : [p.theirActive];
+    const me = p.doubles ? [p.mineActive, p.minePartner] : [p.mineActive];
     const openSide = edit.startsWith('1') ? 1 : 0;
     const openSlot = edit.endsWith('b') ? 1 : 0;
     const openMon = edit ? (openSide ? opp : me)[openSlot] : undefined;
@@ -567,7 +568,7 @@ export default function BattleView(p: Props) {
       <div className="bv-wrap" ref={root}>
         <div className="sdf-wrap">
           {sdParty(0, p.mine, me)}
-          <div className="bv sdf">
+          <div className={'bv sdf' + (p.doubles ? '' : ' solo')}>
             {f.terrain && <div className={`bv-terrain ${f.terrain.toLowerCase()}`} aria-hidden />}
             {f.weather && <div className={`bv-weather ${f.weather.toLowerCase().split(' ')[0]}`} aria-hidden />}
             {f.isTrickRoom && <div className="bv-tr" aria-hidden />}

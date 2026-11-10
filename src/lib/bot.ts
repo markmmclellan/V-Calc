@@ -309,6 +309,8 @@ export interface BringRow {
   win: number; // against their likely brings
   worst: number | null; // against the bring of theirs it does worst against
   worst_vs: string[] | null;
+  /** with Zoroark brought: who it looks like (the last picked); "" = Zoroark is picked last (copies whoever it replaces) */
+  zoroark_as?: string | null;
   rank: number; // among all 60 brings and leads
   p: number; // how strongly the network's instant guess picked it
   games: number;
@@ -326,7 +328,7 @@ export const askBringCheck = (team: PokemonSet[], theirs: PokemonSet[], seconds 
 export interface DoublesBring {
   value: number; // expected result, -1 (loss) .. +1 (win)
   // p: how often to pick it (simulated mix, or the network's guess); win / worst: from simulated games
-  options: { p: number; lead: string[]; back: string[]; win?: number; worst?: number; prior?: number }[];
+  options: { p: number; lead: string[]; back: string[]; win?: number; worst?: number; prior?: number; zoroark_as?: string | null }[];
   brought: Record<string, number>; // share of its picks that bring each of yours
   led: Record<string, number>; // ... and that lead with it
   their_likely?: { lead: string[]; back: string[]; p: number }[];

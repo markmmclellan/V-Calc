@@ -134,6 +134,10 @@ const SAME_TURN_MS = 20_000;
 const BRING_SECS = 20;
 const D_AUTO_KEY = 'champions-calc:ai-doubles-auto:v1';
 
+/** Illusion copies the last Pokémon picked at team preview: the pick order to follow. */
+const zoroarkNote = (as: string) =>
+  as ? `Pick in this order: ${as} last, so Zoroark comes in looking like ${as}.` : 'Pick in this order: Zoroark last (it then looks like the Pokémon it switches in for).'
+
 export default function BotPanel({ open, teams, setTeams, field, setField, skipped, singles, battleId, onApplyBring, onResetBattle, onClose, meta }: Props) {
   const [up, setUp] = useState<boolean | null>(null);
   const [marks, setMarks] = useState<Record<string, Marks>>(() => load(MARKS_KEY, {}));
@@ -954,6 +958,12 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     };
     for (const r of freshSolve?.mine ?? []) add(myOpts, strip(r.action));
     if (mineActive) for (const m of mineActive.moves) add(myOpts, m);
+    const myMega =
+      !!mineActive &&
+      !mark(0, mineActive).mega &&
+      !mine.some((s) => mark(0, s).mega) &&
+      (baseName(mineActive) !== mineActive.species || /ite( [XYZ])?$/.test(mineActive.item));
+    if (mineActive && myMega) for (const m of mineActive.moves) if (m) add(myOpts, `${m} + Mega Evolve`);
     for (const s of mine) if (mineActive && baseName(s) !== baseName(mineActive) && !mark(0, s).ko) add(myOpts, 'Switch to ' + baseName(s));
     const theirOpts: string[] = [];
     for (const r of freshSolve?.theirs ?? []) if (r.their_action !== 'Switch out') add(theirOpts, r.their_action);
@@ -977,6 +987,99 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
   ];
   // a new board to choose for: back to the bot's suggestions
   useEffect(() => setPlayChoice(['', '']), [solved?.key]);
+
+  // Singles as Showdown: "What will X do?" for yours, then theirs, then Play. Each starts on the bot's pick.
+  const [sStep, setSStep] = useState(0);
+  const [sMega, setSMega] = useState<[boolean, boolean]>([false, false]);
+  useEffect(() => {
+    setSStep(0);
+    setSMega([defaultPlay[0].endsWith(' + Mega Evolve'), defaultPlay[1].endsWith(' + Mega Evolve')]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [solved?.key, turn, mineActive && baseName(mineActive), theirActive && baseName(theirActive)]);
+  const sChosen = (sd: 0 | 1) => playChoice[sd] || defaultPlay[sd];
+  const sPick = (sd: 0 | 1, label: string) => {
+    setPlayChoice((c) => (sd === 0 ? [label, c[1]] : [c[0], label]));
+    setSStep(sd + 1);
+  };
+  const ssChooser = () => {
+    if (sStep > 1) return null;
+    const sd = sStep as 0 | 1;
+    const who = sd === 0 ? mineActive : theirActive;
+    if (!who) return null;
+    const opts = playOpts[sd];
+    const canMega = opts.some((o) => o.endsWith(' + Mega Evolve'));
+    const mega = sMega[sd] && canMega;
+    const moves = [...new Set(opts.filter((o) => !o.startsWith('Switch to ')).map((o) => o.replace(/ \+ Mega Evolve$/, '')))];
+    const switchable = opts.filter((o) => o.startsWith('Switch to ')).map((o) => o.slice(10));
+    const team = sd === 0 ? mine : teams[1].sets.filter((x) => x.species);
+    const cur = sChosen(sd);
+    return (
+      <div className="sd">
+        <div className="sd-head">
+          {sd > 0 && (
+            <button className="sd-back" onClick={() => setSStep(0)}>
+              ‹ Back
+            </button>
+          )}
+          What will {sd ? 'their ' : ''}
+          <b>{baseName(who)}</b> do?
+        </div>
+        <div className="sd-h">Battle</div>
+        <div className="sd-moves">
+          {moves.map((m) => {
+            const info = moveInfo(m);
+            const pp = mark(sd, who).pp?.[m];
+            const label = mega && opts.includes(`${m} + Mega Evolve`) ? `${m} + Mega Evolve` : m;
+            return (
+              <button
+                key={m}
+                className={`sd-move sd-t-${(info?.type ?? 'Normal').toLowerCase()}` + (cur.replace(/ \+ Mega Evolve$/, '') === m ? ' on' : '')}
+                onClick={() => sPick(sd, label)}
+              >
+                <span className="sd-mname">{m}</span>
+                <span className="sd-mtype">{info?.type ?? ''}</span>
+                {pp && (
+                  <span className="sd-mpp">
+                    {pp[0]}/{pp[1]}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+        {canMega && (
+          <label className="check sd-mega">
+            <input type="checkbox" checked={mega} onChange={(e) => setSMega((v) => (sd === 0 ? [e.target.checked, v[1]] : [v[0], e.target.checked]))} />
+            Mega Evolve
+          </label>
+        )}
+        <div className="sd-h sw">Switch</div>
+        <div className="sd-switch">
+          {team.map((x) => {
+            const n = baseName(x);
+            return (
+              <button key={n} disabled={!switchable.includes(n)} className={cur === 'Switch to ' + n ? 'on' : ''} onClick={() => sPick(sd, 'Switch to ' + n)}>
+                <Sprite species={x.species} size={24} />
+                {n}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+  const ssSummary = () =>
+    ([0, 1] as const).map((sd) => {
+      const who = sd === 0 ? mineActive : theirActive;
+      return (
+        <div key={sd} className={'sd-row' + (sd === sStep ? ' now' : '')}>
+          <button className="link" onClick={() => setSStep(sd)} title="Change this one">
+            <b>{who ? baseName(who) : ''}</b>: {sChosen(sd)}
+          </button>
+          {outcomeChips(sd)}
+        </div>
+      );
+    });
 
   /** advance: a played turn moves the turn number on; a replacement sent in between turns does not. */
   const applyPlay = (r: PlayResult, snap: Snapshot, advance = true) => {
@@ -1957,7 +2060,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
             doubles={!singles}
             minePartner={!singles ? dSide(0)[1] : undefined}
             theirPartner={!singles && oppLeadsReady ? dSide(1)[1] : undefined}
-            showdown={!singles}
+            showdown
             onIllusion={theirs.some((x) => baseName(x).startsWith('Zoroark') && !isTheirOut(x) && !mark(1, x).ko) ? revealIllusion : undefined}
             mark={mark}
             setMark={setMark}
@@ -1972,6 +2075,18 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
             timers={timers}
             onTimer={tapTimer}
           />
+          {singles && ready && board && !myKo && (
+            <div className="ai-play ai-dplay">
+              <span className="hint" title="Pick what both sides did, then Play: the turn runs with average luck (middle damage roll, no crits, chance effects only when likely) and the board updates itself. Fix what luck changed (HP, a crit, a burn) by hand.">
+                Play turn
+              </span>
+              {ssChooser()}
+              <div className="sd-summary">{ssSummary()}</div>
+              <button className={'primary ai-main-btn' + (next === 'play' ? ' ai-next' : '')} onClick={() => doPlay()} disabled={playBusy}>
+                {playBusy ? 'Playing…' : 'Play'}
+              </button>
+            </div>
+          )}
           {!singles && (
             <>
             {dOpts && dPick && !dPlayed?.replace.some(Boolean) && (
@@ -2192,38 +2307,6 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
             </>
           ) : (
           <>
-          {ready && board && !myKo && (
-            <div className="ai-play grid">
-              <span className="hint" title="Pick what both sides did, then Play: the turn runs with average luck (middle damage roll, no crits, chance effects only when likely) and the board updates itself. Fix what luck changed (HP, a crit, a burn) by hand.">
-                Play turn
-              </span>
-              <div className="ai-play-side">
-                <label>
-                  You
-                  <select value={playChoice[0] || defaultPlay[0]} onChange={(e) => setPlayChoice([e.target.value, playChoice[1]])}>
-                    {playOpts[0].map((o) => (
-                      <option key={o}>{o}</option>
-                    ))}
-                  </select>
-                </label>
-                {outcomeChips(0)}
-              </div>
-              <div className="ai-play-side">
-                <label>
-                  They
-                  <select value={playChoice[1] || defaultPlay[1]} onChange={(e) => setPlayChoice([playChoice[0], e.target.value])}>
-                    {playOpts[1].map((o) => (
-                      <option key={o}>{o}</option>
-                    ))}
-                  </select>
-                </label>
-                {outcomeChips(1)}
-              </div>
-              <button className={'primary ai-main-btn' + (next === 'play' ? ' ai-next' : '')} onClick={() => doPlay()} disabled={playBusy}>
-                {playBusy ? 'Playing…' : 'Play'}
-              </button>
-            </div>
-          )}
           {needPivot && (
             <div className="ai-play">
               <span>
@@ -2244,19 +2327,25 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
             </div>
           )}
           {played && (
-            <details className="ai-played" open>
-              <summary>
+            <div className="sdl">
+              {played.events.map((e, i) =>
+                e.startsWith('--- Turn') ? (
+                  <div key={i} className="sdl-turn">
+                    {e.replace(/-/g, '').trim()}
+                  </div>
+                ) : (
+                  <div key={i} className={'sdl-line' + (e.startsWith('   ') ? ' sub' : '')}>
+                    {e}
+                  </div>
+                ),
+              )}
+              <div className="hint">
                 {played.sent ? 'Sent in through the engine (hazards and entry abilities applied).' : `Turn ${played.turn} played with average luck: fix HP, crits or chance effects to match the game.`}{' '}
                 <button className="link" onClick={undoPlay}>
                   Undo
                 </button>
-              </summary>
-              <ul>
-                {played.events.map((e, i) => (
-                  <li key={i}>{e}</li>
-                ))}
-              </ul>
-            </details>
+              </div>
+            </div>
           )}
           <div className="ai-actions">
             <button className={'primary ai-main-btn' + (next === 'solve' ? ' ai-next' : '')} onClick={solveNow} disabled={!ready || !!busy}>
@@ -2444,6 +2533,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
                       {megaHolders([...o.lead, ...o.back]).length > 1 && (
                         <div className="hint ai-bad">Only one of {megaHolders([...o.lead, ...o.back]).join(' and ')} can Mega Evolve.</div>
                       )}
+                      {o.zoroark_as != null && <div className="hint">{zoroarkNote(o.zoroark_as)}</div>}
                       {o.win != null && (
                         <div className={'hint' + (o.worst != null && o.worst < 0.35 ? ' ai-bad' : '')}>
                           picks it {pct(o.p)}
@@ -2487,6 +2577,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
                       <strong>Lead {o.lead}</strong>
                       <span className="hint"> + {o.bring.filter((n) => n !== o.lead).join(', ')}</span>
                       {megaHolders(o.bring).length > 1 && <div className="hint ai-bad">Only one of {megaHolders(o.bring).join(' and ')} can Mega Evolve.</div>}
+                      {o.zoroark_as != null && <div className="hint">{zoroarkNote(o.zoroark_as)}</div>}
                       {o.worst != null && o.worst_vs && (
                         <div className={'hint' + (o.worst < 0.35 ? ' ai-bad' : '')}>
                           Worst: {pct(o.worst)} if they bring {o.worst_vs.join(', ')}

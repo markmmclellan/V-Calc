@@ -230,6 +230,8 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
           ps.find((x) => x.a.kind === 'move' && x.a.move === want.move && x.a.mega === !!want.mega) ??
           ps.find((x) => x.a.kind === 'move' && x.a.move === want.move);
     if (!hit) return;
+    dTouched.current = { ...(dTouched.current.turn === turn ? dTouched.current : { turn, picks: {} }) };
+    dTouched.current.picks = { ...dTouched.current.picks, [`${side}${k}`]: { who: dOpts?.field[side === 'me' ? 0 : 1][k] ?? '', action: hit.o.action } };
     setDPick((p) => (p ? { ...p, [side]: p[side].map((x, j) => (j === k ? hit.o.index : x)) } : p));
     // another choice: what was ticked for the old one goes
     setDOutcome((o) => ({ ...o, [side]: o[side].map((x, j) => (j === k ? {} : x)) }));
@@ -239,6 +241,9 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
   const [dStep, setDStep] = useState(0);
   const [dAim, setDAim] = useState<{ move: string; mega: boolean } | null>(null);
   const [dMegaOn, setDMegaOn] = useState<Record<string, boolean>>({});
+  // what you picked this turn, slot by slot: kept when the menus or the bot's answer come again (an edited set, a fixed
+  // HP), so a change mid-turn does not send you back to the start. A new turn forgets it.
+  const dTouched = useRef<{ turn: number; picks: Record<string, { who: string; action: string }> }>({ turn: 0, picks: {} });
   const dSlots = (['me', 'opp'] as const).flatMap((side) => [0, 1].filter((k) => (dOpts?.[side][k].length ?? 0) > 0).map((k) => ({ side, k })));
   const setOf = (side: 'me' | 'opp', name: string) => (side === 'me' ? mineAll : theirs).find((x) => baseName(x) === name);
   const choose = (side: 'me' | 'opp', k: number, want: Parameters<typeof pickIdx>[2]) => {
@@ -985,18 +990,24 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     (freshSolve && strip([...freshSolve.mine].sort((a, b) => b.mix - a.mix)[0]?.action ?? '')) || playOpts[0][0] || '',
     theirTopLabel || playOpts[1][0] || '',
   ];
-  // a new board to choose for: back to the bot's suggestions
-  useEffect(() => setPlayChoice(['', '']), [solved?.key]);
+  // a new turn or a switch: back to the bot's suggestions (an edit mid-turn keeps what you picked)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => setPlayChoice(['', '']), [turn, mineActive && baseName(mineActive), theirActive && baseName(theirActive)]);
 
   // Singles as Showdown: "What will X do?" for yours, then theirs, then Play. Each starts on the bot's pick.
   const [sStep, setSStep] = useState(0);
   const [sMega, setSMega] = useState<[boolean, boolean]>([false, false]);
   useEffect(() => {
     setSStep(0);
-    setSMega([defaultPlay[0].endsWith(' + Mega Evolve'), defaultPlay[1].endsWith(' + Mega Evolve')]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [solved?.key, turn, mineActive && baseName(mineActive), theirActive && baseName(theirActive)]);
-  const sChosen = (sd: 0 | 1) => playChoice[sd] || defaultPlay[sd];
+  }, [turn, mineActive && baseName(mineActive), theirActive && baseName(theirActive)]);
+  // the Mega box follows the bot's pick until you choose that side yourself
+  useEffect(() => {
+    setSMega((v) => [playChoice[0] ? v[0] : defaultPlay[0].endsWith(' + Mega Evolve'), playChoice[1] ? v[1] : defaultPlay[1].endsWith(' + Mega Evolve')]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [defaultPlay[0], defaultPlay[1], playChoice[0], playChoice[1]]);
+  // your pick, while it is still on the menu (an edited set can take a move away)
+  const sChosen = (sd: 0 | 1) => (playChoice[sd] && playOpts[sd].includes(playChoice[sd]) ? playChoice[sd] : defaultPlay[sd]);
   const sPick = (sd: 0 | 1, label: string) => {
     setPlayChoice((c) => (sd === 0 ? [label, c[1]] : [c[0], label]));
     setSStep(sd + 1);
@@ -1288,8 +1299,8 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
       if (!board) throw new Error(boardProblem);
       finalizeHits();
       setLive(true);
-      const mine = needPivot ? needPivot.chosen.__mine : playChoice[0] || defaultPlay[0];
-      const theirs = needPivot ? needPivot.chosen.__theirs : playChoice[1] || defaultPlay[1];
+      const mine = needPivot ? needPivot.chosen.__mine : sChosen(0);
+      const theirs = needPivot ? needPivot.chosen.__theirs : sChosen(1);
       if (!mine || !theirs) throw new Error('Pick what both sides did.');
       const snap: Snapshot = { teams, field, vol, marks, turn, timers, faints };
       const pos = { ...withTimers(board, 0, outFor.current.n), turn, game: gameId.current };
@@ -1583,6 +1594,23 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
   };
   // Play turn (doubles): both sides' choices -> the typical result, written into the calc. The menus follow the board
   // on screen and start on the bot's pick and their likely choice, as in singles.
+  // the bot's picks, with yours kept where the same Pokémon still has the same choice; `kept` says if any were
+  const dMerged = (o: DoublesOptions) => {
+    const d = dDefaults(o);
+    const t = dTouched.current.turn === turn ? dTouched.current.picks : {};
+    let kept = false;
+    for (const side of ['me', 'opp'] as const)
+      for (const k of [0, 1]) {
+        const c = t[`${side}${k}`];
+        if (!c || o.field[side === 'me' ? 0 : 1][k] !== c.who) continue;
+        const hit = o[side][k].find((x) => x.action === c.action);
+        if (hit) {
+          d[side][k] = hit.index;
+          kept = true;
+        }
+      }
+    return { pick: d, kept };
+  };
   const dDefaults = (o: DoublesOptions) => {
     const pickOf = (list: { index: number; action: string }[], want?: string | null): number =>
       (want ? list.find((x) => x.action.trim() === want.trim())?.index : undefined) ?? list[0]?.index ?? -1;
@@ -1822,11 +1850,14 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
       askDoublesOptions(mineAll, { ...b, just_in: Object.keys(dFresh.current).filter((k) => dFresh.current[k] === turn).map((k) => k.slice(2)) })
         .then((o) => {
           dOptsFor.current = key;
+          const { pick, kept } = dMerged(o);
           setDOpts(o);
-          setDPick(dDefaults(o));
-          setDStep(0);
-          setDAim(null);
-          setDMegaOn({});
+          setDPick(pick);
+          if (!kept) {
+            setDStep(0);
+            setDAim(null);
+            setDMegaOn({});
+          }
           setDPivot({ me: dTurnRes?.pivot?.options[0]?.species ?? '', opp: '' });
         })
         .catch(() => undefined);
@@ -1837,14 +1868,16 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
   // a new answer: back to the bot's suggestions
   useEffect(() => {
     if (dOpts) {
-      const d = dDefaults(dOpts);
+      const { pick: d, kept } = dMerged(dOpts);
       const m: Record<string, boolean> = {};
       for (const side of ['me', 'opp'] as const)
         for (const k of [0, 1]) if (dOpts[side][k].find((o) => o.index === d[side][k])?.action.startsWith('Mega + ')) m[`${side}${k}`] = true;
       setDMegaOn(m);
-      setDStep(0);
-      setDAim(null);
-      setDPick(dDefaults(dOpts));
+      if (!kept) {
+        setDStep(0);
+        setDAim(null);
+      }
+      setDPick(d);
       setDPivot({ me: dTurnRes?.pivot?.options[0]?.species ?? '', opp: '' });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

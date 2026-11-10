@@ -1710,6 +1710,28 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
             .map(([n, m]) => [n, { cursed: !!m.cursed, disabled: m.disabled?.[0] ?? null, left: m.disabled?.[1] }]),
         );
       dCarry.current = { turn: turn + 1, me: vols(r.me), opp: vols(r.opp) };
+      // their moves used this turn are seen (as singles): one their set lacks takes the place of one not seen yet
+      for (const [n, m] of Object.entries(r.opp)) {
+        const mv = m.out != null ? m.last_move : null;
+        const x = mv && mv !== 'Struggle' ? theirs.find((t) => baseName(t) === n) : undefined;
+        if (!x || !mv) continue;
+        const moves = [...x.moves];
+        const seen = [...mark(1, x).moves];
+        let i = moves.indexOf(mv);
+        if (i < 0) {
+          i = moves.findIndex((y, j) => !seen[j] || !y);
+          if (i < 0) continue;
+          moves[i] = mv;
+          // by name: the played turn has just replaced the set objects
+          setTeams((old) => {
+            const next: [Team, Team] = [old[0], old[1]];
+            next[1] = { ...old[1], sets: old[1].sets.map((y) => (y.species && baseName(y) === n ? { ...y, moves } : y)) };
+            return next;
+          });
+        }
+        seen[i] = true;
+        setMark(1, x, { moves: seen });
+      }
       setDVolMap((o) => {
         const next = { ...o };
         (['me', 'opp'] as const).forEach((sd, i) => {

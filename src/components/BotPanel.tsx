@@ -15,6 +15,7 @@ import {
   type DoublesPlay,
   type DoublesHit,
   type DoublesTurns,
+  type DoublesPlayMonT,
   type SeenHit,
   askCheck,
   askQuick,
@@ -341,6 +342,29 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
             Mega Evolve
           </label>
         )}
+        {(() => {
+          // what the game shows that the bot cannot know by itself: a move Disable / Cursed Body took, a Ghost's Curse
+          const vk = `${side}:${who}`;
+          const v = dVolNow(side, who);
+          const all = [...new Set([...(dOpts.moves?.[side]?.[k]?.map((x) => x.name) ?? []), ...moves, ...(v.disabled ? [v.disabled] : [])])];
+          return (
+            <div className="sd-vol">
+              <label>
+                Disabled{' '}
+                <select value={v.disabled ?? ''} onChange={(e) => setDManual((o) => ({ ...o, [vk]: { ...o[vk], disabled: e.target.value || null, at: turn } }))}>
+                  <option value="">none</option>
+                  {all.map((m) => (
+                    <option key={m}>{m}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="check">
+                <input type="checkbox" checked={!!v.cursed} onChange={(e) => setDManual((o) => ({ ...o, [vk]: { ...o[vk], cursed: e.target.checked } }))} />
+                Cursed
+              </label>
+            </div>
+          );
+        })()}
         <div className="sd-h sw">Switch</div>
         <div className="sd-switch">
           {(side === 'me' ? mine.map(baseName) : [...new Set([...dOpts.field[1].filter(Boolean), ...switches])]).map((t) => {
@@ -1666,6 +1690,16 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
       const streaks = (x: Record<string, { out: number | null; protect_streak?: number }>) =>
         Object.fromEntries(Object.entries(x).filter(([, m]) => m.out != null && (m.protect_streak ?? 0) > 0).map(([n, m]) => [n, m.protect_streak!]));
       dStreak.current = { turn: turn + 1, me: streaks(r.me), opp: streaks(r.opp) };
+      const vols = (x: Record<string, DoublesPlayMonT>) =>
+        Object.fromEntries(
+          Object.entries(x)
+            .filter(([, m]) => m.out != null && (m.cursed || m.disabled))
+            .map(([n, m]) => [n, { cursed: !!m.cursed, disabled: m.disabled?.[0] ?? null, left: m.disabled?.[1] }]),
+        );
+      dCarry.current = { turn: turn + 1, me: vols(r.me), opp: vols(r.opp) };
+      dLogTurn.current = turn + 1;
+      // what the turn settled replaces your marks
+      setDManual({});
       // this turn is played: the next answer is for the next turn, counted here and not again
       setDTurn(turn + 1);
       dPlayedTurn.current = turn + 1;
@@ -1688,10 +1722,13 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     dPlayedTurn.current = null;
     dUndo.current = null;
     dStreak.current = { turn: -1, me: {}, opp: {} };
+    dCarry.current = { turn: -1, me: {}, opp: {} };
     setDPlayed(null);
   };
   // A replacement after a faint (as singles' send-in): through the engine, so Intimidate, weather and seeds apply; the
   // turn does not move on.
+  // the turn the log on show belongs to (send-ins that turn are added to it)
+  const dLogTurn = useRef(-1);
   const doDoublesSendIn = (side: 0 | 1, slot: number, x: PokemonSet) =>
     run(`${baseName(x)} comes in…`, async () => {
       const b = doublesBoard();
@@ -1700,7 +1737,10 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
       const snap: DSnap = { teams, field, marks, turn, timers };
       if (side === 1) markAppeared(x);
       const r = await askDoublesSendIn(mineAll, { ...b, opp }, side === 0 ? 'me' : 'opp', slot, baseName(x));
-      applyDoubles({ ...r, events: [`${baseName(x)} sent in:`, ...r.events] }, snap);
+      // added under the turn's log (it is part of the same turn), not in place of it
+      const before = dLogTurn.current === turn ? (dPlayed?.events ?? []) : [];
+      dLogTurn.current = turn;
+      applyDoubles({ ...r, events: [...before, `${baseName(x)} sent in:`, ...r.events] }, snap);
     });
   // Turn 1: the leads come out (Intimidate, weather / terrain, seeds) by themselves once all four are out, as in singles
   const [dLeadsDone, setDLeadsDone] = useState(false);
@@ -1825,6 +1865,38 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     (!!theirActive && baseName(s) === baseName(theirActive)) || (!singles && !!dSide(1)[1] && baseName(s) === baseName(dSide(1)[1]!));
   // Protects in a row from the last played turn, by name: sent with the next turn's board while the same ones are out
   const dStreak = useRef<{ turn: number; me: Record<string, number>; opp: Record<string, number> }>({ turn: -1, me: {}, opp: {} });
+  // Cursed and disabled moves from the last played turn, by name: kept while the same ones stay out (a disabled move
+  // for 4 turns in all)
+  type DVol = { cursed?: boolean; disabled?: string | null; left?: number };
+  const dCarry = useRef<{ turn: number; me: Record<string, DVol>; opp: Record<string, DVol> }>({ turn: -1, me: {}, opp: {} });
+  /** What you set by hand ('me:Raichu' / 'opp:Gengar'); null disabled = cleared by hand. Dropped once it leaves the field. */
+  const [dManual, setDManual] = useState<Record<string, { cursed?: boolean; disabled?: string | null; at?: number }>>({});
+  const dOutKey = [...dSide(0), ...dSide(1)].map((x) => (x ? baseName(x) : '')).join('|');
+  useEffect(() => {
+    const out = { me: dSide(0).map((x) => (x ? baseName(x) : '')), opp: dSide(1).map((x) => (x ? baseName(x) : '')) };
+    setDManual((o) => {
+      const keep = Object.fromEntries(Object.entries(o).filter(([k]) => {
+        const [sd, n] = k.split(':') as ['me' | 'opp', string];
+        return out[sd].includes(n);
+      }));
+      return Object.keys(keep).length === Object.keys(o).length ? o : keep;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dOutKey]);
+  /** Cursed / disabled for one that is out now: your marks first, else what the engine left after the last played turn. */
+  const dVolNow = (side: 'me' | 'opp', name: string): { cursed: boolean; disabled: string | null; left?: number } => {
+    const c = dCarry.current;
+    const passed = dTurn - c.turn;
+    const cv = c.turn >= 0 && passed >= 0 ? c[side][name] : undefined;
+    const left = cv?.disabled && cv.left ? cv.left - passed : 0;
+    const man = dManual[`${side}:${name}`];
+    const disabled = man && man.disabled !== undefined ? man.disabled : left > 0 ? cv!.disabled! : null;
+    return {
+      cursed: man?.cursed ?? !!cv?.cursed,
+      disabled,
+      left: man && man.disabled ? Math.max(1, 4 - (dTurn - (man.at ?? dTurn))) : left > 0 ? left : undefined,
+    };
+  };
   const dTurnsLeft = (): DoublesTurns => {
     const t = (k: string) => timersNow.current[k] ?? 0;
     return {
@@ -1862,10 +1934,24 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
       const st = dStreak.current.turn === dTurn ? dStreak.current : { me: {}, opp: {} as Record<string, number> };
       const keepOut = (m: Record<string, number>, outNow: string[]) => Object.fromEntries(Object.entries(m).filter(([n]) => outNow.includes(n)));
       const oppStreak = keepOut(st.opp, out(tl, tr));
+      const vol = (side: 'me' | 'opp', n: string) => {
+        const v = dVolNow(side, n);
+        return { cursed: v.cursed, disabled: v.disabled ? [v.disabled, v.left ?? 4] : null };
+      };
+      const myOut = out(ml, mr).filter(Boolean);
+      const theirOut = out(tl, tr).filter(Boolean);
       return {
         ...pos,
-        opp: pos.opp.map((o) => (oppStreak[o.species] ? { ...o, protect_streak: oppStreak[o.species] } : o)),
-        me: { ...pos.me, protect_streak: keepOut(st.me, out(ml, mr)) },
+        opp: pos.opp.map((o) => {
+          const x = oppStreak[o.species] ? { ...o, protect_streak: oppStreak[o.species] } : o;
+          return theirOut.includes(o.species) ? { ...x, ...vol('opp', o.species) } : x;
+        }),
+        me: {
+          ...pos.me,
+          protect_streak: keepOut(st.me, out(ml, mr)),
+          cursed: Object.fromEntries(myOut.map((n) => [n, vol('me', n).cursed])),
+          disabled: Object.fromEntries(myOut.map((n) => [n, vol('me', n).disabled])),
+        },
         // turns left of the timed effects, as the panel counts them (an effect switched off in the calc is off)
         field: { ...pos.field, turns: dTurnsLeft() },
         bring: four.slice(0, 4).map(baseName),

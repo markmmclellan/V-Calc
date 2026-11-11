@@ -663,13 +663,22 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     if (!meta) return;
     const holders = new Map<string, PokemonSet[]>();
     for (const s of teams[1].sets) if (s.species && s.item) holders.set(s.item, [...(holders.get(s.item) ?? []), s]);
+    // usage for the format being played (doubles has its own: Whimsicott runs Focus Sash, not the singles Leftovers)
+    const usage = (s: PokemonSet) => {
+      const data = metaFor(meta, baseName(s))?.data;
+      return singles ? data?.single ?? data?.double : data?.double ?? data?.single;
+    };
+    const share = (s: PokemonSet, item: string) => usage(s)?.items.find((i) => i.name === item)?.usage ?? 0;
     for (const [item, list] of holders) {
       if (list.length < 2) continue;
-      // keep the one that just got this item (or one whose item has been seen); move the others
-      const keep = list.find((s) => before[baseName(s)] !== item) ?? list.find((s) => mark(1, s).item) ?? list[0];
+      // keep one whose item has been seen, else the one you just gave it (one of several when a team loads at once:
+      // the one that runs it most); move the others
+      const fresh = list.filter((s) => before[baseName(s)] !== item);
+      const pool = fresh.length && fresh.length < list.length ? fresh : list;
+      const keep = list.find((s) => mark(1, s).item) ?? [...pool].sort((x, y) => share(y, item) - share(x, item))[0];
       for (const s of list) {
         if (s === keep || mark(1, s).item) continue;
-        const d = metaFor(meta, baseName(s))?.data.single;
+        const d = usage(s);
         const used = new Set(teams[1].sets.map((x) => x.item));
         const next = d?.items.find((i) => !used.has(i.name))?.name;
         if (next) patchSet(1, s, { item: next });

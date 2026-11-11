@@ -275,6 +275,12 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     if (seen.length >= 4) return [];
     return theirs.filter((x) => x.species && !seen.includes(x) && x.hpPercent > 0 && !mark(1, x).ko).map(baseName);
   };
+  // their choice in slot k is a switch to one not seen yet: the bot cannot know which of their six it is (the engine
+  // only fills the slot), so you say who came in before the turn is played
+  const dUnseenSwitch = (k: number): boolean => {
+    const label = dOpts?.opp[k]?.find((o) => o.index === dPick?.opp[k])?.action ?? '';
+    return label.startsWith('Switch to ') && theirMaybe().includes(label.slice(10));
+  };
   // a switch to one of theirs not seen yet: chosen once the menus include it (see theirMaybe)
   const dSwitchLater = useRef<{ k: number; to: string } | null>(null);
   useEffect(() => {
@@ -430,7 +436,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
             const st = setOf(side, t);
             // theirs not seen yet: the engine only knows the ones seen (it guesses the rest), so picking one marks it seen
             // and the switch is chosen once the menus come back with it
-            const unseen = side === 'opp' && !switches.includes(t) && theirMaybe().includes(t);
+            const unseen = side === 'opp' && theirMaybe().includes(t);
             return (
               <button
                 key={t}
@@ -438,8 +444,10 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
                 title={unseen ? 'Not seen yet: marks it as brought' : undefined}
                 onClick={() => {
                   if (!unseen) return choose(side, k, { kind: 'switch', to: t });
-                  dSwitchLater.current = { k, to: t };
                   if (st) setMark(1, st, { seen: true });
+                  // the one the engine filled the slot with is in the menu already
+                  if (switches.includes(t)) return choose(side, k, { kind: 'switch', to: t });
+                  dSwitchLater.current = { k, to: t };
                 }}
               >
                 {st && <Sprite species={st.species} size={24} />}
@@ -460,9 +468,13 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
           return (
             <div key={side + k} className={'sd-row' + (i === dStep ? ' now' : '')}>
               <button className="link" onClick={() => (setDStep(i), setDAim(null))} title="Change this one">
-                <b>{dOpts.field[side === 'me' ? 0 : 1][k]}</b>: {label}
-                {side === 'opp' && label.startsWith('Switch to ') && theirMaybe().includes(label.slice(10)) && (
-                  <i title="It has not been out yet: the bot guessed who they bring. Tap to say who really came in"> (a guess: tap to change)</i>
+                <b>{dOpts.field[side === 'me' ? 0 : 1][k]}</b>:{' '}
+                {side === 'opp' && dUnseenSwitch(k) ? (
+                  <span title="The bot expects a switch to one of theirs that has not been out yet, and cannot know which. Tap to say who came in (or what it did instead)">
+                    Switch to one not seen yet <i>(tap: who came in?)</i>
+                  </span>
+                ) : (
+                  label
                 )}
               </button>
               {dOutcomeChips(side, k)}
@@ -1747,9 +1759,13 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
       (want ? list.find((x) => x.action.trim() === want.trim())?.index : undefined) ?? list[0]?.index ?? -1;
     const best = dTurnRes?.options?.[0];
     const their = dTurnRes?.theirs?.[0]?.action.split('  |  ') ?? [];
+    // "Switch to one not seen yet": the menu's switch to the one the engine filled the slot with stands for it
+    const maybe = theirMaybe();
+    const unseenOf = (list: { index: number; action: string }[], want?: string | null) =>
+      want?.trim() === 'Switch to one not seen yet' ? (list.find((x) => x.action.startsWith('Switch to ') && maybe.includes(x.action.slice(10)))?.action ?? want) : want;
     return {
       me: [pickOf(o.me[0], best?.left), pickOf(o.me[1], best?.right)],
-      opp: [pickOf(o.opp[0], their[0]), pickOf(o.opp[1], their.length > 1 ? their[1] : their[0])],
+      opp: [pickOf(o.opp[0], unseenOf(o.opp[0], their[0])), pickOf(o.opp[1], unseenOf(o.opp[1], their.length > 1 ? their[1] : their[0]))],
     };
   };
   // the moves after which the side picks who comes in (or, Revival Blessing, who comes back)
@@ -1797,6 +1813,13 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
   const doDoublesPlay = () =>
     run('Playing the turn…', async () => {
       if (!dOpts || !dPick) throw new Error('The menus are still loading.');
+      const ask = [0, 1].find((k) => dUnseenSwitch(k));
+      if (ask != null) {
+        const i = dSlots.findIndex((x) => x.side === 'opp' && x.k === ask);
+        if (i >= 0) setDStep(i);
+        setDAim(null);
+        throw new Error(`Their ${dOpts.field[1][ask]} switches to one not seen yet: tap who came in (under Switch), or what it did instead.`);
+      }
       const b = doublesBoard(takeDoublesHits());
       const snap: DSnap = { teams, field, marks, turn, timers, dvol: dVolMap };
       const leadsFirst = needDLeads;

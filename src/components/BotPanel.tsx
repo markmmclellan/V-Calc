@@ -294,7 +294,14 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
       const own = dOpts.field[side === 'me' ? 0 : 1];
       const cell = (name: string, mine: boolean) => {
         // the engine names a Mega Evolved target by its Mega form ("Charizard-Mega-Y"); the field by its base name
-        const tgt = name ? targets.find((t) => t === name || t.startsWith(name + '-Mega')) : undefined;
+        // a target on its own side is labelled "ally X" (its partner); the user itself never is
+        const tgt = name
+          ? targets.find((t) => {
+              const own = t.startsWith('ally ');
+              const n = own ? t.slice(5) : t;
+              return own === mine && (n === name || n.startsWith(name + '-Mega'));
+            })
+          : undefined;
         const st = name ? setOf(mine === (side === 'me') ? 'me' : 'opp', name) : undefined;
         return (
           <button key={(mine ? 'o' : 'f') + name} className="sd-target" disabled={!tgt} onClick={() => choose(side, k, { kind: 'move', mega: dAim.mega, move: dAim.move, target: tgt })}>

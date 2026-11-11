@@ -328,7 +328,7 @@ export const askBringCheck = (team: PokemonSet[], theirs: PokemonSet[], seconds 
 export interface DoublesBring {
   value: number; // expected result, -1 (loss) .. +1 (win)
   // p: how often to pick it (simulated mix, or the network's guess); win / worst: from simulated games
-  options: { p: number; lead: string[]; back: string[]; win?: number; worst?: number; prior?: number; zoroark_as?: string | null }[];
+  options: { p: number; lead: string[]; back: string[]; win?: number; worst?: number; prior?: number; zoroark_as?: string | null; note?: string }[];
   brought: Record<string, number>; // share of its picks that bring each of yours
   led: Record<string, number>; // ... and that lead with it
   their_likely?: { lead: string[]; back: string[]; p: number }[];

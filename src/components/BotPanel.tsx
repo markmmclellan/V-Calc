@@ -2912,6 +2912,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
                         <div className="hint ai-bad">Only one of {megaHolders([...o.lead, ...o.back]).join(' and ')} can Mega Evolve.</div>
                       )}
                       {o.zoroark_as != null && <div className="hint">{zoroarkNote(o.zoroark_as)}</div>}
+                      {o.note && <div className="hint">{o.note}</div>}
                       {o.win != null && (
                         <div className={'hint' + (o.worst != null && o.worst < 0.35 ? ' ai-bad' : '')}>
                           picks it {pct(o.p)}

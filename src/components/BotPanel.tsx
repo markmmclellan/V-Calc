@@ -1940,6 +1940,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
       }
       for (const s of theirs) {
         const x = r.opp[baseName(s)];
+        if (x && x.item_gone && s.item && !x.mega && !mark(1, s).mega && !mark(1, s).gone) setMark(1, s, { gone: true });
         if (x?.mega && !mark(1, s).mega) setMark(1, s, { mega: true });
       }
       // PP left: yours all, theirs only of moves they were seen using (as singles)
@@ -2089,6 +2090,27 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
   // out on their side now (doubles: either slot)
   const isTheirOut = (s: PokemonSet) =>
     (!!theirActive && baseName(s) === baseName(theirActive)) || (!singles && !!dSide(1)[1] && baseName(s) === baseName(dSide(1)[1]!));
+  // Unburden: V-Calc's "ability active" box follows the battle. Ticked when its item goes while it is out, cleared when
+  // it leaves the field (or the item mark is taken back). The box is what the bot is told, so it can be set by hand
+  const unburdenWas = useRef<Record<string, { gone: boolean; out: boolean }>>({});
+  useEffect(() => {
+    const was = unburdenWas.current;
+    const now: typeof was = {};
+    ([0, 1] as const).forEach((side) => {
+      const outNow = singles ? [teams[side].sets[teams[side].active]] : dSide(side);
+      for (const s of side === 0 ? mineAll : theirs) {
+        if (s.ability !== 'Unburden') continue;
+        const k = `${side}:${baseName(s)}`;
+        const cur = { gone: !!marks[k]?.gone, out: outNow.some((x) => !!x && baseName(x) === baseName(s)) };
+        now[k] = cur;
+        const w = was[k];
+        if (!w) continue;
+        if (cur.gone && !w.gone && cur.out && !s.abilityOn) patchSet(side, s, { abilityOn: true });
+        else if (((w.out && !cur.out) || (w.gone && !cur.gone)) && s.abilityOn) patchSet(side, s, { abilityOn: false });
+      }
+    });
+    unburdenWas.current = now;
+  });
   // Only four of theirs are brought. When a fifth appears (the bot guessed who came in, you put the real one out), the
   // earlier one least seen (not fainted, fewest moves seen) was the wrong guess: back to not seen, full HP
   const dSeenWas = useRef<string[]>([]);

@@ -231,6 +231,8 @@ export function buildPosition(p: PositionInput) {
       mega_used: mineMega.length > 0,
       mega_evolved: mineMega,
       item_gone: p.mine.filter((s) => mk(0, s).gone).map(baseName),
+      // Unburden: V-Calc's "ability active" box (the panel ticks it when the item goes while it is out)
+      unburden: Object.fromEntries(p.mine.filter((s) => s.ability === 'Unburden').map((s) => [baseName(s), !!s.abilityOn])),
       // V-Calc's "Disguise broken" box
       disguise_broken: p.mine.filter((s) => s.ability === 'Disguise' && s.abilityOn).map(baseName),
       // PP left, from played turns: a move at 0 is never suggested
@@ -254,6 +256,7 @@ export function buildPosition(p: PositionInput) {
         item: m.item ? s.item : m.mega && baseForMega(s.species) ? baseForMega(s.species)!.stone : '',
         ability: m.ability ? s.ability : '',
         item_gone: m.gone,
+        ...(s.ability === 'Unburden' ? { unburden: !!s.abilityOn } : {}),
         disguise_broken: s.ability === 'Disguise' && s.abilityOn,
         pp: ppLeft(m), // their moves seen running low (or out)
         hits: m.hits ?? [], // measured hits: the bot only imagines spreads that explain them

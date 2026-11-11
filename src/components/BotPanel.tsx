@@ -267,6 +267,27 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     setDAim(null);
     setDStep((i) => i + 1);
   };
+  // their Pokémon that may still come in although not seen yet (fewer than 4 seen: one of these is the 4th)
+  const theirMaybe = (): string[] => {
+    const isOut = (x: PokemonSet) => dSide(1).some((y) => y && baseName(y) === baseName(x));
+    const seen = theirs.filter((x) => x.species && appeared(x, mark(1, x), isOut(x)));
+    if (seen.length >= 4) return [];
+    return theirs.filter((x) => x.species && !seen.includes(x) && x.hpPercent > 0 && !mark(1, x).ko).map(baseName);
+  };
+  // a switch to one of theirs not seen yet: chosen once the menus include it (see theirMaybe)
+  const dSwitchLater = useRef<{ k: number; to: string } | null>(null);
+  useEffect(() => {
+    const w = dSwitchLater.current;
+    if (!w || !dOpts) return;
+    if (dOpts.opp[w.k]?.some((o) => o.action === 'Switch to ' + w.to)) {
+      dSwitchLater.current = null;
+      const i = dSlots.findIndex((x) => x.side === 'opp' && x.k === w.k);
+      pickIdx('opp', w.k, { kind: 'switch', to: w.to });
+      setDAim(null);
+      if (i >= 0) setDStep(i + 1);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dOpts]);
   const sdChooser = () => {
     if (!dOpts || !dPick) return null;
     const cur = dSlots[dStep];
@@ -404,10 +425,22 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
         })()}
         <div className="sd-h sw">Switch</div>
         <div className="sd-switch">
-          {(side === 'me' ? mine.map(baseName) : [...new Set([...dOpts.field[1].filter(Boolean), ...switches])]).map((t) => {
+          {(side === 'me' ? mine.map(baseName) : [...new Set([...dOpts.field[1].filter(Boolean), ...switches, ...theirMaybe()])]).map((t) => {
             const st = setOf(side, t);
+            // theirs not seen yet: the engine only knows the ones seen (it guesses the rest), so picking one marks it seen
+            // and the switch is chosen once the menus come back with it
+            const unseen = side === 'opp' && !switches.includes(t) && theirMaybe().includes(t);
             return (
-              <button key={t} disabled={!switches.includes(t)} onClick={() => choose(side, k, { kind: 'switch', to: t })}>
+              <button
+                key={t}
+                disabled={!switches.includes(t) && !unseen}
+                title={unseen ? 'Not seen yet: marks it as brought' : undefined}
+                onClick={() => {
+                  if (!unseen) return choose(side, k, { kind: 'switch', to: t });
+                  dSwitchLater.current = { k, to: t };
+                  if (st) setMark(1, st, { seen: true });
+                }}
+              >
                 {st && <Sprite species={st.species} size={24} />}
                 {t}
               </button>

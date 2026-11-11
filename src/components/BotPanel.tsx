@@ -244,7 +244,8 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
           ps.find((x) => x.a.kind === 'move' && x.a.move === want.move);
     if (!hit) return;
     dTouched.current = { ...(dTouched.current.turn === turn ? dTouched.current : { turn, picks: {} }) };
-    dTouched.current.picks = { ...dTouched.current.picks, [`${side}${k}`]: { who: dOpts?.field[side === 'me' ? 0 : 1][k] ?? '', action: hit.o.action } };
+    const whoK = dOpts?.field[side === 'me' ? 0 : 1][k] ?? '';
+    dTouched.current.picks = { ...dTouched.current.picks, [`${side}:${whoK}`]: { who: whoK, action: hit.o.action } };
     setDPick((p) => (p ? { ...p, [side]: p[side].map((x, j) => (j === k ? hit.o.index : x)) } : p));
     // another choice: what was ticked for the old one goes
     setDOutcome((o) => ({ ...o, [side]: o[side].map((x, j) => (j === k ? {} : x)) }));
@@ -460,6 +461,9 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
             <div key={side + k} className={'sd-row' + (i === dStep ? ' now' : '')}>
               <button className="link" onClick={() => (setDStep(i), setDAim(null))} title="Change this one">
                 <b>{dOpts.field[side === 'me' ? 0 : 1][k]}</b>: {label}
+                {side === 'opp' && label.startsWith('Switch to ') && theirMaybe().includes(label.slice(10)) && (
+                  <i title="It has not been out yet: the bot guessed who they bring. Tap to say who really came in"> (a guess: tap to change)</i>
+                )}
               </button>
               {dOutcomeChips(side, k)}
             </div>
@@ -1723,9 +1727,14 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     let kept = false;
     for (const side of ['me', 'opp'] as const)
       for (const k of [0, 1]) {
-        const c = t[`${side}${k}`];
-        if (!c || o.field[side === 'me' ? 0 : 1][k] !== c.who) continue;
-        const hit = o[side][k].find((x) => x.action === c.action);
+        // by Pokémon, not by slot: selecting one of theirs in V-Calc (to edit its moves) can swap left and right
+        const c = t[`${side}:${o.field[side === 'me' ? 0 : 1][k]}`];
+        if (!c) continue;
+        // the same choice; or the same move if its label changed (another target name, Mega no longer possible)
+        const want = parseAct(c.action);
+        const hit =
+          o[side][k].find((x) => x.action === c.action) ??
+          (want.kind === 'move' ? o[side][k].find((x) => parseAct(x.action).kind === 'move' && parseAct(x.action).move === want.move && parseAct(x.action).target === want.target) : undefined);
         if (hit) {
           d[side][k] = hit.index;
           kept = true;
@@ -2057,6 +2066,26 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
   // out on their side now (doubles: either slot)
   const isTheirOut = (s: PokemonSet) =>
     (!!theirActive && baseName(s) === baseName(theirActive)) || (!singles && !!dSide(1)[1] && baseName(s) === baseName(dSide(1)[1]!));
+  // Only four of theirs are brought. When a fifth appears (the bot guessed who came in, you put the real one out), the
+  // earlier one least seen (not fainted, fewest moves seen) was the wrong guess: back to not seen, full HP
+  const dSeenWas = useRef<string[]>([]);
+  useEffect(() => {
+    if (singles) return;
+    const seen = theirs.filter((x) => appeared(x, mark(1, x), isTheirOut(x)));
+    const was = dSeenWas.current;
+    dSeenWas.current = seen.map(baseName);
+    if (seen.length <= 4) return;
+    const alive = seen.filter((x) => !mark(1, x).ko && x.hpPercent > 0);
+    const old = alive.filter((x) => was.includes(baseName(x)));
+    const pool = old.length ? old : alive;
+    if (!pool.length) return;
+    const score = (x: PokemonSet) => mark(1, x).moves.filter(Boolean).length * 2 + (isTheirOut(x) ? 1 : 0);
+    const drop = [...pool].sort((x, y) => score(x) - score(y))[0];
+    setMark(1, drop, { seen: false, moves: [false, false, false, false], hits: [] });
+    patchSet(1, drop, { hpPercent: 100, status: '' as PokemonSet['status'], boosts: { atk: 0, def: 0, spa: 0, spd: 0, spe: 0 } });
+    dSeenWas.current = dSeenWas.current.filter((n) => n !== baseName(drop));
+    setError(`${baseName(drop)} un-marked: only four are brought, and a fifth appeared. Tick "appeared" under Their sets if that was the wrong one.`);
+  });
   // Protects in a row from the last played turn, by name: sent with the next turn's board while the same ones are out
   const dStreak = useRef<{ turn: number; me: Record<string, number>; opp: Record<string, number> }>({ turn: -1, me: {}, opp: {} });
   // Cursed and disabled moves from the last played turn, by name: kept while the same ones stay out (a disabled move
@@ -2188,6 +2217,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dAuto, dKeyNow, busy, up, open, singles, needDLeads]);
   const dOptsFor = useRef('');
+  const dFieldWas = useRef<string[][] | null>(null);
   useEffect(() => {
     if (singles || !open || up !== true || !dKeyNow) return;
     if (dOptsFor.current === dKeyNow && dOpts) return;
@@ -2203,12 +2233,25 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
         .then((o) => {
           dOptsFor.current = key;
           const { pick, kept } = dMerged(o);
+          // left and right swapped on a side: what you ticked (First, Missed...) goes with the Pokémon
+          const pf = dFieldWas.current;
+          if (pf)
+            for (const [side, i] of [['me', 0], ['opp', 1]] as const) {
+              const [a, b2] = pf[i];
+              if (a && b2 && a !== b2 && o.field[i][0] === b2 && o.field[i][1] === a) setDOutcome((x) => ({ ...x, [side]: [x[side][1], x[side][0]] }));
+            }
+          dFieldWas.current = o.field;
           setDOpts(o);
           setDPick(pick);
           if (!kept) {
             setDStep(0);
             setDAim(null);
             setDMegaOn({});
+          } else {
+            const m: Record<string, boolean> = {};
+            for (const side of ['me', 'opp'] as const)
+              for (const k of [0, 1]) if (o[side][k].find((x) => x.index === pick[side][k])?.action.startsWith('Mega + ')) m[`${side}${k}`] = true;
+            setDMegaOn(m);
           }
           setDPivot({ me: dTurnRes?.pivot?.options[0]?.species ?? '', opp: '' });
         })

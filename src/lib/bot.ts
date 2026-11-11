@@ -386,6 +386,7 @@ interface DoublesPlayMon {
   fainted_share: number; // how often it fainted over the runs
   protect_streak?: number; // Protects in a row up to this turn (its next one works 1 time in 3^n)
   cursed?: boolean; // a Ghost's Curse: loses 1/4 each turn while it stays in
+  traced?: string | null; // Trace: the ability it copied (while it stays in)
   disabled?: [string, number] | null; // the move it cannot use, and turns left
   last_move?: string | null; // the move it used last
   max_hp?: number;

@@ -64,6 +64,7 @@ const ON_ENTRY: Record<string, { weather?: string; terrain?: string }> = {
 };
 import type { Team } from './TeamSide';
 import BattleView from './BattleView';
+import { abilitiesOf } from '../lib/abilities';
 import Sprite from './Sprite';
 
 interface Props {
@@ -373,6 +374,24 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
                 <input type="checkbox" checked={!!v.cursed} onChange={(e) => setDManual((o) => ({ ...o, [vk]: { ...o[vk], cursed: e.target.checked } }))} />
                 Cursed
               </label>
+              {(setOf(side, who)?.ability === 'Trace' || (!setOf(side, who)?.ability && abilitiesOf(setOf(side, who)?.species ?? '').includes('Trace')) || v.traced) &&
+                (() => {
+                  // the foes out now: the abilities it could have copied
+                  const foeSide = side === 'me' ? 'opp' : 'me';
+                  const foeAbs = dOpts.field[side === 'me' ? 1 : 0].filter(Boolean).map((n) => setOf(foeSide, n)?.ability).filter((a): a is string => !!a && a !== 'Trace');
+                  const opts = [...new Set([...foeAbs, ...(v.traced ? [v.traced] : [])])];
+                  return (
+                    <label title="The game says &quot;X traced Y's ability&quot;">
+                      Traced{' '}
+                      <select value={v.traced ?? ''} onChange={(e) => setDManual((o) => ({ ...o, [vk]: { ...o[vk], traced: e.target.value || null } }))}>
+                        <option value="">not yet</option>
+                        {opts.map((a) => (
+                          <option key={a}>{a}</option>
+                        ))}
+                      </select>
+                    </label>
+                  );
+                })()}
             </div>
           );
         })()}
@@ -1735,8 +1754,8 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
       const vols = (x: Record<string, DoublesPlayMonT>) =>
         Object.fromEntries(
           Object.entries(x)
-            .filter(([, m]) => m.out != null && (m.cursed || m.disabled))
-            .map(([n, m]) => [n, { cursed: !!m.cursed, disabled: m.disabled?.[0] ?? null, left: m.disabled?.[1] }]),
+            .filter(([, m]) => m.out != null && (m.cursed || m.disabled || m.traced))
+            .map(([n, m]) => [n, { cursed: !!m.cursed, disabled: m.disabled?.[0] ?? null, left: m.disabled?.[1], traced: m.traced ?? null }]),
         );
       dCarry.current = { turn: turn + 1, me: vols(r.me), opp: vols(r.opp) };
       dLogTurn.current = turn + 1;
@@ -1993,10 +2012,10 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
   const dStreak = useRef<{ turn: number; me: Record<string, number>; opp: Record<string, number> }>({ turn: -1, me: {}, opp: {} });
   // Cursed and disabled moves from the last played turn, by name: kept while the same ones stay out (a disabled move
   // for 4 turns in all)
-  type DVol = { cursed?: boolean; disabled?: string | null; left?: number };
+  type DVol = { cursed?: boolean; disabled?: string | null; left?: number; traced?: string | null };
   const dCarry = useRef<{ turn: number; me: Record<string, DVol>; opp: Record<string, DVol> }>({ turn: -1, me: {}, opp: {} });
   /** What you set by hand ('me:Raichu' / 'opp:Gengar'); null disabled = cleared by hand. Dropped once it leaves the field. */
-  const [dManual, setDManual] = useState<Record<string, { cursed?: boolean; disabled?: string | null; at?: number }>>({});
+  const [dManual, setDManual] = useState<Record<string, { cursed?: boolean; disabled?: string | null; at?: number; traced?: string | null }>>({});
   const dOutKey = [...dSide(0), ...dSide(1)].map((x) => (x ? baseName(x) : '')).join('|');
   useEffect(() => {
     const out = { me: dSide(0).map((x) => (x ? baseName(x) : '')), opp: dSide(1).map((x) => (x ? baseName(x) : '')) };
@@ -2017,7 +2036,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dOutKey]);
   /** Cursed / disabled for one that is out now: your marks first, else what the engine left after the last played turn. */
-  const dVolNow = (side: 'me' | 'opp', name: string): { cursed: boolean; disabled: string | null; left?: number } => {
+  const dVolNow = (side: 'me' | 'opp', name: string): { cursed: boolean; disabled: string | null; left?: number; traced: string | null } => {
     const c = dCarry.current;
     const passed = dTurn - c.turn;
     const cv = c.turn >= 0 && passed >= 0 ? c[side][name] : undefined;
@@ -2029,6 +2048,8 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     return {
       cursed: man?.cursed ?? !!cv?.cursed,
       disabled,
+      // Trace: what it copied ("X traced Y's Z"), yours set by hand first
+      traced: man && man.traced !== undefined ? man.traced : cv?.traced ?? null,
       left: man && man.disabled ? Math.max(1, 4 - (dTurn - (man.at ?? dTurn))) : left > 0 ? left : undefined,
     };
   };
@@ -2071,7 +2092,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
       const oppStreak = keepOut(st.opp, out(tl, tr));
       const vol = (side: 'me' | 'opp', n: string) => {
         const v = dVolNow(side, n);
-        return { cursed: v.cursed, disabled: v.disabled ? [v.disabled, v.left ?? 4] : null };
+        return { cursed: v.cursed, disabled: v.disabled ? [v.disabled, v.left ?? 4] : null, traced: v.traced };
       };
       const myOut = out(ml, mr).filter(Boolean);
       const theirOut = out(tl, tr).filter(Boolean);
@@ -2086,6 +2107,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
           protect_streak: keepOut(st.me, out(ml, mr)),
           cursed: Object.fromEntries(myOut.map((n) => [n, vol('me', n).cursed])),
           disabled: Object.fromEntries(myOut.map((n) => [n, vol('me', n).disabled])),
+          traced: Object.fromEntries(myOut.map((n) => [n, vol('me', n).traced])),
           vol: Object.fromEntries(myOut.map((n) => [n, dVolMap[`0:${n}`] ?? {}])),
         },
         // turns left of the timed effects, as the panel counts them (an effect switched off in the calc is off)

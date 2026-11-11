@@ -819,3 +819,7 @@ td.v-loses, .bg-verdict.v-loses { background: color-mix(in srgb, var(--bad) 38%,
 /* doubles chooser: Disabled / Cursed marks */
 .sd-vol { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin: 6px 0 2px; font-size: 12px; }
 .sd-vol select { font-size: 12px; }
+.sd-other { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; margin: 6px 0 2px; font-size: 12px; }
+.sd-other-h { opacity: 0.75; margin-right: 2px; }
+.sd-omove { padding: 3px 8px; border-radius: 4px; border: 1px solid rgba(255, 255, 255, 0.15); color: #fff; cursor: pointer; font-size: 12px; }
+.sd-other input { width: 120px; font-size: 12px; }

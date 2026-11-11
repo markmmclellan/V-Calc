@@ -295,6 +295,96 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dOpts]);
+  // ---- a move of theirs that is not among the four entered: put it in from the chooser (no trip up to the editor)
+  const [mvText, setMvText] = useState('');
+  const usedMoves = (s: PokemonSet) => {
+    const data = (meta ? metaFor(meta, baseName(s)) : undefined)?.data;
+    return (singles ? data?.single ?? data?.double : data?.double ?? data?.single)?.moves ?? [];
+  };
+  /** Give one of theirs a move it just used: it takes an empty slot, else the least used of its moves not seen yet. */
+  const giveMove = (s: PokemonSet, typed: string): string | null => {
+    const name = moveInfo(typed)?.name;
+    if (!name) {
+      setError(`"${typed}" is not a move.`);
+      return null;
+    }
+    if (s.moves.includes(name)) return name;
+    const m = mark(1, s);
+    const use = (x: string) => usedMoves(s).find((u) => u.name === x)?.usage ?? 0;
+    let i = s.moves.findIndex((x) => !x);
+    if (i < 0) {
+      const free = [0, 1, 2, 3].filter((j) => !m.moves[j]);
+      if (!free.length) {
+        setError(`All four of ${baseName(s)}'s moves have been seen: untick one under "What you have learned" first.`);
+        return null;
+      }
+      i = free.reduce((a, b) => (use(s.moves[b]) < use(s.moves[a]) ? b : a));
+    }
+    const moves = [...s.moves];
+    const was = moves[i];
+    moves[i] = name;
+    patchSet(1, s, { moves });
+    const seen = [...m.moves];
+    seen[i] = true;
+    setMark(1, s, { moves: seen });
+    setError(was ? `${baseName(s)}: ${name} replaces ${was} (the one least likely of those not seen).` : '');
+    setMvText('');
+    return name;
+  };
+  /** The row under their moves: the next most used moves as buttons, and a box to type any other. */
+  const otherMoves = (s: PokemonSet | undefined, then: (name: string) => void) => {
+    if (!s) return null;
+    const add = (typed: string) => {
+      const name = typed.trim() && giveMove(s, typed.trim());
+      if (name) then(name);
+    };
+    const more = usedMoves(s)
+      .filter((u) => !s.moves.includes(u.name) && moveInfo(u.name))
+      .slice(0, 6);
+    return (
+      <div className="sd-other">
+        <span className="sd-other-h">Used another move?</span>
+        {more.map((u) => (
+          <button key={u.name} className={`sd-omove sd-t-${(moveInfo(u.name)?.type ?? 'Normal').toLowerCase()}`} title={`${Math.round(u.usage)}% run it`} onClick={() => add(u.name)}>
+            {u.name}
+          </button>
+        ))}
+        <input
+          list="dl-moves"
+          value={mvText}
+          placeholder="any move…"
+          onChange={(e) => {
+            const v = e.target.value;
+            setMvText(v);
+            // picked from the list (not typed letter by letter): take it straight away
+            const how = (e.nativeEvent as InputEvent).inputType;
+            if ((how === undefined || how === 'insertReplacementText') && moveInfo(v)) add(v);
+          }}
+          onKeyDown={(e) => e.key === 'Enter' && add(mvText)}
+        />
+      </div>
+    );
+  };
+  // the move just given: picked (or aimed) once the menus include it
+  const dMoveLater = useRef<{ k: number; move: string } | null>(null);
+  useEffect(() => {
+    const w = dMoveLater.current;
+    if (!w || !dOpts) return;
+    const acts = (dOpts.opp[w.k] ?? []).map((o) => parseAct(o.action)).filter((a) => a.kind === 'move' && a.move === w.move && !a.mega);
+    if (!acts.length) return;
+    dMoveLater.current = null;
+    const targets = [...new Set(acts.map((a) => a.target).filter(Boolean))];
+    if (targets.length > 1) setDAim({ move: w.move, mega: false });
+    else choose('opp', w.k, { kind: 'move', mega: false, move: w.move, target: acts[0].target });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dOpts]);
+  const sMoveLater = useRef<string | null>(null);
+  useEffect(() => {
+    const w = sMoveLater.current;
+    if (!w || !singles || !playOpts[1].includes(w)) return;
+    sMoveLater.current = null;
+    sPick(1, w);
+  });
   const sdChooser = () => {
     if (!dOpts || !dPick) return null;
     const cur = dSlots[dStep];
@@ -383,6 +473,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
             );
           })}
         </div>
+        {side === 'opp' && otherMoves(whoSet, (name) => (dMoveLater.current = { k, move: name }))}
         {canMega && (
           <label className="check sd-mega">
             <input type="checkbox" checked={mega} onChange={(e) => setDMegaOn((o) => ({ ...o, [key]: e.target.checked }))} />
@@ -1196,6 +1287,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
             );
           })}
         </div>
+        {sd === 1 && otherMoves(who, (name) => (sMoveLater.current = name))}
         {canMega && (
           <label className="check sd-mega">
             <input type="checkbox" checked={mega} onChange={(e) => setSMega((v) => (sd === 0 ? [e.target.checked, v[1]] : [v[0], e.target.checked]))} />

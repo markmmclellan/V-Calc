@@ -238,7 +238,12 @@ export function buildPosition(p: PositionInput) {
       // PP left, from played turns: a move at 0 is never suggested
       pp: Object.fromEntries(p.mine.map((s) => [baseName(s), ppLeft(mk(0, s))])),
       // Leech Seed and binding are set in the calc's field (per side); the rest in the AI panel
-      volatile: { ...volFor(p.vol?.[0], p.mineActive), leech_seed: !!f.attackerSide.isSeeded, bound: !!f.attackerSide.isBound },
+      volatile: {
+        ...volFor(p.vol?.[0], p.mineActive),
+        leech_seed: !!f.attackerSide.isSeeded,
+        bound: !!f.attackerSide.isBound,
+        ...p.mine.filter((s) => baseName(s) === p.mineActive && s.ability === 'Unburden').reduce((_, s) => ({ unburden: !!s.abilityOn }), {}),
+      },
     },
     opp: p.theirs.map((s) => {
       const m = mk(1, s);
@@ -260,7 +265,10 @@ export function buildPosition(p: PositionInput) {
         disguise_broken: s.ability === 'Disguise' && s.abilityOn,
         pp: ppLeft(m), // their moves seen running low (or out)
         hits: m.hits ?? [], // measured hits: the bot only imagines spreads that explain them
-        volatile: baseName(s) === p.theirActive ? { ...volFor(p.vol?.[1], p.theirActive), leech_seed: !!f.defenderSide.isSeeded, bound: !!f.defenderSide.isBound } : {},
+        volatile:
+          baseName(s) === p.theirActive
+            ? { ...volFor(p.vol?.[1], p.theirActive), leech_seed: !!f.defenderSide.isSeeded, bound: !!f.defenderSide.isBound, ...(s.ability === 'Unburden' ? { unburden: !!s.abilityOn } : {}) }
+            : {},
       };
     }),
     opp_mega_used: p.theirs.some((s) => mk(1, s).mega),

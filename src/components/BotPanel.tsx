@@ -141,7 +141,25 @@ const D_AUTO_KEY = 'champions-calc:ai-doubles-auto:v1';
 const zoroarkNote = (as: string) =>
   as ? `Pick in this order: ${as} last, so Zoroark comes in looking like ${as}.` : 'Pick in this order: Zoroark last (it then looks like the Pokémon it switches in for).'
 
-export default function BotPanel({ open, teams, setTeams, field, setField, skipped, singles, battleId, onApplyBring, onResetBattle, onClose, meta }: Props) {
+export default function BotPanel({ open, teams, setTeams: setTeamsRaw, field, setField, skipped, singles, battleId, onApplyBring: applyBringRaw, onResetBattle: resetBattleRaw, onClose, meta }: Props) {
+  // The panel's own changes to the teams. One that changes who is out on a side (a played turn, a send-in, a tap on a
+  // battle icon) is noted, so it can be told from a Pokémon merely being selected in V-Calc (see `onField`).
+  const panelMoved = useRef<[boolean, boolean]>([false, false]);
+  const setTeams: Props['setTeams'] = (f) =>
+    setTeamsRaw((old) => {
+      const next = f(old);
+      for (const sd of [0, 1] as const) if (next[sd].active !== old[sd].active || next[sd].partner !== old[sd].partner) panelMoved.current[sd] = true;
+      return next;
+    });
+  // (the bring / leads you pick and a battle reset go through V-Calc itself: they move Pokémon in and out too)
+  const onApplyBring: Props['onApplyBring'] = (bring, leads) => {
+    panelMoved.current = [true, true];
+    applyBringRaw(bring, leads);
+  };
+  const onResetBattle: Props['onResetBattle'] = () => {
+    panelMoved.current = [true, true];
+    resetBattleRaw();
+  };
   const [up, setUp] = useState<boolean | null>(null);
   const [marks, setMarks] = useState<Record<string, Marks>>(() => load(MARKS_KEY, {}));
   const [auto, setAuto] = useState<boolean>(() => load(AUTO_KEY, true));
@@ -770,8 +788,46 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
   }, [mineAll, skipped, BRING_N]);
   const brought = picked ?? defaultBrought;
   const mine = brought.map((n) => mineAll.find((s) => baseName(s) === n)).filter((s): s is PokemonSet => !!s);
-  const mineActive = teams[0].sets[teams[0].active];
-  const theirActive = teams[1].sets[teams[1].active];
+  // Who is out on each side. V-Calc has one selection for "the Pokémon being edited" and "the Pokémon on the field", so
+  // looking at one on the bench there (to check its item, say) would put it on the field. In a doubles battle only the
+  // panel moves Pokémon in and out: a bench Pokémon selected in V-Calc is being looked at, and the field stays as it was.
+  type FieldIdx = { active: number; partner?: number };
+  const fieldKnown = useRef<[FieldIdx, FieldIdx]>([{ active: teams[0].active, partner: teams[0].partner }, { active: teams[1].active, partner: teams[1].partner }]);
+  const onField = ([0, 1] as const).map((sd): FieldIdx => {
+    const t = teams[sd];
+    const cur: FieldIdx = { active: t.active, partner: t.partner };
+    const k = fieldKnown.current[sd];
+    const guarded = !singles && phase === 'battle' && (sd === 0 || oppLeadsReady);
+    const knownOk = !!t.sets[k.active]?.species && (k.partner == null || !!t.sets[k.partner]?.species);
+    const benchIn = [cur.active, cur.partner].some((i) => i != null && i !== k.active && i !== k.partner);
+    if (!guarded || !knownOk || !benchIn || panelMoved.current[sd]) {
+      fieldKnown.current[sd] = cur;
+      return cur;
+    }
+    return k;
+  });
+  panelMoved.current = [false, false];
+  const fielded = (sd: 0 | 1): Team => ({ ...teams[sd], active: onField[sd].active, partner: onField[sd].partner });
+  // back on one that is out after looking at the bench: V-Calc's pair is the field's again
+  const viewSig = ([0, 1] as const).map((sd) => `${teams[sd].active},${teams[sd].partner ?? ''}/${onField[sd].active},${onField[sd].partner ?? ''}`).join('|');
+  useEffect(() => {
+    for (const sd of [0, 1] as const) {
+      const t = teams[sd];
+      const k = onField[sd];
+      if (t.active === k.active && t.partner === k.partner) continue;
+      if (t.active !== k.active && t.active !== k.partner) continue; // still looking at the bench
+      const other = t.active === k.active ? k.partner : k.active;
+      if (t.partner === other) continue;
+      setTeamsRaw((old) => {
+        const next: [Team, Team] = [old[0], old[1]];
+        next[sd] = { ...old[sd], partner: other };
+        return next;
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewSig]);
+  const mineActive = teams[0].sets[onField[0].active];
+  const theirActive = teams[1].sets[onField[1].active];
   // A Pokémon that switches out loses its effects, and frees the other side from its trap.
   const outNames = [mineActive ? baseName(mineActive) : '', theirActive ? baseName(theirActive) : ''];
   const prevItems = useRef<Record<string, string>>({});
@@ -902,7 +958,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     if (!singles) {
       // a slot whose Pokémon fainted: the replacement comes in through the engine (no turn change)
       {
-        const t = teams[side];
+        const t = fielded(side);
         const downAt = (k: number | undefined) => k != null && !!t.sets[k]?.species && (t.sets[k].hpPercent <= 0 || mark(side, t.sets[k]).ko);
         const slot = downAt(t.active) ? 0 : downAt(t.partner) ? 1 : -1;
         const i = t.sets.indexOf(s);
@@ -913,8 +969,9 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
       }
       setLive(true);
       if (side === 1) markAppeared(s);
+      const at = onField[side];
       setTeams((old) => {
-        const t = old[side];
+        const t: Team = { ...old[side], active: at.active, partner: at.partner };
         const i = t.sets.indexOf(s);
         if (i < 0 || i === t.active || i === t.partner) return old;
         const down = (k: number | undefined) => k == null || !t.sets[k]?.species || t.sets[k].hpPercent <= 0 || mark(side, t.sets[k]).ko;
@@ -1738,7 +1795,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
   };
   // Doubles turn advice: the board as the calc has it (left = the selected Pokémon, right = its partner)
   const dSide = (side: 0 | 1) => {
-    const t = teams[side];
+    const t = fielded(side);
     const left = t.sets[t.active];
     const right = t.partner != null ? t.sets[t.partner] : undefined;
     return [left, right].map((s) => (s && s.species ? s : undefined));
@@ -1950,7 +2007,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
         throw new Error(`Their ${dOpts.field[1][ask]} switches to one not seen yet: tap who came in (under Switch), or what it did instead.`);
       }
       const b = doublesBoard(takeDoublesHits());
-      const snap: DSnap = { teams, field, marks, turn, timers, dvol: dVolMap };
+      const snap: DSnap = { teams: [fielded(0), fielded(1)], field, marks, turn, timers, dvol: dVolMap };
       const leadsFirst = needDLeads;
       const r = await askDoublesPlay(mineAll, { ...b, just_in: dMarkFresh(turn), pivot_to: dPivot, outcomes: dOutcome, leads_first: leadsFirst }, dPick.me, dPick.opp);
       if (leadsFirst) setDLeadsDone(true);
@@ -2006,7 +2063,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
       const b = doublesBoard();
       // one of theirs not seen yet: it is one of their four now
       const opp = b.opp.map((o) => (side === 1 && o.species === baseName(x) ? { ...o, seen: true } : o));
-      const snap: DSnap = { teams, field, marks, turn, timers, dvol: dVolMap };
+      const snap: DSnap = { teams: [fielded(0), fielded(1)], field, marks, turn, timers, dvol: dVolMap };
       if (side === 1) markAppeared(x);
       const r = await askDoublesSendIn(mineAll, { ...b, opp }, side === 0 ? 'me' : 'opp', slot, baseName(x));
       // added under the turn's log (it is part of the same turn), not in place of it
@@ -2022,7 +2079,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
   const doDoublesLeads = () =>
     run('The leads come out…', async () => {
       const b = doublesBoard();
-      const snap: DSnap = { teams, field, marks, turn, timers, dvol: dVolMap };
+      const snap: DSnap = { teams: [fielded(0), fielded(1)], field, marks, turn, timers, dvol: dVolMap };
       const r = await askDoublesLeads(mineAll, { ...b, just_in: dMarkFresh(turn) });
       setDLeadsDone(true);
       if (!r.events.length) {
@@ -2151,6 +2208,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
           });
         setMark(1, st, { moves: seen });
       }
+      const fieldNow = onField;
       setTeams((old) => {
         const upd = (t: Team, side: 'me' | 'opp'): Team => {
           // who is out after the turn (a switching move brought someone in): left = selected, right = partner
@@ -2158,8 +2216,8 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
           const [l, rr] = [slotOf(0), slotOf(1)];
           return {
             ...t,
-            active: l >= 0 ? l : t.active,
-            partner: rr >= 0 ? rr : t.partner,
+            active: l >= 0 ? l : side === 'me' ? fieldNow[0].active : fieldNow[1].active,
+            partner: rr >= 0 ? rr : side === 'me' ? fieldNow[0].partner : fieldNow[1].partner,
             sets: t.sets.map((s) => {
               const x = s.species ? r[side][baseName(s)] : undefined;
               if (!x) return s;
@@ -2811,7 +2869,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
                 <span className="hint">{busy}</span>
               ) : oppLeadsReady ? (
                 (() => {
-                  const t = teams[1];
+                  const t = fielded(1);
                   const downK = [t.active, t.partner].findIndex((i) => i != null && !!t.sets[i]?.species && (t.sets[i].hpPercent <= 0 || mark(1, t.sets[i]).ko));
                   if (downK < 0) return null;
                   // only those that can still come: once four of theirs have been seen, the other two stayed home
@@ -2834,7 +2892,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
                 phase === 'battle' &&
                 (() => {
                   // one of yours fainted: who to send in, the bot's pick first when it has one
-                  const t = teams[0];
+                  const t = fielded(0);
                   const downK = [t.active, t.partner].findIndex((i) => i != null && !!t.sets[i]?.species && (t.sets[i].hpPercent <= 0 || mark(0, t.sets[i]).ko));
                   if (downK < 0) return null;
                   const out = [t.active, t.partner].filter((i) => i != null).map((i) => baseName(t.sets[i!]));

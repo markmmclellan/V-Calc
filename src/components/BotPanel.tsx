@@ -775,7 +775,8 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
   // A Pokémon that switches out loses its effects, and frees the other side from its trap.
   const outNames = [mineActive ? baseName(mineActive) : '', theirActive ? baseName(theirActive) : ''];
   const prevItems = useRef<Record<string, string>>({});
-  const itemsSig = teams[1].sets.map((s) => `${s.species}@${s.item}`).join('|');
+  // (with which of them are known for sure: an item the game shows moves the other holders too)
+  const itemsSig = teams[1].sets.map((s) => `${s.species}@${s.item}${s.species && marks[`1:${baseName(s)}`]?.item ? '!' : ''}`).join('|');
   useEffect(() => {
     const before = prevItems.current;
     prevItems.current = Object.fromEntries(teams[1].sets.filter((s) => s.species).map((s) => [baseName(s), s.item]));
@@ -790,11 +791,17 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     const share = (s: PokemonSet, item: string) => usage(s)?.items.find((i) => i.name === item)?.usage ?? 0;
     for (const [item, list] of holders) {
       if (list.length < 2) continue;
-      // keep one whose item has been seen, else the one you just gave it (one of several when a team loads at once:
-      // the one that runs it most); move the others
-      const fresh = list.filter((s) => before[baseName(s)] !== item);
-      const pool = fresh.length && fresh.length < list.length ? fresh : list;
-      const keep = list.find((s) => mark(1, s).item) ?? [...pool].sort((x, y) => share(y, item) - share(x, item))[0];
+      // Nothing shown yet: these are guesses, and two of theirs may both be guessed to hold the same item (Whimsicott
+      // and Lycanroc both likeliest with a Focus Sash). Once one is known to hold it - the game showed it, or you set it
+      // by hand on a Pokémon that had another item (that counts as shown) - the others move to their next most used.
+      const byHand = list.filter((s) => {
+        const was = before[baseName(s)];
+        return was !== undefined && was !== '' && was !== item;
+      });
+      const shown = list.find((s) => mark(1, s).item);
+      const keep = shown ?? (byHand.length === 1 ? byHand[0] : byHand.length > 1 ? [...byHand].sort((x, y) => share(y, item) - share(x, item))[0] : undefined);
+      if (!keep) continue;
+      if (!shown) setMark(1, keep, { item: true });
       for (const s of list) {
         if (s === keep || mark(1, s).item) continue;
         const d = usage(s);

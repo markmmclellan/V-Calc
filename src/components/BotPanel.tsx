@@ -279,6 +279,14 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     if (seen.length >= 4) return [];
     return theirs.filter((x) => x.species && !seen.includes(x) && x.hpPercent > 0 && !mark(1, x).ko).map(baseName);
   };
+  // who of theirs can still come in: not out, not fainted; once all they brought have been seen (4 in doubles, 3 in
+  // singles), only those - the rest of their six stayed home
+  const theirBench = (): PokemonSet[] => {
+    const isOut = (x: PokemonSet) => dSide(1).some((y) => y && baseName(y) === baseName(x));
+    const seen = theirs.filter((x) => x.species && appeared(x, mark(1, x), isOut(x)));
+    const pool = seen.length >= BRING_N ? seen : theirs;
+    return pool.filter((x) => !!x.species && x.hpPercent > 0 && !mark(1, x).ko && !isOut(x));
+  };
   // their choice in slot k is a switch to one not seen yet: the bot cannot know which of their six it is (the engine
   // only fills the slot), so you say who came in before the turn is played
   const dUnseenSwitch = (k: number): boolean => {
@@ -1734,7 +1742,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
   const dReplaceDue = ([0, 1] as const).some((sd) => {
     const out = dSide(sd);
     const names = out.map((x) => (x ? baseName(x) : ''));
-    const pool = sd === 0 ? (mine.length ? mine : mineAll.slice(0, 4)) : theirs;
+    const pool = sd === 0 ? (mine.length ? mine : mineAll.slice(0, 4)) : theirBench();
     return (
       out.some((x) => !!x && (x.hpPercent <= 0 || mark(sd, x).ko)) &&
       pool.some((x) => !!x.species && x.hpPercent > 0 && !mark(sd, x).ko && !names.includes(baseName(x)))
@@ -2799,12 +2807,13 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
                   const t = teams[1];
                   const downK = [t.active, t.partner].findIndex((i) => i != null && !!t.sets[i]?.species && (t.sets[i].hpPercent <= 0 || mark(1, t.sets[i]).ko));
                   if (downK < 0) return null;
-                  const out = [t.active, t.partner].filter((i) => i != null).map((i) => baseName(t.sets[i!]));
+                  // only those that can still come: once four of theirs have been seen, the other two stayed home
+                  const bench = theirBench();
+                  if (!bench.length) return null;
                   return (
                     <span className="ai-theirsend">
                       <span className="hint">They sent in:</span>
-                      {theirs
-                        .filter((x) => !mark(1, x).ko && x.hpPercent > 0 && !out.includes(baseName(x)))
+                      {bench
                         .map((x, i) => (
                           <button key={baseName(x)} className={i === 0 ? 'ai-next' : ''} onClick={() => doDoublesSendIn(1, downK, x)} title="Sends it in through the engine: entry abilities apply; the turn does not move on">
                             {baseName(x)}

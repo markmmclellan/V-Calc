@@ -1723,11 +1723,18 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     const right = t.partner != null ? t.sets[t.partner] : undefined;
     return [left, right].map((s) => (s && s.species ? s : undefined));
   };
-  // A replacement is due after the last played turn only while that side still has a fainted Pokémon out on the board:
-  // if the bot's turn knocked one out that survived in the game and you gave it its HP back, the turn goes on as usual.
-  const dReplaceDue =
-    !!dPlayed &&
-    ([0, 1] as const).some((sd) => dPlayed.replace[sd] && dSide(sd).some((x) => !!x && (x.hpPercent <= 0 || mark(sd, x).ko)));
+  // A replacement is due while a side has a fainted Pokémon out on the board and someone left to send in, whatever the
+  // bot's played turn said: one it knocked out that survived in the game (you gave it its HP back) plays on as usual,
+  // and one it left standing that fainted in the game (you set it to 0) is replaced.
+  const dReplaceDue = ([0, 1] as const).some((sd) => {
+    const out = dSide(sd);
+    const names = out.map((x) => (x ? baseName(x) : ''));
+    const pool = sd === 0 ? (mine.length ? mine : mineAll.slice(0, 4)) : theirs;
+    return (
+      out.some((x) => !!x && (x.hpPercent <= 0 || mark(sd, x).ko)) &&
+      pool.some((x) => !!x.species && x.hpPercent > 0 && !mark(sd, x).ko && !names.includes(baseName(x)))
+    );
+  });
   // `auto`: asked by itself (the board may not have your HP corrections yet, so the last turn's hits wait)
   const doDoublesTurn = (auto = false) => {
     if (phase === 'preview') return setError('Team preview: pick your bring and leads, then Start battle.');

@@ -1768,7 +1768,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     const next: Record<string, number> = {};
     for (const k of out) next[k] = dFresh.current[k] ?? t;
     dFresh.current = next;
-    return out.filter((k) => next[k] === t).map((k) => k.slice(2));
+    return out.filter((k) => next[k] === t); // "0:Name" mine, "1:Name" theirs (both sides can have the same species out)
   };
   // Spread reading (doubles): the last played turn's hits, measured once you have set the HP the game showed (the next
   // time the board is sent). A target hit once that turn only: two hits on one Pokémon cannot be told apart.
@@ -1988,7 +1988,12 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
       const snap: DSnap = { teams, field, marks, turn, timers, dvol: dVolMap };
       const r = await askDoublesLeads(mineAll, { ...b, just_in: dMarkFresh(turn) });
       setDLeadsDone(true);
-      if (!r.events.length) return;
+      if (!r.events.length) {
+        // no entry abilities: the battle still starts on the engine's field (a terrain or weather left on the board
+        // from typing in their six, e.g. an Indeedee that is not a lead, goes)
+        setField((f) => ({ ...f, weather: r.field.weather as FieldState['weather'], terrain: r.field.terrain as FieldState['terrain'] }));
+        return;
+      }
       applyDoubles({ ...r, events: ['Leads come in:', ...r.events] }, snap);
     });
   useEffect(() => {
@@ -2366,7 +2371,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
         return;
       }
       const key = dKeyNow;
-      askDoublesOptions(mineAll, { ...b, just_in: Object.keys(dFresh.current).filter((k) => dFresh.current[k] === turn).map((k) => k.slice(2)) })
+      askDoublesOptions(mineAll, { ...b, just_in: Object.keys(dFresh.current).filter((k) => dFresh.current[k] === turn) })
         .then((o) => {
           dOptsFor.current = key;
           const { pick, kept } = dMerged(o);

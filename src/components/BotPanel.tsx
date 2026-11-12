@@ -404,8 +404,17 @@ export default function BotPanel({ open, teams, setTeams: setTeamsRaw, field, se
     if (!acts.length) return;
     dMoveLater.current = null;
     const targets = [...new Set(acts.map((a) => a.target).filter(Boolean))];
-    if (targets.length > 1) setDAim({ move: w.move, mega: false });
-    else choose('opp', w.k, { kind: 'move', mega: false, move: w.move, target: acts[0].target });
+    // the chooser may have gone back to its first step (the menus were sent again): the move is for the one of theirs
+    // it was given to, not for whoever the chooser is on now
+    const i = dSlots.findIndex((x) => x.side === 'opp' && x.k === w.k);
+    if (targets.length > 1) {
+      if (i >= 0) setDStep(i);
+      setDAim({ move: w.move, mega: false });
+    } else {
+      pickIdx('opp', w.k, { kind: 'move', mega: false, move: w.move, target: acts[0].target });
+      setDAim(null);
+      if (i >= 0) setDStep(i + 1);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dOpts]);
   const sMoveLater = useRef<string | null>(null);
@@ -789,15 +798,15 @@ export default function BotPanel({ open, teams, setTeams: setTeamsRaw, field, se
   const brought = picked ?? defaultBrought;
   const mine = brought.map((n) => mineAll.find((s) => baseName(s) === n)).filter((s): s is PokemonSet => !!s);
   // Who is out on each side. V-Calc has one selection for "the Pokémon being edited" and "the Pokémon on the field", so
-  // looking at one on the bench there (to check its item, say) would put it on the field. In a doubles battle only the
-  // panel moves Pokémon in and out: a bench Pokémon selected in V-Calc is being looked at, and the field stays as it was.
+  // looking at one on the bench there (to check its item, say) would put it on the field. In a battle only the panel
+  // moves Pokémon in and out (singles and doubles): a bench Pokémon selected in V-Calc is being looked at, and the field stays as it was.
   type FieldIdx = { active: number; partner?: number };
   const fieldKnown = useRef<[FieldIdx, FieldIdx]>([{ active: teams[0].active, partner: teams[0].partner }, { active: teams[1].active, partner: teams[1].partner }]);
   const onField = ([0, 1] as const).map((sd): FieldIdx => {
     const t = teams[sd];
     const cur: FieldIdx = { active: t.active, partner: t.partner };
     const k = fieldKnown.current[sd];
-    const guarded = !singles && phase === 'battle' && (sd === 0 || oppLeadsReady);
+    const guarded = phase === 'battle' && (sd === 0 || oppLeadsReady);
     const knownOk = !!t.sets[k.active]?.species && (k.partner == null || !!t.sets[k.partner]?.species);
     const benchIn = [cur.active, cur.partner].some((i) => i != null && i !== k.active && i !== k.partner);
     if (!guarded || !knownOk || !benchIn || panelMoved.current[sd]) {
@@ -970,6 +979,9 @@ export default function BotPanel({ open, teams, setTeams: setTeamsRaw, field, se
       setLive(true);
       if (side === 1) markAppeared(s);
       const at = onField[side];
+      // (a tap is the panel's move even when V-Calc already has that one selected: you were looking at it)
+      const i0 = teams[side].sets.indexOf(s);
+      if (i0 >= 0 && i0 !== at.active && i0 !== at.partner) panelMoved.current[side] = true;
       setTeams((old) => {
         const t: Team = { ...old[side], active: at.active, partner: at.partner };
         const i = t.sets.indexOf(s);
@@ -990,9 +1002,13 @@ export default function BotPanel({ open, teams, setTeams: setTeamsRaw, field, se
     }
     setLive(true);
     if (side === 1) markAppeared(s);
+    const outIdx = onField[side].active;
+    // (a tap is the panel's move even when V-Calc already has that one selected: you were looking at it)
+    const i1 = teams[side].sets.indexOf(s);
+    if (i1 >= 0 && i1 !== outIdx) panelMoved.current[side] = true;
     setTeams((old) => {
       const i = old[side].sets.indexOf(s);
-      if (i < 0 || i === old[side].active) return old;
+      if (i < 0 || i === outIdx) return old;
       const next: [Team, Team] = [old[0], old[1]];
       next[side] = { ...old[side], active: i, partner: undefined };
       return next;
@@ -1609,7 +1625,7 @@ export default function BotPanel({ open, teams, setTeams: setTeamsRaw, field, se
       const mine = needPivot ? needPivot.chosen.__mine : sChosen(0);
       const theirs = needPivot ? needPivot.chosen.__theirs : sChosen(1);
       if (!mine || !theirs) throw new Error('Pick what both sides did.');
-      const snap: Snapshot = { teams, field, vol, marks, turn, timers, faints };
+      const snap: Snapshot = { teams: [fielded(0), fielded(1)], field, vol, marks, turn, timers, faints };
       const pos = { ...withTimers(board, 0, outFor.current.n), turn, game: gameId.current };
       const { __mine, __theirs, ...piv } = { __mine: '', __theirs: '', ...pivot };
       void __mine;
@@ -1628,7 +1644,7 @@ export default function BotPanel({ open, teams, setTeams: setTeamsRaw, field, se
       if (!rawBoard) throw new Error(boardProblem);
       setLive(true);
       if (side === 1) markAppeared(s);
-      const snap: Snapshot = { teams, field, vol, marks, turn, timers, faints };
+      const snap: Snapshot = { teams: [fielded(0), fielded(1)], field, vol, marks, turn, timers, faints };
       const pos = { ...withTimers(rawBoard, 0, outFor.current.n), turn, game: gameId.current };
       const r = await askSendIn(mineAll, pos, side === 0 ? 'me' : 'opp', baseName(s), teams[1].sets);
       setBotWarn(r.warnings ?? []);
@@ -1651,7 +1667,7 @@ export default function BotPanel({ open, teams, setTeams: setTeamsRaw, field, se
   const doLeads = () =>
     runPlay(async () => {
       if (!rawBoard) return;
-      const snap: Snapshot = { teams, field, vol, marks, turn, timers, faints };
+      const snap: Snapshot = { teams: [fielded(0), fielded(1)], field, vol, marks, turn, timers, faints };
       const pos = { ...withTimers(rawBoard, 0, outFor.current.n), turn, game: gameId.current };
       const r = await askLeads(mineAll, pos, teams[1].sets);
       setLeadsDone(true);
@@ -2009,6 +2025,7 @@ export default function BotPanel({ open, teams, setTeams: setTeamsRaw, field, se
       const b = doublesBoard(takeDoublesHits());
       const snap: DSnap = { teams: [fielded(0), fielded(1)], field, marks, turn, timers, dvol: dVolMap };
       const leadsFirst = needDLeads;
+      dSentNow.current = { turn: -1, who: [] };
       const r = await askDoublesPlay(mineAll, { ...b, just_in: dMarkFresh(turn), pivot_to: dPivot, outcomes: dOutcome, leads_first: leadsFirst }, dPick.me, dPick.opp);
       if (leadsFirst) setDLeadsDone(true);
       setDOutcome({ me: [{}, {}], opp: [{}, {}] });
@@ -2058,9 +2075,15 @@ export default function BotPanel({ open, teams, setTeams: setTeamsRaw, field, se
   // turn does not move on.
   // the turn the log on show belongs to (send-ins that turn are added to it)
   const dLogTurn = useRef(-1);
+  // those sent in since the last played turn ("0:Name" yours, "1:Name" theirs): in the game the replacements after a
+  // turn all come in together, so the Intimidate of one sent in a moment ago also reaches the next one
+  const dSentNow = useRef<{ turn: number; who: string[] }>({ turn: -1, who: [] });
   const doDoublesSendIn = (side: 0 | 1, slot: number, x: PokemonSet) =>
     run(`${baseName(x)} comes in…`, async () => {
-      const b = doublesBoard();
+      const b0 = doublesBoard();
+      if (dSentNow.current.turn !== turn) dSentNow.current = { turn, who: [] };
+      const b = { ...b0, sent_in_now: [...dSentNow.current.who] };
+      dSentNow.current.who.push(`${side}:${baseName(x)}`);
       // one of theirs not seen yet: it is one of their four now
       const opp = b.opp.map((o) => (side === 1 && o.species === baseName(x) ? { ...o, seen: true } : o));
       const snap: DSnap = { teams: [fielded(0), fielded(1)], field, marks, turn, timers, dvol: dVolMap };
@@ -2290,7 +2313,7 @@ export default function BotPanel({ open, teams, setTeams: setTeamsRaw, field, se
     const was = unburdenWas.current;
     const now: typeof was = {};
     ([0, 1] as const).forEach((side) => {
-      const outNow = singles ? [teams[side].sets[teams[side].active]] : dSide(side);
+      const outNow = singles ? [teams[side].sets[onField[side].active]] : dSide(side);
       for (const s of side === 0 ? mineAll : theirs) {
         if (s.ability !== 'Unburden') continue;
         const k = `${side}:${baseName(s)}`;

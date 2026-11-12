@@ -191,6 +191,10 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
   const dTurn = turn;
   const setDTurn = (f: number | ((t: number) => number)) => setTurnRaw((t) => Math.max(1, Math.min(60, typeof f === 'function' ? f(t) : f)));
   const [dTurnRes, setDTurnRes] = useState<DoublesTurn | null>(null);
+  // the answer on screen, for callbacks that began before it arrived (the move menu's reply must not fall back to
+  // each Pokémon's first move, e.g. Protect, because it was asked for a moment before the answer came)
+  const dTurnResNow = useRef(dTurnRes);
+  dTurnResNow.current = dTurnRes;
   const [dOpts, setDOpts] = useState<DoublesOptions | null>(null);
   const [dPick, setDPick] = useState<{ me: number[]; opp: number[] } | null>(null);
   const [dPlayed, setDPlayed] = useState<DoublesPlay | null>(null);
@@ -1862,8 +1866,9 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
   const dDefaults = (o: DoublesOptions) => {
     const pickOf = (list: { index: number; action: string }[], want?: string | null): number =>
       (want ? list.find((x) => x.action.trim() === want.trim())?.index : undefined) ?? list[0]?.index ?? -1;
-    const best = dTurnRes?.options?.[0];
-    const their = dTurnRes?.theirs?.[0]?.action.split('  |  ') ?? [];
+    const res = dTurnResNow.current;
+    const best = res?.options?.[0];
+    const their = res?.theirs?.[0]?.action.split('  |  ') ?? [];
     // "Switch to one not seen yet": the menu's switch to the one the engine filled the slot with stands for it
     const maybe = theirMaybe();
     const unseenOf = (list: { index: number; action: string }[], want?: string | null) =>
@@ -2409,7 +2414,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
               for (const k of [0, 1]) if (o[side][k].find((x) => x.index === pick[side][k])?.action.startsWith('Mega + ')) m[`${side}${k}`] = true;
             setDMegaOn(m);
           }
-          setDPivot({ me: dTurnRes?.pivot?.options[0]?.species ?? '', opp: '' });
+          setDPivot({ me: dTurnResNow.current?.pivot?.options[0]?.species ?? '', opp: '' });
         })
         .catch(() => undefined);
     }, 700);

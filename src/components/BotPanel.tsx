@@ -1723,6 +1723,11 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     const right = t.partner != null ? t.sets[t.partner] : undefined;
     return [left, right].map((s) => (s && s.species ? s : undefined));
   };
+  // A replacement is due after the last played turn only while that side still has a fainted Pokémon out on the board:
+  // if the bot's turn knocked one out that survived in the game and you gave it its HP back, the turn goes on as usual.
+  const dReplaceDue =
+    !!dPlayed &&
+    ([0, 1] as const).some((sd) => dPlayed.replace[sd] && dSide(sd).some((x) => !!x && (x.hpPercent <= 0 || mark(sd, x).ko)));
   // `auto`: asked by itself (the board may not have your HP corrections yet, so the last turn's hits wait)
   const doDoublesTurn = (auto = false) => {
     if (phase === 'preview') return setError('Team preview: pick your bring and leads, then Start battle.');
@@ -2660,7 +2665,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
           )}
           {!singles && (
             <>
-            {dOpts && dPick && !dPlayed?.replace.some(Boolean) && (
+            {dOpts && dPick && !dReplaceDue && (
               <div className="ai-play ai-dplay">
                 <span className="hint" title="Pick what both sides did, then Play: the turn is played 64 times and the typical result is written into the calc (HP, status, stat changes, the field, who is out). Fix what luck changed by hand.">
                   Play turn
@@ -2748,7 +2753,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
             )}
             <div className="ai-actions">
               <button className={'primary ai-main-btn' + (!dTurnRes ? ' ai-next' : '')} onClick={() => doDoublesTurn()} disabled={up !== true || !!busy}>
-                {dPlayed?.replace.some(Boolean) ? 'Pick my replacement' : 'Solve this turn'}
+                {dReplaceDue ? 'Pick my replacement' : 'Solve this turn'}
               </button>
               <button
                 className="ai-report"

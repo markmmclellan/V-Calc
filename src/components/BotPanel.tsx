@@ -1434,6 +1434,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
       charge_turn: v.charging ? t0 : undefined,
       disabled: v.disabled ?? undefined,
       transformed: v.transformed ?? undefined,
+      times_hit: v.times_hit || undefined,
     });
     setVol([{ ...volOf(r.me.vol), who: r.me.active }, { ...volOf(r.opp.vol), who: r.opp.active }]);
     skipVolReset.current = `${r.me.active}|${r.opp.active}`;
@@ -2088,6 +2089,7 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
               charge_turn: v.charging ? turn : undefined,
               disabled: v.disabled ?? undefined,
               transformed: v.transformed ?? undefined,
+              times_hit: v.times_hit || undefined,
               leech_seed: v.leech_seed || undefined,
               bound: v.bound || undefined,
               first_move: v.first_move ?? undefined,

@@ -162,6 +162,7 @@ export interface Vol {
   first_move?: string; // the first move since it came in (Protean / Libero changed its type to this move's)
   disabled?: string; // Disable / Cursed Body: this move cannot be used for a few turns
   transformed?: string; // Ditto (Imposter / Transform): the species it copied
+  times_hit?: number; // damaging hits taken since it came in (Rage Fist: +50 power each)
   charging?: string; // a two-turn move it started (Dive, Dig, Fly, Phantom Force, Solar Beam...): it lands next turn
   charge_turn?: number; // the turn it started on (panel only: the charge is sent for the next turn only)
   encore?: string; // Encored into this move
@@ -495,7 +496,7 @@ export interface PlayMon {
 export interface PlaySide {
   active: string;
   mons: Record<string, PlayMon>;
-  vol: { yawn: boolean; encore?: string | null; taunt: boolean; substitute: boolean; trapped: boolean; confused: boolean; last_move?: string | null; first_move?: string | null; charging?: string | null; disabled?: string | null; transformed?: string | null };
+  vol: { yawn: boolean; encore?: string | null; taunt: boolean; substitute: boolean; trapped: boolean; confused: boolean; last_move?: string | null; first_move?: string | null; charging?: string | null; disabled?: string | null; transformed?: string | null; times_hit?: number };
 }
 export interface PlaySideField {
   stealth_rock: boolean;

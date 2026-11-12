@@ -383,6 +383,8 @@ export interface DoublesOptions {
   moves?: Record<'me' | 'opp', { name: string; pp: number; max: number }[][]>;
   me: { index: number; action: string }[][];
   opp: { index: number; action: string }[][];
+  // the network's likeliest choice per slot (action index, -1 none), without a search: best.me[slot], best.opp[slot]
+  best?: Record<'me' | 'opp', number[]>;
   warnings: string[];
 }
 export const askDoublesOptions = (team: PokemonSet[], board: Record<string, unknown>) =>

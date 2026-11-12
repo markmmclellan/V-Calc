@@ -1864,8 +1864,9 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     return { pick: d, kept };
   };
   const dDefaults = (o: DoublesOptions) => {
-    const pickOf = (list: { index: number; action: string }[], want?: string | null): number =>
-      (want ? list.find((x) => x.action.trim() === want.trim())?.index : undefined) ?? list[0]?.index ?? -1;
+    // the solved answer's choice; without one (no Solve yet), the network's likeliest; else the first in the menu
+    const pickOf = (list: { index: number; action: string }[], want?: string | null, net?: number): number =>
+      (want ? list.find((x) => x.action.trim() === want.trim())?.index : undefined) ?? list.find((x) => x.index === net)?.index ?? list[0]?.index ?? -1;
     const res = dTurnResNow.current;
     const best = res?.options?.[0];
     const their = res?.theirs?.[0]?.action.split('  |  ') ?? [];
@@ -1874,8 +1875,11 @@ export default function BotPanel({ open, teams, setTeams, field, setField, skipp
     const unseenOf = (list: { index: number; action: string }[], want?: string | null) =>
       want?.trim() === 'Switch to one not seen yet' ? (list.find((x) => x.action.startsWith('Switch to ') && maybe.includes(x.action.slice(10)))?.action ?? want) : want;
     return {
-      me: [pickOf(o.me[0], best?.left), pickOf(o.me[1], best?.right)],
-      opp: [pickOf(o.opp[0], unseenOf(o.opp[0], their[0])), pickOf(o.opp[1], unseenOf(o.opp[1], their.length > 1 ? their[1] : their[0]))],
+      me: [pickOf(o.me[0], best?.left, o.best?.me[0]), pickOf(o.me[1], best?.right, o.best?.me[1])],
+      opp: [
+        pickOf(o.opp[0], unseenOf(o.opp[0], their[0]), o.best?.opp[0]),
+        pickOf(o.opp[1], unseenOf(o.opp[1], their.length > 1 ? their[1] : their[0]), o.best?.opp[1]),
+      ],
     };
   };
   // the moves after which the side picks who comes in (or, Revival Blessing, who comes back)

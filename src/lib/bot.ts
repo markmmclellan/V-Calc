@@ -95,6 +95,7 @@ export interface SeenHit {
   def_screens: boolean[];
   spread?: boolean; // doubles: a spread move (x0.75)
   doubles?: boolean; // doubles screens (2/3)
+  ctx?: Record<string, unknown>; // what else went into the damage (from the engine's played turn), passed back as is
 }
 /** One move's hit in a played doubles turn (the typical run), between the sides. */
 export interface DoublesHit {
@@ -120,6 +121,7 @@ export interface DoublesHit {
   weather: string;
   terrain: string;
   def_screens: boolean[];
+  ctx?: Record<string, unknown>; // Helping Hand, Friend Guard, the attacker's HP, items used up... (for the spread guesser)
 }
 /** Turns left of the field's timed effects (kept by the panel, sent back as field.turns). */
 export interface DoublesTurns {

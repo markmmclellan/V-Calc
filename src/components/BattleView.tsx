@@ -223,6 +223,14 @@ export default function BattleView(p: Props) {
   const layers = (side: 0 | 1, k: 'spikes' | 'toxicSpikes') => p.field[sideKey(side)][k] || 0;
 
   /** Name, HP, status, stat stages and effects of the Pokémon that is out. */
+  /** HP as the game shows it: yours in points ("146/207"), theirs as a percent. */
+  const hpText = (side: 0 | 1, s: PokemonSet, pct: number): string => {
+    if (side === 1) return `${Math.round(pct)}%`;
+    const max = maxHpOf(s);
+    if (!max) return `${Math.round(pct)}%`;
+    const hp = pct > 0 ? Math.max(1, Math.round((pct * max) / 100)) : 0;
+    return `${hp}/${max}`;
+  };
   const statBox = (side: 0 | 1, s: PokemonSet | undefined, slot = 0) => {
     const id = slot ? `${side}b` : `${side}`;
     if (!s) return <div className={`bv-stat ${side ? 'opp' : 'me'}`}>{side ? 'Tap the one they send out' : 'Tap your Pokémon that is out'}</div>;
@@ -421,7 +429,7 @@ export default function BattleView(p: Props) {
             onClick={() => p.sendOut(side, s)}
           >
             <Sprite species={s.species} size={30} />
-            <span>{m.ko ? 'KO' : `${Math.round(s.hpPercent)}%`}</span>
+            <span>{m.ko ? 'KO' : hpText(side, s, s.hpPercent)}</span>
           </button>
         );
       })}
@@ -532,7 +540,7 @@ export default function BattleView(p: Props) {
         <span className="sdf-hp">
           <span className={'sdf-hpfill' + (pct <= 20 ? ' red' : pct <= 50 ? ' yellow' : '')} style={{ width: `${Math.max(0, Math.min(100, pct))}%` }} />
         </span>
-        <span className="sdf-pct">{m.ko ? 'KO' : `${Math.round(pct)}%`}</span>
+        <span className="sdf-pct">{m.ko ? 'KO' : hpText(side, s, pct)}</span>
         <span className="sdf-tags">
           {st[0] && <span className={`sdf-tag st ${st[0]}`}>{st[1]}</span>}
           {boosts.map(([k, l]) => (
@@ -559,7 +567,7 @@ export default function BattleView(p: Props) {
             onClick={() => p.sendOut(side, s)}
           >
             <Sprite species={s.species} size={30} />
-            <span>{m.ko ? 'KO' : `${Math.round(s.hpPercent)}%`}</span>
+            <span>{m.ko ? 'KO' : hpText(side, s, s.hpPercent)}</span>
           </button>
         );
       })}

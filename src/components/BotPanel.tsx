@@ -1212,6 +1212,7 @@ export default function BotPanel({ open, teams, setTeams: setTeamsRaw, field, se
       const base = {
         move: h.move, other: h.mine, crit: h.crit, opp_boosts: toObj(h.opp_boosts), my_boosts: toObj(h.my_boosts), opp_status: h.opp_status,
         my_status: h.my_status, opp_mega: h.opp_mega, my_mega: h.my_mega, weather: h.weather, terrain: h.terrain, def_screens: h.def_screens,
+        ctx: h.ctx, // the rest of the damage calculation as the engine played it
       };
       if (h.attacker === 'opp') {
         const s = mine.find((x) => baseName(x) === h.mine);

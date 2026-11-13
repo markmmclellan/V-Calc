@@ -152,6 +152,7 @@ export interface PlayHit {
   weather: string;
   terrain: string;
   def_screens: boolean[];
+  ctx?: Record<string, unknown>; // the attacker's HP, items used up... (for the spread guesser)
 }
 export interface LikelySets {
   [species: string]: { hits: number; builds: { nature: string; sp: number[]; item: string; share: number }[]; entered_fits?: boolean };

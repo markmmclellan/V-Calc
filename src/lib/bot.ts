@@ -234,6 +234,8 @@ export interface Vol {
   bound?: boolean; // Infestation, Fire Spin, Whirlpool...: 1/8 a turn, cannot switch
   trapped?: boolean; // Mean Look, Block, Spirit Shackle, Jaw Lock: cannot switch
   confused?: boolean;
+  acc?: number; // accuracy stage (-6..6)
+  eva?: number; // evasion stage (-6..6): Minimize, Double Team...
 }
 
 export const blankMarks = (): Marks => ({ ko: false, mega: false, gone: false, moves: [false, false, false, false], item: false, ability: false });
@@ -559,7 +561,7 @@ export interface PlayMon {
 export interface PlaySide {
   active: string;
   mons: Record<string, PlayMon>;
-  vol: { yawn: boolean; encore?: string | null; taunt: boolean; substitute: boolean; trapped: boolean; confused: boolean; last_move?: string | null; first_move?: string | null; charging?: string | null; disabled?: string | null; transformed?: string | null; times_hit?: number };
+  vol: { yawn: boolean; encore?: string | null; taunt: boolean; substitute: boolean; trapped: boolean; confused: boolean; last_move?: string | null; first_move?: string | null; charging?: string | null; disabled?: string | null; transformed?: string | null; times_hit?: number; acc?: number; eva?: number };
 }
 export interface PlaySideField {
   stealth_rock: boolean;

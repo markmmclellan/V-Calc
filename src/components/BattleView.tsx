@@ -212,6 +212,15 @@ export default function BattleView(p: Props) {
   const sideFx = p.volOf ? SIDE_FX.filter(([k]) => k !== 'isSeeded' && k !== 'isBound') : SIDE_FX;
   const volFx: [keyof Vol, string][] = p.volOf ? [...VOL_FX, ['leech_seed', 'Leech Seed'], ['bound', 'Bound']] : VOL_FX;
   const pv = (side: 0 | 1, s: PokemonSet | undefined, patch: Partial<Vol>) => p.patchVol(side, s ? { ...patch, who: baseName(s) } : patch);
+  /** Accuracy / evasion stages that are not zero, as [label, stage]. */
+  const accEva = (side: 0 | 1, s: PokemonSet): [string, number][] => {
+    const v = vv(side, s);
+    if (v.who && v.who !== baseName(s)) return [];
+    return ([
+      ['Acc', v.acc ?? 0],
+      ['Eva', v.eva ?? 0],
+    ] as [string, number][]).filter(([, n]) => n);
+  };
   const sideKey = (side: 0 | 1) => (side === 0 ? 'attackerSide' : 'defenderSide');
   const setSide = (side: 0 | 1, k: keyof SideState, v: boolean | number) =>
     p.setField((f) => ({ ...f, [sideKey(side)]: { ...f[sideKey(side)], [k]: v } }));
@@ -348,7 +357,9 @@ export default function BattleView(p: Props) {
           </span>
           <span className="bv-anchor">
             <button className="bv-tag boost bv-open" title="Stat stages" onClick={() => toggle(`boosts-${id}`)}>
-              {boosts.length ? boosts.map(([k, l]) => `${boostLabel(s.boosts[k])} ${l}`).join(' ') : 'Stats ±'}
+              {boosts.length || accEva(side, s).length
+                ? [...boosts.map(([k, l]) => `${boostLabel(s.boosts[k])} ${l}`), ...accEva(side, s).map(([l, v]) => `${boostLabel(v)} ${l}`)].join(' ')
+                : 'Stats ±'}
             </button>
             {menu === `boosts-${id}` && (
               <div className="bv-menu bv-boosts">
@@ -360,7 +371,29 @@ export default function BattleView(p: Props) {
                     <button onClick={() => p.patchSet(side, s, { boosts: { ...s.boosts, [k]: Math.min(6, s.boosts[k] + 1) } })}>+</button>
                   </div>
                 ))}
-                <button className="bv-reset" onClick={() => p.patchSet(side, s, { boosts: { atk: 0, def: 0, spa: 0, spd: 0, spe: 0 } })}>
+                {(
+                  [
+                    ['acc', 'Acc'],
+                    ['eva', 'Eva'],
+                  ] as const
+                ).map(([k, l]) => {
+                  const v = vv(side, s)[k] ?? 0;
+                  return (
+                    <div key={k} className="bv-boost" title={k === 'eva' ? 'Evasion (Minimize, Double Team…)' : 'Accuracy (Sand Attack, Hone Claws…)'}>
+                      <span>{l}</span>
+                      <button onClick={() => pv(side, s, { [k]: Math.max(-6, v - 1) || undefined })}>−</button>
+                      <b className={v > 0 ? 'up' : v < 0 ? 'down' : ''}>{boostLabel(v)}</b>
+                      <button onClick={() => pv(side, s, { [k]: Math.min(6, v + 1) || undefined })}>+</button>
+                    </div>
+                  );
+                })}
+                <button
+                  className="bv-reset"
+                  onClick={() => {
+                    p.patchSet(side, s, { boosts: { atk: 0, def: 0, spa: 0, spd: 0, spe: 0 } });
+                    pv(side, s, { acc: undefined, eva: undefined });
+                  }}
+                >
                   Reset
                 </button>
               </div>
@@ -546,6 +579,11 @@ export default function BattleView(p: Props) {
           {boosts.map(([k, l]) => (
             <span key={k} className={'sdf-tag ' + (s.boosts[k] > 0 ? 'up' : 'down')}>
               {boostLabel(s.boosts[k])} {l}
+            </span>
+          ))}
+          {accEva(side, s).map(([l, n]) => (
+            <span key={l} className={'sdf-tag ' + (n > 0 ? 'up' : 'down')}>
+              {boostLabel(n)} {l}
             </span>
           ))}
         </span>

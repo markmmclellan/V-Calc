@@ -112,6 +112,33 @@ const pct = (x: number) => `${Math.round(x * 100)}%`;
  * Taunt, Encore and Yawn count from the turn after (Yawn: asleep at the end of the next turn). */
 const TIMED: Record<string, number> = { weather: 5, terrain: 5, tr: 5, isTailwind: 4, isReflect: 5, isLightScreen: 5, isAuroraVeil: 5, taunt: 4, encore: 4, yawn: 2 };
 const timerStart = (key: string) => TIMED[key.split(':').pop()!] ?? 5;
+/** The on/off parts of what luck decided (the hit count is a number). */
+type OFlag = Exclude<keyof Outcome, 'hits'>;
+/** The hit counts a move can land when its count varies ([] for every other move). */
+const hitChoices = (move: string): number[] =>
+  ['Scale Shot', 'Icicle Spear', 'Water Shuriken', 'Bullet Seed', 'Rock Blast', 'Pin Missile', 'Tail Slap', 'Bone Rush', 'Arm Thrust'].includes(move)
+    ? [2, 3, 4, 5]
+    : move === 'Triple Axel' || move === 'Triple Kick'
+      ? [1, 2, 3]
+      : move === 'Population Bomb'
+        ? [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+        : [];
+/** The chip that says how many times a multi-hit move hit: each tap moves to the next count, then back to "not said". */
+const hitsChip = (move: string, cur: number | undefined, set: (n: number | undefined) => void) => {
+  const all = hitChoices(move);
+  if (!all.length) return null;
+  const at = cur === undefined ? -1 : all.indexOf(cur);
+  return (
+    <button
+      key="hits"
+      className={'bv-tag' + (at >= 0 ? ' on' : '')}
+      title={`How many times ${move} hit (tap to change). Not said: the bot uses its usual count.`}
+      onClick={() => set(at + 1 < all.length ? all[at + 1] : undefined)}
+    >
+      {at >= 0 ? `Hit ${cur}x` : 'Hits?'}
+    </button>
+  );
+};
 /** A two-turn line, said plainly: "Yawn -> Switch to Golisopod" is "Yawn now, then next turn Switch to Golisopod". */
 const lineLabel = (a: string) => (a.includes(' -> ') ? a.replace(' -> ', ' now, then next turn ') : a);
 /** " + Mega" after one of their moves when the bot expects them to Mega Evolve with it ("+ Mega 60%" when unsure). */
@@ -228,7 +255,7 @@ export default function BotPanel({ open, teams, setTeams: setTeamsRaw, field, se
       n[side][k][f] = cur.includes(who) ? cur.filter((x) => x !== who) : [...cur, who];
       return n;
     });
-  const toggleDOutcome = (side: 'me' | 'opp', k: number, f: keyof Outcome) =>
+  const toggleDOutcome = (side: 'me' | 'opp', k: number, f: OFlag) =>
     setDOutcome((o) => {
       const n = { me: o.me.map((x) => ({ ...x })), opp: o.opp.map((x) => ({ ...x })) };
       n[side][k][f] = !n[side][k][f];
@@ -342,13 +369,18 @@ export default function BotPanel({ open, teams, setTeams: setTeamsRaw, field, se
     const m = mark(1, s);
     const use = (x: string) => usedMoves(s).find((u) => u.name === x)?.usage ?? 0;
     let i = s.moves.findIndex((x) => !x);
+    let sameType = false;
     if (i < 0) {
       const free = [0, 1, 2, 3].filter((j) => !m.moves[j]);
       if (!free.length) {
         setError(`All four of ${baseName(s)}'s moves have been seen: untick one under "What you have learned" first.`);
         return null;
       }
-      i = free.reduce((a, b) => (use(s.moves[b]) < use(s.moves[a]) ? b : a));
+      // one that does the same job goes first: an unseen attack of the same type (Stomping Tantrum in: Earthquake out)
+      const inf = moveInfo(name);
+      const same = inf && inf.category !== 'Status' ? free.filter((j) => ((o) => !!o && o.category !== 'Status' && o.type === inf.type)(moveInfo(s.moves[j]))) : [];
+      sameType = same.length > 0;
+      i = (sameType ? same : free).reduce((a, b) => (use(s.moves[b]) < use(s.moves[a]) ? b : a));
     }
     const moves = [...s.moves];
     const was = moves[i];
@@ -357,7 +389,7 @@ export default function BotPanel({ open, teams, setTeams: setTeamsRaw, field, se
     const seen = [...m.moves];
     seen[i] = true;
     setMark(1, s, { moves: seen });
-    setError(was ? `${baseName(s)}: ${name} replaces ${was} (the one least likely of those not seen).` : '');
+    setError(was ? `${baseName(s)}: ${name} replaces ${was} (${sameType ? 'an attack of the same type not seen yet' : 'the one least likely of those not seen'}).` : '');
     setMvText('');
     return name;
   };
@@ -611,9 +643,11 @@ export default function BotPanel({ open, teams, setTeams: setTeamsRaw, field, se
             </div>
           );
         });
+  /** The move picked for one of the four in the chooser ('' for a switch). */
+  const dLabelMove = (side: 'me' | 'opp', k: number) => parseAct(dOpts?.[side][k].find((o) => o.index === dPick?.[side][k])?.action ?? '').move;
   const dOutcomeChips = (side: 'me' | 'opp', k: number) => {
     const spread = dSpreadTargets(side, k);
-    const one = (f: keyof Outcome, l: string, t: string) => (
+    const one = (f: OFlag, l: string, t: string) => (
       <button key={f} className={'bv-tag' + (dOutcome[side][k][f] ? ' on' : '')} title={t} onClick={() => toggleDOutcome(side, k, f)}>
         {l}
       </button>
@@ -634,6 +668,13 @@ export default function BotPanel({ open, teams, setTeams: setTeamsRaw, field, se
         {spread.length
           ? [...spread.map((w) => per('miss_on', 'Missed', w)), ...spread.map((w) => per('crit_on', 'Crit', w))]
           : [one('miss', 'Missed', 'Its move missed'), one('crit', 'Crit', 'Its hit was a critical hit')]}
+        {hitsChip(dLabelMove(side, k), hitChoices(dLabelMove(side, k)).includes(dOutcome[side][k].hits ?? 0) ? dOutcome[side][k].hits : undefined, (n) =>
+          setDOutcome((o) => {
+            const nx = { me: o.me.map((x) => ({ ...x })), opp: o.opp.map((x) => ({ ...x })) };
+            nx[side][k].hits = n;
+            return nx;
+          }),
+        )}
         {one('no_move', "Didn't move", 'Flinched, fully paralysed, asleep... it did not move this turn')}
       </span>
     );
@@ -1252,7 +1293,7 @@ export default function BotPanel({ open, teams, setTeams: setTeamsRaw, field, se
   const [showSetup, setShowSetup] = useState(false);
   // what happened that luck decides: [yours, theirs]
   const [outcome, setOutcome] = useState<[Outcome, Outcome]>([{}, {}]);
-  const toggleOutcome = (sd: 0 | 1, k: keyof Outcome) =>
+  const toggleOutcome = (sd: 0 | 1, k: OFlag) =>
     setOutcome((o) => {
       const n: [Outcome, Outcome] = [{ ...o[0] }, { ...o[1] }];
       n[sd][k] = !n[sd][k];
@@ -1575,12 +1616,22 @@ export default function BotPanel({ open, teams, setTeams: setTeamsRaw, field, se
           ['miss', 'Missed', 'Its move missed'],
           ['crit', 'Crit', 'Its hit was a critical hit'],
           ['no_move', "Didn't move", 'Flinched, fully paralysed, asleep... it did not move this turn'],
-        ] as [keyof Outcome, string, string][]
+        ] as [OFlag, string, string][]
       ).map(([k, l, t]) => (
         <button key={k} className={'bv-tag' + (outcome[sd][k] ? ' on' : '')} title={t} onClick={() => toggleOutcome(sd, k)}>
           {l}
         </button>
       ))}
+      {(() => {
+        const mv = sChosen(sd).replace(/ \+ Mega Evolve$/, '');
+        return hitsChip(mv, hitChoices(mv).includes(outcome[sd].hits ?? 0) ? outcome[sd].hits : undefined, (n) =>
+          setOutcome((o) => {
+            const nx: [Outcome, Outcome] = [{ ...o[0] }, { ...o[1] }];
+            nx[sd].hits = n;
+            return nx;
+          }),
+        );
+      })()}
     </span>
   );
 

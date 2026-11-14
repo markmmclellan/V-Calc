@@ -543,6 +543,7 @@ export interface Outcome {
   crit?: boolean;
   no_move?: boolean; // flinched, fully paralysed, asleep...
   first?: boolean; // it moved first (a speed tie, or the engine has the speed wrong)
+  hits?: number; // how many times its multi-hit move hit (Scale Shot, Triple Axel...); unset: the engine's usual count
 }
 export const askPlayTurn = (
   team: PokemonSet[],

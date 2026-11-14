@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { blankField, type FieldState, type Terrain, type Weather } from '../lib/calc';
 import { baseName, blankMarks, getReplay, listGames, type GameRow, type Marks, type ReplayAdvice, type ReplayBoard, type ReplayGame, type ReplayMon } from '../lib/bot';
-import { blankSet, type PokemonSet, type Status } from '../lib/model';
+import { blankSet, moveInfo, type PokemonSet, type Status } from '../lib/model';
 import { megaFor, parsePaste } from '../lib/showdown';
-import BattleView from './BattleView';
+import BattleView, { type BattleAnim } from './BattleView';
 
 /**
  * Replay of a logged game in the battle view: the board at the start of each turn (with what the bot advised and what
@@ -26,6 +26,146 @@ function toField(b: ReplayBoard): FieldState {
     f[k] = { ...f[k], isSR: s.sr, spikes: s.spikes, toxicSpikes: s.tspikes, isTailwind: s.tailwind, isReflect: s.reflect, isLightScreen: s.light, isAuroraVeil: s.veil };
   });
   return f;
+}
+
+// ---- animation: the turn's log lines played one at a time over the board the turn started from
+
+const TYPE_COLOR: Record<string, string> = {
+  Normal: '#d0d0b0', Fire: '#ff7b2e', Water: '#4a9bff', Electric: '#ffd43a', Grass: '#5fcf5a', Ice: '#8fe3e8',
+  Fighting: '#d0463c', Poison: '#b455c4', Ground: '#d9b45a', Flying: '#a9b8ff', Psychic: '#ff5f9a', Bug: '#b3c22c',
+  Rock: '#c2a94e', Ghost: '#8a6fd0', Dragon: '#7a52ff', Dark: '#8a7466', Steel: '#b9c2d6', Fairy: '#ff9fd0',
+};
+const STATUS_OF: Record<string, [string, string]> = {
+  Burn: ['brn', '#e25822'], Paralysis: ['par', '#e0c020'], Poison: ['psn', '#a050c0'], Toxic: ['tox', '#a050c0'],
+  BadPoison: ['tox', '#a050c0'], Sleep: ['slp', '#9aa4a8'], Freeze: ['frz', '#5ab0e8'], Frozen: ['frz', '#5ab0e8'],
+};
+const WEATHER_OF: Record<string, string> = { Sun: 'Sun', Rain: 'Rain', Sand: 'Sand', Sandstorm: 'Sand', Snow: 'Snow', None: '' };
+const TAG = /\[(you|opp|p[12][ab])\]/;
+const TAGS = /\[(you|opp|p[12][ab])\]/g;
+
+interface Step {
+  /** the board while this line plays */
+  board: ReplayBoard;
+  /** the last log line that has happened */
+  upto: number;
+  anim: BattleAnim;
+}
+
+/** A fainted Pokémon is off the field (the log keeps it in its slot until the replacement comes). */
+export function clean(b: ReplayBoard): ReplayBoard {
+  const f = (l: ReplayMon[]) => l.map((m) => (m.hp <= 0 && m.out != null ? { ...m, out: null } : m));
+  return { ...b, me: f(b.me), opp: f(b.opp) };
+}
+
+const slotOf = (tag: string) => {
+  const side = tag === 'opp' || tag.startsWith('p2') ? 1 : 0;
+  const k = tag.startsWith('p') && tag.endsWith('b') ? 1 : 0;
+  return { side, k, id: `${side}${k ? 'b' : ''}` };
+};
+/** A log line as Showdown would say it: no side tags, their Pokémon called "the opposing". */
+const say = (t: string) => {
+  const x = t.replace(/\[(opp|p2[ab])\] /g, 'the opposing ').replace(/\[(you|p1[ab])\] /g, '');
+  return x.charAt(0).toUpperCase() + x.slice(1);
+};
+
+/** The turn as steps: each log line with the board as it stands then and the animation that goes with it. The HP and
+ * effects are followed from the lines themselves, so they are only as exact as the log; the frame's own board is shown
+ * once the last step has played. */
+export function buildSteps(start: ReplayBoard, events: string[], doubles: boolean): Step[] {
+  const w: ReplayBoard = JSON.parse(JSON.stringify(start));
+  const steps: Step[] = [];
+  let color = '#ffffff';
+  const list = (side: number) => (side ? w.opp : w.me);
+  const mon = (side: number, k: number) => list(side).find((m) => m.out === k);
+  events.forEach((raw, i) => {
+    const t = raw.trim();
+    if (!t || t.startsWith('---')) return;
+    const push = (a: Partial<BattleAnim> & { kind: BattleAnim['kind'] }) =>
+      steps.push({ board: JSON.parse(JSON.stringify(w)), upto: i, anim: { id: 0, ms: 650, msg: say(t), ...a } });
+    if (t.startsWith('***')) return void push({ kind: 'none', msg: t.replace(/\*/g, '').trim(), ms: 1200 });
+    const tm = TAG.exec(t);
+    if (!tm) {
+      const we = /the weather became (\w+)/.exec(t);
+      const te = /the terrain became (\w+)/.exec(t);
+      if (we && we[1] in WEATHER_OF) w.field.weather = WEATHER_OF[we[1]];
+      if (te) w.field.terrain = te[1] === 'None' ? '' : te[1];
+      return void push({ kind: 'none' });
+    }
+    const sub = slotOf(tm[1]);
+    const m = mon(sub.side, sub.k);
+    const their = sub.side ? 'The opposing ' : '';
+    let x: RegExpExecArray | null;
+    if ((x = /^\[[^\]]+\] (.+?) used (.+)$/.exec(t))) {
+      // who it is aimed at: the Pokémon named in the lines that follow
+      const targets: string[] = [];
+      for (let j = i + 1; j < events.length && /^\s/.test(events[j]); j++) {
+        const tags = [...events[j].matchAll(TAGS)].map((g) => slotOf(g[1]).id);
+        const all = /attack missed|doesn't affect|protected/.test(events[j]);
+        const hit = /lost .*\(now|fainted/.test(events[j]);
+        for (const id of all ? tags : hit ? tags.slice(0, 1) : []) if (id !== sub.id && !targets.includes(id)) targets.push(id);
+      }
+      const info = moveInfo(x[2]);
+      const cat = info?.category ?? 'Status';
+      if (!targets.length && !doubles && cat !== 'Status') targets.push(sub.side ? '0' : '1');
+      color = TYPE_COLOR[info?.type ?? ''] ?? '#ffffff';
+      return void push({ kind: 'move', who: sub.id, targets, color, style: cat === 'Physical' ? 'lunge' : cat === 'Special' || targets.length ? 'shot' : 'pulse', msg: say(t) + '!', ms: 950 });
+    }
+    if ((x = /^\[[^\]]+\] sends out (.+)$/.exec(t) ?? /^\[[^\]]+\] (.+) came in$/.exec(t))) {
+      const name = x[1];
+      if (m && m.hp > 0) push({ kind: 'out', who: sub.id, msg: sub.side ? `The opponent withdrew ${m.species}!` : `${m.species}, come back!`, ms: 550 });
+      if (m) {
+        m.out = null;
+        m.boosts = {};
+      }
+      const bench = list(sub.side).filter((c) => c.out == null && c.hp > 0);
+      const inc = bench.find((c) => c.species === name) ?? bench.find((c) => name.startsWith(c.species + '-')) ?? bench.find((c) => name.startsWith(c.species));
+      if (inc) inc.out = sub.k;
+      return void push({ kind: 'in', who: sub.id, msg: sub.side ? `The opponent sent out ${name}!` : `Go! ${name}!`, ms: 750 });
+    }
+    if (/fainted!/.test(t)) {
+      if (m) m.hp = 0;
+      push({ kind: 'faint', who: sub.id, ms: 850 });
+      if (m) m.out = null;
+      return;
+    }
+    if (/Mega Evolve/.test(t)) {
+      if (m) m.mega = true;
+      return void push({ kind: 'mega', who: sub.id, msg: `${their}${m?.species ?? 'Pokémon'} Mega Evolved!`, ms: 1000 });
+    }
+    if ((x = /lost (\d+(?:\.\d+)?)(%| HP)/.exec(t))) {
+      const now = /\(now (\d+(?:\.\d+)?)(?:%|\/(\d+))/.exec(t);
+      if (m) {
+        if (now) m.hp = now[2] ? (100 * +now[1]) / +now[2] : +now[1];
+        else if (x[2] === '%') m.hp -= +x[1];
+        m.hp = Math.max(0, Math.min(100, m.hp));
+      }
+      return void push({ kind: now ? 'hit' : 'hurt', who: sub.id, color, msg: (/critical hit/.test(t) ? 'A critical hit! ' : '') + say(t) });
+    }
+    if (/is hurt by/.test(t)) return void push({ kind: 'hurt', who: sub.id });
+    if ((x = /recovered (\d+(?:\.\d+)?)%/.exec(t))) {
+      if (m) m.hp = Math.min(100, m.hp + +x[1]);
+      return void push({ kind: 'heal', who: sub.id });
+    }
+    const b1 = / (Atk|Def|Spa|Spd|Spe) ([+-]\d+)$/i.exec(t);
+    const b2 = / (Atk|Def|Spa|Spd|Spe) (rose|fell) by (\d+)$/i.exec(t);
+    if (b1 || b2) {
+      const key = (b1 ?? b2)![1].toLowerCase();
+      const d = b1 ? +b1[2] : (b2![2] === 'rose' ? 1 : -1) * +b2![3];
+      if (m) m.boosts = { ...m.boosts, [key]: Math.max(-6, Math.min(6, (m.boosts[key] ?? 0) + d)) };
+      return void push({ kind: d > 0 ? 'up' : 'down', who: sub.id, ms: 500 });
+    }
+    if ((x = /(?:was afflicted:|is now) (\w+)/.exec(t)) && STATUS_OF[x[1]]) {
+      if (m) m.status = STATUS_OF[x[1]][0];
+      return void push({ kind: 'status', who: sub.id, color: STATUS_OF[x[1]][1] });
+    }
+    if (/protected/.test(t)) return void push({ kind: 'protect', who: sub.id });
+    if (/attack missed/.test(t)) {
+      const tags = [...t.matchAll(TAGS)].map((g) => slotOf(g[1]).id);
+      return void push({ kind: 'miss', who: tags[1] ?? (doubles ? undefined : sub.side ? '0' : '1') });
+    }
+    push({ kind: 'none', who: sub.id });
+  });
+  return steps;
 }
 
 function advice(a: ReplayAdvice | null | undefined) {
@@ -64,6 +204,10 @@ export default function ReplayView({ onClose }: { onClose: () => void }) {
   const [playing, setPlaying] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  /** the frame whose turn is being played out line by line, and the line it is at */
+  const [anim, setAnim] = useState<{ frame: number; i: number } | null>(null);
+  const [animate, setAnimate] = useState(true);
+  const [speed, setSpeed] = useState(1);
 
   useEffect(() => {
     listGames()
@@ -78,6 +222,7 @@ export default function ReplayView({ onClose }: { onClose: () => void }) {
       const g = await getReplay(id);
       setGame(g);
       setStep(0);
+      setAnim(null);
       setPlaying(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -87,18 +232,53 @@ export default function ReplayView({ onClose }: { onClose: () => void }) {
   };
 
   const n = game?.frames.length ?? 0;
-  const go = (i: number) => setStep(Math.max(0, Math.min(n - 1, i)));
+  /** Jump to a frame as it stands (no animation). */
+  const go = (i: number) => {
+    setAnim(null);
+    setStep(Math.max(0, Math.min(n - 1, i)));
+  };
+  const animFrame = anim?.frame;
+  const steps = useMemo(() => {
+    if (animFrame == null || !game) return null;
+    const f = game.frames[animFrame];
+    const before = game.frames[animFrame - 1];
+    if (!f?.events?.length || !before) return null;
+    return buildSteps(clean(before.board), f.events, game.doubles).map((st, i) => ({ ...st, anim: { ...st.anim, id: animFrame * 1000 + i + 1 } }));
+  }, [animFrame, game]);
+  /** Forward one frame, playing the turn out; while one is playing, skip to its end. */
+  const forward = () => {
+    if (anim) return setAnim(null);
+    if (!game || step >= n - 1) return;
+    const f = game.frames[step + 1];
+    setStep(step + 1);
+    if (animate && f.kind !== 'start' && f.events?.length) setAnim({ frame: step + 1, i: 0 });
+  };
+  const fwd = useRef(forward);
+  fwd.current = forward;
+  // the turn being played: one line after another
+  useEffect(() => {
+    if (!anim) return;
+    const st = steps?.[anim.i];
+    if (!st) return setAnim(null);
+    const t = setTimeout(() => setAnim((a) => (a && steps && a.i + 1 < steps.length ? { ...a, i: a.i + 1 } : null)), st.anim.ms / speed);
+    return () => clearTimeout(t);
+  }, [anim, steps, speed]);
   // keys: arrows step, space plays, Esc goes back (to the list, then out)
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
-      if ((e.target as HTMLElement).closest('input, select, textarea')) return;
+      if ((e.target as HTMLElement).closest('input:not([type=range]):not([type=checkbox]), select, textarea')) return;
       if (e.key === 'Escape') {
         if (game) setGame(null);
         else onClose();
       } else if (!game) return;
-      else if (e.key === 'ArrowRight') setStep((s) => Math.min(n - 1, s + 1));
-      else if (e.key === 'ArrowLeft') setStep((s) => Math.max(0, s - 1));
-      else if (e.key === ' ') {
+      else if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        fwd.current();
+      } else if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        setAnim(null);
+        setStep((s) => Math.max(0, s - 1));
+      } else if (e.key === ' ') {
         e.preventDefault();
         setPlaying((p) => !p);
       }
@@ -106,19 +286,22 @@ export default function ReplayView({ onClose }: { onClose: () => void }) {
     window.addEventListener('keydown', key);
     return () => window.removeEventListener('keydown', key);
   }, [game, n, onClose]);
-  // playing: a frame every 2.5 s, stopping at the end
+  // playing: the advice is held a moment, then the turn plays out, stopping at the end
   useEffect(() => {
-    if (!playing || !game) return;
+    if (!playing || !game || anim) return;
     if (step >= n - 1) {
       setPlaying(false);
       return;
     }
-    const t = setTimeout(() => setStep((s) => Math.min(n - 1, s + 1)), 2500);
+    const hold = game.frames[step]?.kind === 'start' || !animate ? 2500 : 900;
+    const t = setTimeout(() => fwd.current(), hold / speed);
     return () => clearTimeout(t);
-  }, [playing, step, n, game]);
+  }, [playing, step, n, game, anim, animate, speed]);
 
   const mineSets = useMemo(() => (game?.team_text ? parsePaste(game.team_text).sets : []), [game]);
   const frame = game?.frames[step];
+  const cur = anim && anim.frame === step ? steps?.[anim.i] : undefined;
+  const board = useMemo(() => (cur ? cur.board : frame ? clean(frame.board) : null), [cur, frame]);
 
   /** One Pokémon of a frame as a V-Calc set (species, HP, status, stat stages) and its marks. */
   const build = (side: 0 | 1, m: ReplayMon): [PokemonSet, Marks] => {
@@ -151,8 +334,8 @@ export default function ReplayView({ onClose }: { onClose: () => void }) {
   };
 
   const view = useMemo(() => {
-    if (!frame) return null;
-    const b = frame.board;
+    if (!board) return null;
+    const b = board;
     const marks: Record<string, Marks> = {};
     const side = (sd: 0 | 1, list: ReplayMon[]) =>
       list.map((m) => {
@@ -165,7 +348,7 @@ export default function ReplayView({ onClose }: { onClose: () => void }) {
     const at = (l: { s: PokemonSet; out: number | null }[], k: number) => l.find((x) => x.out === k)?.s;
     return { b, marks, me, opp, at, field: toField(b) };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [frame, mineSets]);
+  }, [board, mineSets]);
 
   const title = (k: string) => (k === 'start' ? 'start of the turn' : k === 'played' ? 'after the turn' : 'sent in');
   const shownGames = (games ?? []).filter((g) => fmt === 'all' || (fmt === 'doubles') === g.doubles);
@@ -228,15 +411,22 @@ export default function ReplayView({ onClose }: { onClose: () => void }) {
             <button className="primary" onClick={() => setPlaying((p) => !p)} title="Play / pause (space)">
               {playing ? '⏸ Pause' : '▶ Play'}
             </button>
-            <button onClick={() => go(step + 1)} disabled={step >= n - 1} title="Next (→)">
+            <button onClick={forward} disabled={step >= n - 1 && !anim} title="Next (→); while a turn is playing, skip to its end">
               ▶
             </button>
             <button onClick={() => go(n - 1)} disabled={step >= n - 1} title="Last">
               ⏭
             </button>
             <input type="range" min={0} max={n - 1} value={step} onChange={(e) => go(+e.target.value)} />
+            <label title="Play each turn out move by move, as Showdown's replays do">
+              <input type="checkbox" checked={animate} onChange={(e) => (setAnimate(e.target.checked), setAnim(null))} />
+              Animations
+            </label>
+            <button onClick={() => setSpeed((v) => (v === 1 ? 2 : v === 2 ? 0.5 : 1))} title="Speed">
+              {speed}×
+            </button>
             <b>
-              Turn {frame.turn}: {title(frame.kind)}
+              Turn {frame.turn}: {cur ? 'playing' : title(frame.kind)}
             </b>
             <span className="hint">
               {step + 1} / {n}
@@ -265,6 +455,7 @@ export default function ReplayView({ onClose }: { onClose: () => void }) {
               setField={noop}
               timers={{}}
               onTimer={noop}
+              anim={cur?.anim ?? null}
             />
           </div>
           <div className="rp-info">
@@ -287,7 +478,7 @@ export default function ReplayView({ onClose }: { onClose: () => void }) {
             )}
             {frame.kind !== 'start' && (
               <div className="sdl">
-                {(frame.events ?? []).map((e, i) =>
+                {(cur ? (frame.events ?? []).slice(0, cur.upto + 1) : frame.events ?? []).map((e, i) =>
                   e.startsWith('--- Turn') ? (
                     <div key={i} className="sdl-turn">
                       {e.replace(/-/g, '').trim()}

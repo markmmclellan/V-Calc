@@ -842,6 +842,15 @@ td.v-loses, .bg-verdict.v-loses { background: color-mix(in srgb, var(--bad) 38%,
 .rp-bar input[type='range'] { flex: 1; min-width: 120px; }
 /* the battle view is shown as it was: nothing in it can be changed */
 .rp-stage { pointer-events: none; }
+.rp-stage .sdf-hpfill { transition: width 0.5s ease-out; }
+.rp-stage .sdf-empty { display: none; }
+.rp-bar label { display: inline-flex; align-items: center; gap: 4px; }
+.sdf-msg { position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%); z-index: 7; max-width: 86%; padding: 4px 12px; border-radius: 6px; background: rgba(0, 0, 0, 0.72); border: 1px solid rgba(255, 255, 255, 0.35); color: #fff; font-size: 13px; font-weight: 600; text-align: center; pointer-events: none; }
+.sdf-fx { position: absolute; z-index: 5; pointer-events: none; border-radius: 50%; transform: translate(-50%, -50%); opacity: 0; }
+.sdf-fx.burst { background: radial-gradient(circle, #fff 0%, var(--fx) 40%, transparent 70%); }
+.sdf-fx.ring { border: 4px solid var(--fx); box-shadow: 0 0 14px var(--fx), inset 0 0 14px var(--fx); box-sizing: border-box; }
+.sdf-fx.orb { background: radial-gradient(circle, #fff 0%, var(--fx) 60%); box-shadow: 0 0 14px 4px var(--fx); }
+.sdf-fx.shield { border-radius: 18px; background: color-mix(in srgb, var(--fx) 35%, transparent); border: 3px solid var(--fx); box-sizing: border-box; }
 .rp-info { margin-top: 10px; font-size: 13px; display: flex; flex-direction: column; gap: 8px; }
 .rp-did { display: flex; flex-wrap: wrap; gap: 4px 24px; }
 .rp-h { font-weight: 600; margin-bottom: 2px; }

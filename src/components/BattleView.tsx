@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import type { FieldState, SideState, Terrain, Weather } from '../lib/calc';
 import type { Marks, Vol } from '../lib/bot';
 import { baseName, CHARGE_MOVES, maxHpOf } from '../lib/bot';
@@ -11,6 +11,22 @@ import Sprite from './Sprite';
  * drag an HP bar, tap a status or stat tag, tap a move for "last move", tap a team icon when a Pokémon comes in.
  * Everything it changes is V-Calc's own battle state (HP, status, boosts, field) or the AI panel's marks.
  */
+/** One beat of a replay animation on the Showdown-style field (slots: '0' / '0b' yours, '1' / '1b' theirs). */
+export interface BattleAnim {
+  id: number;
+  kind: 'move' | 'hit' | 'hurt' | 'heal' | 'faint' | 'out' | 'in' | 'mega' | 'up' | 'down' | 'status' | 'protect' | 'miss' | 'none';
+  /** the Pokémon it is about (the user of a move, the one hit, the one fainting…) */
+  who?: string;
+  /** a move's targets */
+  targets?: string[];
+  /** a move: lunge at the target (physical), a shot (special) or a glow on the user (status) */
+  style?: 'lunge' | 'shot' | 'pulse';
+  color?: string;
+  /** the line shown over the field */
+  msg?: string;
+  ms: number;
+}
+
 interface Props {
   mine: PokemonSet[]; // your three
   theirs: PokemonSet[]; // their six
@@ -40,6 +56,8 @@ interface Props {
   /** Turns left of timed effects (weather, terrain, 'tr', '<side>:isReflect', 'v<side>:taunt'…) */
   timers: Record<string, number>;
   onTimer: (key: string) => void;
+  /** Replay: the animation to play now (Showdown-style field only) */
+  anim?: BattleAnim | null;
 }
 
 const STATUS: [Status, string, string][] = [
@@ -180,6 +198,126 @@ export default function BattleView(p: Props) {
   // one small menu open at a time ("status-0", "boosts-1", "fx-0", "field"); a click elsewhere closes it
   const [menu, setMenu] = useState('');
   const root = useRef<HTMLDivElement>(null);
+  // ---- replay animations: driven on the sprites with the Web Animations API, so the layout needs no changes
+  const fieldEl = useRef<HTMLDivElement>(null);
+  const live = useRef<{ anims: Animation[]; els: HTMLElement[] }>({ anims: [], els: [] });
+  const anim = p.anim;
+  useLayoutEffect(() => {
+    const L = live.current;
+    L.anims.forEach((a) => a.cancel());
+    L.els.forEach((e) => e.remove());
+    L.anims = [];
+    L.els = [];
+    const fld = fieldEl.current;
+    if (!anim || !fld || anim.kind === 'none') return;
+    if (typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const sprite = (slot?: string) => (slot ? fld.querySelector<HTMLElement>(`.sdf-mon[data-slot="${slot}"] .bv-sprite`) : null);
+    const box = fld.getBoundingClientRect();
+    const centre = (e: HTMLElement): [number, number] => {
+      const r = e.getBoundingClientRect();
+      return [r.left + r.width / 2 - box.left, r.top + r.height / 2 - box.top];
+    };
+    const run = (e: HTMLElement, frames: Keyframe[], opt: KeyframeAnimationOptions) => {
+      L.anims.push(e.animate(frames, opt));
+    };
+    /** A short-lived effect drawn on the field, centred at a point. */
+    const fx = (cls: string, at: [number, number], size: number, color: string) => {
+      const d = document.createElement('div');
+      d.className = 'sdf-fx ' + cls;
+      d.style.left = at[0] + 'px';
+      d.style.top = at[1] + 'px';
+      d.style.width = d.style.height = size + 'px';
+      d.style.setProperty('--fx', color);
+      fld.appendChild(d);
+      L.els.push(d);
+      return d;
+    };
+    const C = 'translate(-50%, -50%)';
+    const burst = (at: [number, number], color: string, delay: number, size = 110) =>
+      run(fx('burst', at, size, color), [{ transform: `${C} scale(0.2)`, opacity: 0.95 }, { transform: `${C} scale(1.5)`, opacity: 0 }], { duration: 380, delay, easing: 'ease-out', fill: 'both' });
+    const ring = (at: [number, number], color: string, size = 130) =>
+      run(fx('ring', at, size, color), [{ transform: `${C} scale(0.3)`, opacity: 0.9 }, { transform: `${C} scale(1.2)`, opacity: 0 }], { duration: Math.min(700, anim.ms), easing: 'ease-out', fill: 'both' });
+    const ms = anim.ms;
+    const who = sprite(anim.who);
+    const color = anim.color || '#ffffff';
+    if (anim.kind === 'move') {
+      if (!who) return;
+      const from = centre(who);
+      const tg = (anim.targets ?? []).map(sprite).filter((e): e is HTMLElement => !!e).map(centre);
+      if (anim.style === 'lunge' && tg.length) {
+        const mid: [number, number] = [tg.reduce((a, t) => a + t[0], 0) / tg.length, tg.reduce((a, t) => a + t[1], 0) / tg.length];
+        const [dx, dy] = [(mid[0] - from[0]) * 0.6, (mid[1] - from[1]) * 0.6];
+        run(who, [{ transform: 'translate(0, 0)' }, { transform: `translate(${-dx * 0.08}px, ${-dy * 0.08}px)`, offset: 0.2 }, { transform: `translate(${dx}px, ${dy}px)`, offset: 0.5 }, { transform: 'translate(0, 0)' }], {
+          duration: ms * 0.85,
+          easing: 'ease-in-out',
+        });
+        tg.forEach((t) => burst(t, color, ms * 0.4));
+      } else if (anim.style !== 'pulse' && tg.length) {
+        run(who, [{ transform: 'scale(1)' }, { transform: 'scale(1.1)', filter: 'brightness(1.5)', offset: 0.3 }, { transform: 'scale(1)' }], { duration: ms * 0.5 });
+        const fly = ms * 0.5;
+        tg.forEach((t) => {
+          const [dx, dy] = [t[0] - from[0], t[1] - from[1]];
+          run(fx('orb', from, 26, color), [{ transform: `${C} scale(0.4)`, opacity: 0 }, { transform: `${C} scale(1)`, opacity: 1, offset: 0.15 }, { transform: `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px)) scale(1.3)`, opacity: 1, offset: 0.95 }, { transform: `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px)) scale(1.3)`, opacity: 0 }], {
+            duration: fly,
+            delay: ms * 0.1,
+            easing: 'ease-in',
+            fill: 'both',
+          });
+          burst(t, color, ms * 0.1 + fly - 40);
+        });
+      } else {
+        run(who, [{ transform: 'scale(1)' }, { transform: 'scale(1.12)', filter: 'brightness(1.7)', offset: 0.4 }, { transform: 'scale(1)' }], { duration: ms * 0.8 });
+        ring(from, color);
+      }
+      return;
+    }
+    if (!who) return;
+    const at = centre(who);
+    switch (anim.kind) {
+      case 'hit':
+        run(who, [0, -7, 7, -5, 5, 0].map((x, i) => ({ transform: `translateX(${x}px)`, opacity: i % 2 ? 0.25 : 1 })), { duration: Math.min(450, ms) });
+        break;
+      case 'hurt':
+        run(who, [1, 0.3, 1, 0.3, 1].map((o) => ({ opacity: o })), { duration: Math.min(400, ms) });
+        break;
+      case 'heal':
+        run(who, [{ filter: 'brightness(1)' }, { filter: 'brightness(1.7) saturate(1.4)' }, { filter: 'brightness(1)' }], { duration: Math.min(600, ms) });
+        ring(at, '#6fe08a');
+        break;
+      case 'faint':
+        run(who, [{ transform: 'translateY(0)', opacity: 1 }, { transform: 'translateY(46px)', opacity: 0 }], { duration: ms * 0.7, easing: 'ease-in', fill: 'forwards' });
+        break;
+      case 'out':
+        run(who, [{ transform: 'scale(1)', opacity: 1, filter: 'brightness(1)' }, { transform: 'scale(0.15)', opacity: 0, filter: 'brightness(4)' }], { duration: ms * 0.8, easing: 'ease-in', fill: 'forwards' });
+        break;
+      case 'in':
+        run(who, [{ transform: 'scale(0.15)', opacity: 0, filter: 'brightness(4)' }, { transform: 'scale(1)', opacity: 1, filter: 'brightness(1)' }], { duration: Math.min(450, ms), easing: 'ease-out' });
+        ring(at, '#ffffff', 110);
+        break;
+      case 'mega':
+        run(who, [{ transform: 'scale(1)', filter: 'brightness(1)' }, { transform: 'scale(1.25)', filter: 'brightness(5)', offset: 0.5 }, { transform: 'scale(1)', filter: 'brightness(1)' }], { duration: ms * 0.9 });
+        ring(at, '#c58bff', 190);
+        break;
+      case 'up':
+      case 'down': {
+        const up = anim.kind === 'up';
+        run(who, [{ transform: 'translateY(0)' }, { transform: `translateY(${up ? -8 : 8}px)`, filter: 'brightness(1.4)' }, { transform: 'translateY(0)' }], { duration: Math.min(450, ms) });
+        ring(at, up ? '#5fd35f' : '#e05555');
+        break;
+      }
+      case 'status':
+        run(who, [1, 0.4, 1, 0.4, 1].map((o) => ({ opacity: o })), { duration: Math.min(450, ms) });
+        ring(at, color);
+        break;
+      case 'protect':
+        run(fx('shield', at, 120, '#7fe0a0'), [{ transform: `${C} scale(0.8)`, opacity: 0 }, { transform: `${C} scale(1)`, opacity: 0.85, offset: 0.25 }, { transform: `${C} scale(1)`, opacity: 0.85, offset: 0.7 }, { transform: `${C} scale(1.05)`, opacity: 0 }], { duration: ms, fill: 'both' });
+        break;
+      case 'miss':
+        run(who, [{ transform: 'translateX(0)' }, { transform: `translateX(${anim.who?.startsWith('1') ? 34 : -34}px)`, offset: 0.35 }, { transform: 'translateX(0)' }], { duration: Math.min(500, ms), easing: 'ease-out' });
+        break;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [anim?.id]);
   useEffect(() => {
     if (!menu) return;
     const close = (e: MouseEvent) => {
@@ -564,7 +702,7 @@ export default function BattleView(p: Props) {
     const st = STATUS.find((x) => x[0] === s.status) ?? STATUS[0];
     const boosts = STATS.filter(([k]) => s.boosts[k]);
     return (
-      <button className={'sdf-bar' + (edit === id ? ' on' : '')} title="Tap to edit HP, status, stats, effects" onClick={() => setEdit((e) => (e === id ? '' : id))}>
+      <button key={baseName(s)} className={'sdf-bar' + (edit === id ? ' on' : '')} title="Tap to edit HP, status, stats, effects" onClick={() => setEdit((e) => (e === id ? '' : id))}>
         <span className="sdf-name">
           {shown(s, m.mega)}
           {m.mega ? <span className="sdf-tag mega">Mega</span> : null}
@@ -622,7 +760,7 @@ export default function BattleView(p: Props) {
       <div className="bv-wrap" ref={root}>
         <div className="sdf-wrap">
           {sdParty(0, p.mine, me)}
-          <div className={'bv sdf' + (p.doubles ? '' : ' solo')}>
+          <div className={'bv sdf' + (p.doubles ? '' : ' solo')} ref={fieldEl}>
             {f.terrain && <div className={`bv-terrain ${f.terrain.toLowerCase()}`} aria-hidden />}
             {f.weather && <div className={`bv-weather ${f.weather.toLowerCase().split(' ')[0]}`} aria-hidden />}
             {f.isTrickRoom && <div className="bv-tr" aria-hidden />}
@@ -656,17 +794,18 @@ export default function BattleView(p: Props) {
               </span>
             </div>
             {opp.map((s, i) => (
-              <div key={'o' + i} className={`sdf-mon opp s${i}`}>
+              <div key={'o' + i} className={`sdf-mon opp s${i}`} data-slot={i ? '1b' : '1'}>
                 {s ? sdBar(1, s, i ? '1b' : '1') : <span className="sdf-empty">Tap the one they send out</span>}
                 {s && <FrontSprite species={shown(s, p.mark(1, s).mega)} size={96} />}
               </div>
             ))}
             {me.map((s, i) => (
-              <div key={'m' + i} className={`sdf-mon me s${i}`}>
+              <div key={'m' + i} className={`sdf-mon me s${i}`} data-slot={i ? '0b' : '0'}>
                 {s ? sdBar(0, s, i ? '0b' : '0') : <span className="sdf-empty">Tap your Pokémon that is out</span>}
                 {s && <BackSprite species={shown(s, p.mark(0, s).mega)} size={120} />}
               </div>
             ))}
+            {anim?.msg && <div className="sdf-msg">{anim.msg}</div>}
             {openMon && (
               <div className="sdf-edit">
                 <button className="icon close sdf-close" onClick={() => setEdit('')} aria-label="Close">

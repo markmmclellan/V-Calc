@@ -823,3 +823,33 @@ td.v-loses, .bg-verdict.v-loses { background: color-mix(in srgb, var(--bad) 38%,
 .sd-other-h { opacity: 0.75; margin-right: 2px; }
 .sd-omove { padding: 3px 8px; border-radius: 4px; border: 1px solid rgba(255, 255, 255, 0.15); color: #fff; cursor: pointer; font-size: 12px; }
 .sd-other input { width: 120px; font-size: 12px; }
+
+/* ---- replay of a logged game (AI panel) */
+.rp-overlay { position: fixed; inset: 0; z-index: 60; background: var(--bg); overflow-y: auto; display: flex; flex-direction: column; }
+.rp-head { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--bg); z-index: 2; }
+.rp-list { padding: 10px 12px; display: flex; flex-direction: column; gap: 4px; max-width: 980px; width: 100%; margin: 0 auto; box-sizing: border-box; }
+.rp-tools { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+.rp-tools button.on { background: var(--accent); color: #07101f; border-color: var(--accent); }
+.rp-game { display: grid; grid-template-columns: 150px 44px 64px minmax(0, 1fr) auto; gap: 8px; align-items: center; text-align: left; font-size: 13px; padding: 6px 8px; }
+.rp-teams { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rp-res { font-weight: 600; }
+.rp-res.won { color: #3ecf6a; }
+.rp-res.lost { color: #e85a4a; }
+.rp-res.none { color: var(--muted); }
+.rp-body { padding: 8px 12px 20px; max-width: 980px; width: 100%; margin: 0 auto; box-sizing: border-box; }
+.rp-pad { padding: 16px; }
+.rp-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 8px; font-size: 13px; }
+.rp-bar input[type='range'] { flex: 1; min-width: 120px; }
+/* the battle view is shown as it was: nothing in it can be changed */
+.rp-stage { pointer-events: none; }
+.rp-info { margin-top: 10px; font-size: 13px; display: flex; flex-direction: column; gap: 8px; }
+.rp-did { display: flex; flex-wrap: wrap; gap: 4px 24px; }
+.rp-h { font-weight: 600; margin-bottom: 2px; }
+.rp-row { display: flex; gap: 8px; align-items: baseline; }
+.rp-pct { min-width: 40px; text-align: right; font-variant-numeric: tabular-nums; color: var(--accent); }
+.rp-theirs { margin-top: 4px; }
+.rp-end { font-weight: 600; }
+@media (max-width: 640px) {
+  .rp-game { grid-template-columns: 1fr auto; }
+  .rp-game .rp-teams { grid-column: 1 / -1; white-space: normal; }
+}

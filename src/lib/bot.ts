@@ -52,6 +52,64 @@ async function call<T>(path: string, body?: unknown, timeoutMs = 600_000): Promi
   return j as T;
 }
 
+// ---- replay of a logged game (the battle view steps through these frames)
+export interface ReplayMon {
+  species: string;
+  hp: number; // percent
+  hp_abs: number | null;
+  status: string;
+  boosts: Record<string, number>;
+  mega: boolean;
+  item_gone: boolean;
+  out: number | null; // the slot it is out in (0 left, 1 right), null on the bench
+  seen: boolean;
+  moves: string[]; // theirs: the moves it has shown
+}
+export interface ReplayBoard {
+  doubles: boolean;
+  me: ReplayMon[];
+  opp: ReplayMon[];
+  field: { weather: string; terrain: string; trick_room: boolean; sides: { sr: boolean; spikes: number; tspikes: number; tailwind: boolean; reflect: boolean; light: boolean; veil: boolean }[] };
+}
+export interface ReplayAdvice {
+  kind: string;
+  value?: number | null;
+  mine?: { action: string; mix?: number; vs?: number; p?: number; win?: number }[];
+  rows?: { action: string; mix?: number; vs?: number; p?: number; win?: number }[];
+  theirs?: { action: string; p: number }[];
+}
+export interface ReplayFrame {
+  turn: number;
+  kind: 'start' | 'played' | 'sent';
+  board: ReplayBoard;
+  advice?: ReplayAdvice | null;
+  you?: string | null;
+  them?: string | null;
+  played?: boolean;
+  events?: string[];
+}
+export interface ReplayGame {
+  id: string;
+  start: string;
+  doubles: boolean;
+  result: string;
+  team_text: string;
+  opp_sets: Record<string, { item?: string; ability?: string; nature?: string; sp?: number[]; moves?: string[] }>;
+  frames: ReplayFrame[];
+}
+export interface GameRow {
+  id: string;
+  start: string;
+  doubles: boolean;
+  result: string;
+  bring: string[];
+  opp_seen: string[];
+  preview: { opp: string[] } | null;
+  turns: unknown[];
+}
+export const listGames = () => call<{ games: GameRow[] }>('/api/games');
+export const getReplay = (id: string) => call<ReplayGame>('/api/replay?id=' + encodeURIComponent(id));
+
 export const pingBot = async (): Promise<boolean> => {
   try {
     await call('/api/ping', undefined, 2500); // an unreachable address must not hang the page

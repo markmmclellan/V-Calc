@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { blankField, type FieldState, type Terrain, type Weather } from '../lib/calc';
 import { baseName, blankMarks, getReplay, listGames, type GameRow, type Marks, type ReplayAdvice, type ReplayBoard, type ReplayGame, type ReplayMon } from '../lib/bot';
 import { blankSet, moveInfo, type PokemonSet, type Status } from '../lib/model';
-import { megaFor, parsePaste } from '../lib/showdown';
+import { baseForMega, megaFor, parsePaste } from '../lib/showdown';
 import BattleView, { type BattleAnim } from './BattleView';
 
 /**
@@ -118,7 +118,7 @@ export function buildSteps(start: ReplayBoard, events: string[], doubles: boolea
         m.boosts = {};
       }
       const bench = list(sub.side).filter((c) => c.out == null && c.hp > 0);
-      const inc = bench.find((c) => c.species === name) ?? bench.find((c) => name.startsWith(c.species + '-')) ?? bench.find((c) => name.startsWith(c.species));
+      const inc = bench.find((c) => c.species === name) ?? bench.find((c) => baseForMega(name)?.base === c.species) ?? bench.find((c) => name.startsWith(c.species + '-')) ?? bench.find((c) => name.startsWith(c.species));
       if (inc) inc.out = sub.k;
       return void push({ kind: 'in', who: sub.id, msg: sub.side ? `The opponent sent out ${name}!` : `Go! ${name}!`, ms: 750 });
     }

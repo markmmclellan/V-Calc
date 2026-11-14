@@ -49,7 +49,7 @@ import {
 } from '../lib/bot';
 import { calcStats, moveInfo, type PokemonSet } from '../lib/model';
 import { metaFor, type Meta } from '../lib/data';
-import { megaFor } from '../lib/showdown';
+import { baseForMega, megaFor } from '../lib/showdown';
 
 /** Abilities that set the weather or terrain when their holder comes in. */
 const ON_ENTRY: Record<string, { weather?: string; terrain?: string }> = {
@@ -482,13 +482,14 @@ export default function BotPanel({ open, teams, setTeams: setTeamsRaw, field, se
       const foes = dOpts.field[side === 'me' ? 1 : 0];
       const own = dOpts.field[side === 'me' ? 0 : 1];
       const cell = (name: string, mine: boolean) => {
-        // the engine names a Mega Evolved target by its Mega form ("Charizard-Mega-Y"); the field by its base name
+        // the engine names a Mega Evolved target by its Mega form ("Charizard-Mega-Y"); the field by its base name.
+        // The Mega's name is not always the base name + "-Mega" (Floette-Eternal -> Floette-Mega): looked up, not guessed
         // a target on its own side is labelled "ally X" (its partner); the user itself never is
         const tgt = name
           ? targets.find((t) => {
               const own = t.startsWith('ally ');
               const n = own ? t.slice(5) : t;
-              return own === mine && (n === name || n.startsWith(name + '-Mega'));
+              return own === mine && (n === name || baseForMega(n)?.base === name || n.startsWith(name + '-Mega'));
             })
           : undefined;
         const st = name ? setOf(mine === (side === 'me') ? 'me' : 'opp', name) : undefined;

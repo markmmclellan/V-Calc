@@ -440,12 +440,21 @@ export const askDoublesTurn = (team: PokemonSet[], board: Record<string, unknown
   call<DoublesTurn>('/api/doubles_turn', { ...board, team_text: exportTeam(team), seconds });
 
 /** Doubles Play turn: every choice of the four on the field ([left, right] per side). */
+export interface DoublesOption {
+  index: number;
+  action: string;
+  target?: string;
+  ally?: boolean;
+  to?: string;
+}
 export interface DoublesOptions {
   field: string[][];
   // each one's moves with PP left / max: moves.me[slot], moves.opp[slot]
   moves?: Record<'me' | 'opp', { name: string; pp: number; max: number }[][]>;
-  me: { index: number; action: string }[][];
-  opp: { index: number; action: string }[][];
+  // target / ally / to: who the choice is aimed at or sends in, by base species (from the server; the label's own name
+  // is the Mega form's once Mega Evolved and must not be taken apart)
+  me: DoublesOption[][];
+  opp: DoublesOption[][];
   // the network's likeliest choice per slot (action index, -1 none), without a search: best.me[slot], best.opp[slot]
   best?: Record<'me' | 'opp', number[]>;
   warnings: string[];

@@ -275,16 +275,22 @@ export default function BotPanel({ open, teams, setTeams: setTeamsRaw, field, se
     return all && partner ? [...foes, partner] : foes;
   };
   // Showdown-style choice: a label is "Mega + Move → Target", "Move (both foes)", "Move" or "Switch to X"
-  const parseAct = (a: string) => {
-    if (a.startsWith('Switch to ')) return { kind: 'switch' as const, mega: false, move: '', target: '', to: a.slice(10) };
+  // A choice from its menu entry. Who it is aimed at comes from the server's own fields (base species, "ally X" for the
+  // partner) when it sends them; the name inside the label is the Mega form's once Mega Evolved and is only read for an
+  // older server or a label kept from earlier.
+  const parseAct = (x: string | { action: string; target?: string; ally?: boolean; to?: string }) => {
+    const a = typeof x === 'string' ? x : x.action;
+    const sent = typeof x === 'string' || x.target === undefined ? null : x;
+    if (a.startsWith('Switch to ')) return { kind: 'switch' as const, mega: false, move: '', target: '', to: sent?.to || a.slice(10) };
     const mega = a.startsWith('Mega + ');
     const rest = mega ? a.slice(7) : a;
     const [mv, tgt] = rest.split(' → ');
-    return { kind: 'move' as const, mega, move: mv.replace(/ \((both foes|hits everyone|partner)\)$/, ''), target: tgt ?? '', to: '' };
+    const target = sent ? (sent.target ? (sent.ally ? 'ally ' : '') + sent.target : '') : tgt ?? '';
+    return { kind: 'move' as const, mega, move: mv.replace(/ \((both foes|hits everyone|partner)\)$/, ''), target, to: '' };
   };
   const pickIdx = (side: 'me' | 'opp', k: number, want: { kind: 'move' | 'switch'; mega?: boolean; move?: string; target?: string; to?: string }) => {
     const list = dOpts?.[side][k] ?? [];
-    const ps = list.map((o) => ({ o, a: parseAct(o.action) }));
+    const ps = list.map((o) => ({ o, a: parseAct(o) }));
     const hit =
       want.kind === 'switch'
         ? ps.find((x) => x.a.kind === 'switch' && x.a.to === want.to)
@@ -432,7 +438,7 @@ export default function BotPanel({ open, teams, setTeams: setTeamsRaw, field, se
   useEffect(() => {
     const w = dMoveLater.current;
     if (!w || !dOpts) return;
-    const acts = (dOpts.opp[w.k] ?? []).map((o) => parseAct(o.action)).filter((a) => a.kind === 'move' && a.move === w.move && !a.mega);
+    const acts = (dOpts.opp[w.k] ?? []).map((o) => parseAct(o)).filter((a) => a.kind === 'move' && a.move === w.move && !a.mega);
     if (!acts.length) return;
     dMoveLater.current = null;
     const targets = [...new Set(acts.map((a) => a.target).filter(Boolean))];
@@ -462,7 +468,7 @@ export default function BotPanel({ open, teams, setTeams: setTeamsRaw, field, se
     if (!cur) return null;
     const { side, k } = cur;
     const list = dOpts[side][k];
-    const acts = list.map((o) => parseAct(o.action));
+    const acts = list.map((o) => parseAct(o));
     const who = dOpts.field[side === 'me' ? 0 : 1][k];
     const whoSet = setOf(side, who);
     const key = `${side}${k}`;
@@ -2080,7 +2086,7 @@ export default function BotPanel({ open, teams, setTeams: setTeamsRaw, field, se
         throw new Error(`Their ${dOpts.field[1][ask]} switches to one not seen yet: tap who came in (under Switch), or what it did instead.`);
       }
       const b = doublesBoard(takeDoublesHits());
-      const snap: DSnap = { teams: [fielded(0), fielded(1)], field, marks, turn, timers, dvol: dVolMap };
+      const snap: DSnap = { teams: [fielded(0), fielded(1)], field, marks, turn, timers, dvol: dVolMap, streak: dStreak.current, carry: dCarry.current };
       const leadsFirst = needDLeads;
       dSentNow.current = { turn: -1, who: [] };
       const r = await askDoublesPlay(mineAll, { ...b, just_in: dMarkFresh(turn), pivot_to: dPivot, outcomes: dOutcome, leads_first: leadsFirst }, dPick.me, dPick.opp);
@@ -2108,7 +2114,7 @@ export default function BotPanel({ open, teams, setTeams: setTeamsRaw, field, se
       setDTurnRes(null);
     });
   // Undo a played turn (or the leads coming in), as in singles
-  type DSnap = { teams: [Team, Team]; field: FieldState; marks: Record<string, Marks>; turn: number; timers: Record<string, number>; dvol: Record<string, Vol> };
+  type DSnap = { teams: [Team, Team]; field: FieldState; marks: Record<string, Marks>; turn: number; timers: Record<string, number>; dvol: Record<string, Vol>; streak?: typeof dStreak.current; carry?: typeof dCarry.current };
   const dUndo = useRef<DSnap | null>(null);
   const undoDoubles = () => {
     const s0 = dUndo.current;
@@ -2124,8 +2130,10 @@ export default function BotPanel({ open, teams, setTeams: setTeamsRaw, field, se
     dPending.current = null;
     dPlayedTurn.current = null;
     dUndo.current = null;
-    dStreak.current = { turn: -1, me: {}, opp: {} };
-    dCarry.current = { turn: -1, me: {}, opp: {} };
+    // what the turn before the undone one left behind comes back too (a Protect just used: the next one is unlikely to
+    // work, Encore, Taunt...). Wiping it made the bot offer Protect again right after an Undo
+    dStreak.current = s0.streak ?? { turn: -1, me: {}, opp: {} };
+    dCarry.current = s0.carry ?? { turn: -1, me: {}, opp: {} };
     setDPlayed(null);
   };
   // A replacement after a faint (as singles' send-in): through the engine, so Intimidate, weather and seeds apply; the
@@ -2143,7 +2151,7 @@ export default function BotPanel({ open, teams, setTeams: setTeamsRaw, field, se
       dSentNow.current.who.push(`${side}:${baseName(x)}`);
       // one of theirs not seen yet: it is one of their four now
       const opp = b.opp.map((o) => (side === 1 && o.species === baseName(x) ? { ...o, seen: true } : o));
-      const snap: DSnap = { teams: [fielded(0), fielded(1)], field, marks, turn, timers, dvol: dVolMap };
+      const snap: DSnap = { teams: [fielded(0), fielded(1)], field, marks, turn, timers, dvol: dVolMap, streak: dStreak.current, carry: dCarry.current };
       if (side === 1) markAppeared(x);
       const r = await askDoublesSendIn(mineAll, { ...b, opp }, side === 0 ? 'me' : 'opp', slot, baseName(x));
       // added under the turn's log (it is part of the same turn), not in place of it
@@ -2159,7 +2167,7 @@ export default function BotPanel({ open, teams, setTeams: setTeamsRaw, field, se
   const doDoublesLeads = () =>
     run('The leads come out…', async () => {
       const b = doublesBoard();
-      const snap: DSnap = { teams: [fielded(0), fielded(1)], field, marks, turn, timers, dvol: dVolMap };
+      const snap: DSnap = { teams: [fielded(0), fielded(1)], field, marks, turn, timers, dvol: dVolMap, streak: dStreak.current, carry: dCarry.current };
       const r = await askDoublesLeads(mineAll, { ...b, just_in: dMarkFresh(turn) });
       setDLeadsDone(true);
       if (!r.events.length) {

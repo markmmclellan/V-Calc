@@ -196,7 +196,7 @@ function advice(a: ReplayAdvice | null | undefined) {
   );
 }
 
-export default function ReplayView({ onClose }: { onClose: () => void }) {
+export default function ReplayView({ onClose, openId }: { onClose: () => void; openId?: string }) {
   const [games, setGames] = useState<GameRow[] | null>(null);
   const [fmt, setFmt] = useState<'all' | 'singles' | 'doubles'>('all');
   const [game, setGame] = useState<ReplayGame | null>(null);
@@ -230,6 +230,12 @@ export default function ReplayView({ onClose }: { onClose: () => void }) {
       setBusy(false);
     }
   };
+
+  // opened from the review page on one game: straight to it
+  useEffect(() => {
+    if (openId) void open(openId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openId]);
 
   const n = game?.frames.length ?? 0;
   /** Jump to a frame as it stands (no animation). */

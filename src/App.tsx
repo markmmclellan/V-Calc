@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { MEGA_STONES, toID } from '@smogon/calc';
 import BotPanel from './components/BotPanel';
+import ReplayView from './components/ReplayView';
 import { DEFAULT_BOT_URL, getBotUrl, pingBot, setBotUrl } from './lib/bot';
 import BringPanel from './components/BringPanel';
 import FieldPanel from './components/FieldPanel';
@@ -50,6 +51,14 @@ const emptyTeam =(): Team => ({ sets: [], active: 0 });
 
 export default function App() {
   const saved = useMemo(load, []);
+  /** a logged game to replay, when opened from the review page's "Watch replay" (?replay=<game id>) */
+  const [replayId, setReplayId] = useState(() => new URLSearchParams(window.location.search).get('replay'));
+  const closeReplay = () => {
+    const u = new URL(window.location.href);
+    u.searchParams.delete('replay');
+    window.history.replaceState(null, '', u);
+    setReplayId(null);
+  };
   const [meta, setMeta] = useState<Meta | null>(null);
   const [error, setError] = useState('');
   const [refreshing, setRefreshing] = useState('');
@@ -317,6 +326,7 @@ export default function App() {
 
   return (
     <div className="app">
+      {replayId != null && <ReplayView openId={replayId} onClose={closeReplay} />}
       <header className="top">
         <h1 className="brand">
           <img src={victini} alt="" width={40} height={40} />

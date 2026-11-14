@@ -64,7 +64,6 @@ const ON_ENTRY: Record<string, { weather?: string; terrain?: string }> = {
 };
 import type { Team } from './TeamSide';
 import BattleView from './BattleView';
-import ReplayView from './ReplayView';
 import { abilitiesOf } from '../lib/abilities';
 import Sprite from './Sprite';
 
@@ -231,7 +230,6 @@ export default function BotPanel({ open, teams, setTeams: setTeamsRaw, field, se
     });
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
-  const [replayOpen, setReplayOpen] = useState(false);
   const [bring, setBring] = useState<BringCheck | null>(null);
   const [dbring, setDBring] = useState<(DoublesBring & { sig: string }) | null>(null);
   // doubles uses the same turn counter as singles (the header's)
@@ -2722,12 +2720,9 @@ export default function BotPanel({ open, teams, setTeams: setTeamsRaw, field, se
             </option>
           ))}
         </select>
-        <a className="ai-review" href={getBotUrl() + '/review'} target="_blank" rel="noreferrer" title="Your games turn by turn: the board, what the bot said, and how the win chance moved">
+        <a className="ai-review" href={getBotUrl() + '/review'} target="_blank" rel="noreferrer" title="Your games turn by turn: the board, what the bot said, how the win chance moved, and the replay of each game">
           Review
         </a>
-        <button onClick={() => setReplayOpen(true)} title="Watch one of your logged games again in the battle view, turn by turn">
-          Replay
-        </button>
         <button onClick={newGame} title="New game: resets HP, boosts, status, the field and the marks here (same as Reset battle)">
           New game
         </button>
@@ -2736,7 +2731,6 @@ export default function BotPanel({ open, teams, setTeams: setTeamsRaw, field, se
         </button>
       </header>
 
-      {replayOpen && <ReplayView onClose={() => setReplayOpen(false)} />}
       <div className="ai-body">
         {!singles && <p className="hint">Doubles: tap two of each side's icons to put them out (left, then right).</p>}
         {up === false && (

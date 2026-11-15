@@ -239,7 +239,18 @@ export default function PokemonEditor({ set, onChange, meta, format, weather, on
               value={set.sp[k]}
               onChange={(e) => setSP(k, +e.target.value)}
             />
-            <span className="final">{stats?.[k] ?? '–'}</span>
+            {(() => {
+              // Like Showdown: the total includes stat stages, green when raised, red when lowered.
+              const n = k === 'hp' ? 0 : set.boosts[k];
+              const raw = stats?.[k];
+              if (raw === undefined) return <span className="final">–</span>;
+              const shown = n > 0 ? Math.floor((raw * (2 + n)) / 2) : n < 0 ? Math.floor((raw * 2) / (2 - n)) : raw;
+              return (
+                <span className={'final' + (n > 0 ? ' up' : n < 0 ? ' down' : '')} title={n ? `${raw} before ${n > 0 ? '+' : ''}${n}` : undefined}>
+                  {shown}
+                </span>
+              );
+            })()}
           </div>
         ))}
       </div>

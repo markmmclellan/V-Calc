@@ -104,6 +104,8 @@ label.check input { width: auto; }
 .sp-label.minus { color: var(--bad); font-weight: 600; }
 .sp-row .base { color: var(--muted); font-size: 12px; text-align: right; }
 .sp-row .final { font-weight: 600; text-align: right; }
+.sp-row .final.up { color: var(--good); }
+.sp-row .final.down { color: var(--bad); }
 
 .moves { display: flex; flex-direction: column; gap: 3px; }
 .move-row { display: flex; align-items: center; gap: 6px; }

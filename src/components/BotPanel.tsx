@@ -2019,7 +2019,12 @@ export default function BotPanel({ open, teams, setTeams: setTeamsRaw, field, se
     const pickOf = (list: { index: number; action: string }[], want?: string | null, net?: number): number =>
       (want ? list.find((x) => x.action.trim() === want.trim())?.index : undefined) ?? list.find((x) => x.index === net)?.index ?? list[0]?.index ?? -1;
     const res = dTurnResNow.current;
-    const best = res?.options?.[0];
+    // each Pokémon's #1 as shown, when the search plays that pair (it differed from the likeliest pair on 1 turn in
+    // 15, and the menus then did not match the #1s on show); else the likeliest pair
+    const l1 = res?.left?.options?.[0]?.action;
+    const r1 = res?.right?.options?.[0]?.action;
+    const tops = res?.options?.find((x) => (!res.left?.species || x.left === l1) && (!res.right?.species || x.right === r1));
+    const best = tops && tops.mix >= 0.05 ? tops : res?.options?.[0];
     const their = res?.theirs?.[0]?.action.split('  |  ') ?? [];
     // "Switch to one not seen yet": the menu's switch to the one the engine filled the slot with stands for it
     const maybe = theirMaybe();

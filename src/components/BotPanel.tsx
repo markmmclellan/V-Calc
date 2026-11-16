@@ -2093,6 +2093,10 @@ export default function BotPanel({ open, teams, setTeams: setTeamsRaw, field, se
       if (leadsFirst) setDLeadsDone(true);
       setDOutcome({ me: [{}, {}], opp: [{}, {}] });
       applyDoubles(r, snap, true);
+      // whoever is not out after the turn left the field: back in later, it is fresh again (Fake Out). Rillaboom
+      // switched out and sent back in for a fainted partner before the next ask kept its old first turn and lost Fake Out
+      for (const [sd, x] of [[0, r.me], [1, r.opp]] as const)
+        for (const [n, m] of Object.entries(x)) if (m.out == null) delete dFresh.current[`${sd}:${n}`];
       dPending.current = r.hits ?? null;
       // who Protected this turn (and still is out): their next Protect works 1 time in 3
       const streaks = (x: Record<string, { out: number | null; protect_streak?: number }>) =>
@@ -2149,6 +2153,8 @@ export default function BotPanel({ open, teams, setTeams: setTeamsRaw, field, se
       if (dSentNow.current.turn !== turn) dSentNow.current = { turn, who: [] };
       const b = { ...b0, sent_in_now: [...dSentNow.current.who] };
       dSentNow.current.who.push(`${side}:${baseName(x)}`);
+      // sent in: its next turn is its first one out (Fake Out), even if it was out earlier
+      delete dFresh.current[`${side}:${baseName(x)}`];
       // one of theirs not seen yet: it is one of their four now
       const opp = b.opp.map((o) => (side === 1 && o.species === baseName(x) ? { ...o, seen: true } : o));
       const snap: DSnap = { teams: [fielded(0), fielded(1)], field, marks, turn, timers, dvol: dVolMap, streak: dStreak.current, carry: dCarry.current };

@@ -2039,6 +2039,7 @@ export default function BotPanel({ open, teams, setTeams: setTeamsRaw, field, se
     };
   };
   // the moves after which the side picks who comes in (or, Revival Blessing, who comes back)
+  const NO_SWITCH = '(none)';
   const PIVOTS = ['U-turn', 'Volt Switch', 'Flip Turn', 'Parting Shot', 'Teleport', 'Shed Tail', 'Baton Pass', 'Chilly Reception', 'Revival Blessing'];
   const dPicked = (side: 'me' | 'opp'): string[] =>
     !dOpts || !dPick
@@ -2090,11 +2091,14 @@ export default function BotPanel({ open, teams, setTeams: setTeamsRaw, field, se
         setDAim(null);
         throw new Error(`Their ${dOpts.field[1][ask]} switches to one not seen yet: tap who came in (under Switch), or what it did instead.`);
       }
+      // their U-turn / Parting Shot...: who came in is what the game showed, not the engine's guess
+      if (dPivotNeeded('opp') && !dPivot.opp) throw new Error('Their switching move: pick who they sent in (then sends in), or "did not switch".');
       const b = doublesBoard(takeDoublesHits());
       const snap: DSnap = { teams: [fielded(0), fielded(1)], field, marks, turn, timers, dvol: dVolMap, streak: dStreak.current, carry: dCarry.current };
       const leadsFirst = needDLeads;
       dSentNow.current = { turn: -1, who: [] };
-      const r = await askDoublesPlay(mineAll, { ...b, just_in: dMarkFresh(turn), pivot_to: dPivot, outcomes: dOutcome, leads_first: leadsFirst }, dPick.me, dPick.opp);
+      const pivotTo = { ...dPivot, opp: dPivot.opp === NO_SWITCH ? '' : dPivot.opp };
+      const r = await askDoublesPlay(mineAll, { ...b, just_in: dMarkFresh(turn), pivot_to: pivotTo, outcomes: dOutcome, leads_first: leadsFirst }, dPick.me, dPick.opp);
       if (leadsFirst) setDLeadsDone(true);
       setDOutcome({ me: [{}, {}], opp: [{}, {}] });
       applyDoubles(r, snap, true);
@@ -2870,7 +2874,8 @@ export default function BotPanel({ open, teams, setTeams: setTeamsRaw, field, se
                       <label>
                         then sends in
                         <select value={dPivot[side]} onChange={(e) => setDPivot((v) => ({ ...v, [side]: e.target.value }))}>
-                          <option value="">{side === 'me' ? '(the healthiest)' : '(the healthiest seen)'}</option>
+                          {side === 'me' ? <option value="">(the healthiest)</option> : <option value="">(pick who came in)</option>}
+                          {side === 'opp' && <option value={NO_SWITCH}>(did not switch)</option>}
                           {dPivotChoices(side).map((n) => (
                             <option key={n} value={n}>
                               {n}

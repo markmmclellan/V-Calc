@@ -1936,6 +1936,13 @@ export default function BotPanel({ open, teams, setTeams: setTeamsRaw, field, se
     dFresh.current = next;
     return out.filter((k) => next[k] === t); // "0:Name" mine, "1:Name" theirs (both sides can have the same species out)
   };
+  // The same without recording it (the move menus): one out now and not counted yet is fresh. The menus are asked for
+  // as soon as the board changes, before the turn is simulated and counts who came in, so one just sent in lost Fake
+  // Out from the menus (2026-11-18)
+  const dFreshNow = (t: number): string[] =>
+    [0, 1]
+      .flatMap((sd) => dSide(sd as 0 | 1).filter((x): x is PokemonSet => !!x).map((x) => `${sd}:${baseName(x)}`))
+      .filter((k) => (dFresh.current[k] ?? t) === t);
   // Spread reading (doubles): the last played turn's hits, measured once you have set the HP the game showed (the next
   // time the board is sent). A target hit once that turn only: two hits on one Pokémon cannot be told apart.
   const dPending = useRef<DoublesHit[] | null>(null);
@@ -2572,7 +2579,7 @@ export default function BotPanel({ open, teams, setTeams: setTeamsRaw, field, se
         return;
       }
       const key = dKeyNow;
-      askDoublesOptions(mineAll, { ...b, just_in: Object.keys(dFresh.current).filter((k) => dFresh.current[k] === turn) })
+      askDoublesOptions(mineAll, { ...b, just_in: dFreshNow(turn) })
         .then((o) => {
           dOptsFor.current = key;
           const { pick, kept } = dMerged(o);

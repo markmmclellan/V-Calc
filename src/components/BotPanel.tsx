@@ -3143,11 +3143,23 @@ export default function BotPanel({ open, teams, setTeams: setTeamsRaw, field, se
                     ? 'Which of yours came in?'
                     : 'Which of theirs came in?'}
               </span>
-              {needPivot.options.map((o) => (
-                <button key={o} onClick={() => doPlay({ ...needPivot.chosen, [needPivot.side]: o })}>
-                  {o}
-                </button>
-              ))}
+              {(() => {
+                // your switching move (Flip Turn, U-turn...): Solve scored "<move> -> Switch to X" for each one on the
+                // bench against their likely play, which is the choice the game asks before their move is seen
+                const win: Record<string, number> = {};
+                if (needPivot.side === 'me' && needPivot.kind !== 'revive' && solved) {
+                  const pre = `${needPivot.chosen.__mine} -> Switch to `;
+                  for (const r of solved.mine) if (r.action.startsWith(pre)) win[r.action.slice(pre.length)] = r.vs_their_play;
+                }
+                const best = Object.keys(win).sort((a, b) => win[b] - win[a])[0];
+                return needPivot.options.map((o) => (
+                  <button key={o} className={o === best ? 'on' : ''} title={win[o] != null ? 'Win chance with this one coming in, against their likely play' : undefined}
+                    onClick={() => doPlay({ ...needPivot.chosen, [needPivot.side]: o })}>
+                    {o}
+                    {win[o] != null ? ` ${pct(win[o])}${o === best ? ' ★' : ''}` : ''}
+                  </button>
+                ));
+              })()}
               <button onClick={() => setNeedPivot(null)}>Cancel</button>
             </div>
           )}

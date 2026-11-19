@@ -2634,7 +2634,12 @@ export default function BotPanel({ open, teams, setTeams: setTeamsRaw, field, se
   }, [dTurnRes]);
   // Start the bring check by itself as soon as their six are in (team preview), so it is ready when you look; once per
   // pair of teams
-  const bringSig = turn === 1 && theirs.length >= 6 && mineAll.length >= 6 ? [...mineAll, ...theirs].map((s) => baseName(s)).join(',') : '';
+  // (order aside, and only at team preview: picking the leads reorders the teams, which is no new pair of sixes; it
+  // re-ran the bring check, and the solve waited on it, 2026-11-19)
+  const bringSig =
+    turn === 1 && phase === 'preview' && theirs.length >= 6 && mineAll.length >= 6
+      ? [...mineAll.map(baseName).sort(), '|', ...theirs.map(baseName).sort()].join(',')
+      : '';
   const bringAsked = useRef('');
   const bringFor = useRef(''); // the teams the answer shown is for: a change of either six asks again
   const oppNames = theirs.map((s) => baseName(s));
@@ -3332,7 +3337,7 @@ export default function BotPanel({ open, teams, setTeams: setTeamsRaw, field, se
           {carried.length > 0 && carried.length < 6 && (
             <p className="ai-left">Also on last game's team: {carried.join(', ')}. Still on this team?</p>
           )}
-          {bring && bringFor.current && bringFor.current !== bringSig && <p className="ai-left">The teams changed since this answer: asking again…</p>}
+          {bring && bringFor.current && bringSig && bringFor.current !== bringSig && <p className="ai-left">The teams changed since this answer: asking again…</p>}
           {!singles ? (
             <>
               <button onClick={doDoublesBring} disabled={up !== true || !!busy} title="Which 4 of your six, and which 2 lead: simulated games">

@@ -190,7 +190,7 @@ export default function BotPanel({ open, teams, setTeams: setTeamsRaw, field, se
   const [up, setUp] = useState<boolean | null>(null);
   const [marks, setMarks] = useState<Record<string, Marks>>(() => load(MARKS_KEY, {}));
   const [auto, setAuto] = useState<boolean>(() => load(AUTO_KEY, true));
-  const [secs, setSecs] = useState<number>(() => load(SECS_KEY, 8)); // time the bot may think per answer
+  const [secs, setSecs] = useState<number>(() => Math.min(8, load(SECS_KEY, 8))); // time the bot may think per answer (the game's turn timer leaves no room for more)
   const [picked, setPicked] = useState<string[] | null>(null); // base names; null = follow What to bring
   const [turn, setTurnRaw] = useState(1);
   // effects on the two Pokémon that are out (yours, theirs); a side's are cleared when its Pokémon switches out
@@ -2745,7 +2745,7 @@ export default function BotPanel({ open, teams, setTeams: setTeamsRaw, field, se
           </button>
         </span>
         <select className="ai-secs" value={secs} onChange={(e) => setSecs(+e.target.value)} title="How long the bot may think per answer. Longer is a little sharper.">
-          {[4, 8, 15, 30].map((v) => (
+          {[4, 6, 8].map((v) => (
             <option key={v} value={v}>
               {v} s
             </option>

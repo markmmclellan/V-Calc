@@ -940,8 +940,11 @@ export default function BotPanel({ open, teams, setTeams: setTeamsRaw, field, se
     skipVolReset.current = null;
     if (skip !== null && skip === outNames.join('|')) return; // a played turn: the engine already did all of this
     // weather / terrain abilities of the ones that just came in (both at once: the slower one's lands last and stays)
+    // only in the battle, once that side's lead is in: typing their six at team preview selects each one in V-Calc,
+    // which is not a switch-in (Rillaboom in their six put Grassy Terrain up before turn 1, 2026-11-19); the leads
+    // step brings the leads' own effects in
     const entering = ([0, 1] as const)
-      .filter((sd) => changed[sd])
+      .filter((sd) => changed[sd] && phase === 'battle' && (sd === 0 || oppLeadsReady))
       .map((sd) => (sd === 0 ? mineActive : theirActive))
       // a Mega Stone holder that has not Mega Evolved has its normal ability (the set lists the Mega's, e.g. Drought)
       .filter((x): x is PokemonSet => !!x?.species && baseName(x) === x.species && !!ON_ENTRY[x.ability] && !/ite( [XYZ])?$/.test(x.item))

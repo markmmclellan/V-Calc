@@ -660,6 +660,16 @@ export default function BattleView(p: Props) {
         Trick Room{tm('tr')}
       </span>,
     );
+  // Tailwind beside the weather, each side with its turns left (tap for one less): the game shows no count, and a
+  // wrong one quietly hands one side the speed (2026-11-19)
+  ([0, 1] as const).forEach((side) => {
+    if (f[sideKey(side)].isTailwind)
+      fieldBits.push(
+        <span key={`tw${side}`}>
+          {side ? 'Their' : 'Your'} Tailwind{tm(`${side}:isTailwind`)}
+        </span>,
+      );
+  });
   /** What is on each side of the field, drawn: rocks, screens, wind. */
   const sideArt = (side: 0 | 1) => {
     const sd = f[sideKey(side)];

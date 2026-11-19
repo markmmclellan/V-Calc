@@ -1139,7 +1139,9 @@ export default function BotPanel({ open, teams, setTeams: setTeamsRaw, field, se
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [turn]);
   /** Tap a timer: one turn less (wraps from 1 to 8, for Light Clay, Damp Rock and the like). */
-  const tapTimer = (k: string) => setTimers((old) => (old[k] === undefined ? old : { ...old, [k]: old[k] <= 1 ? 8 : old[k] - 1 }));
+  // Tailwind has no item that extends it: it wraps back to its 4
+  const tapTimer = (k: string) =>
+    setTimers((old) => (old[k] === undefined ? old : { ...old, [k]: old[k] <= 1 ? (k.endsWith(':isTailwind') ? TIMED.isTailwind : 8) : old[k] - 1 }));
   /** Turns left as the bot reads them, `ahead` turns from now. */
   // read when a solve actually runs (auto-solve is scheduled a moment earlier, possibly before a new timer exists)
   const timersNow = useRef(timers);

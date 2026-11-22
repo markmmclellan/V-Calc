@@ -17,10 +17,17 @@ function showdownId(species: string): string {
 }
 
 /**
- * Showdown has no animated sprite for these yet, so we ship our own in public/sprites/: the Pokémon Champions
- * animations, via PokeStats.gg (resized to 96px).
+ * Showdown only has 2-5 KB placeholder images (or nothing) for the Megas new in Legends: Z-A, so these use the
+ * Pokémon Champions animations, via PokeStats.gg, resized to 96px and stored in public/sprites/.
  */
-const LOCAL_ANIMATED = new Set(['absol-megaz', 'baxcalibur-mega', 'garchomp-megaz', 'golisopod-mega', 'lucario-megaz']);
+const LOCAL_ANIMATED = new Set([
+  'absol-megaz', 'barbaracle-mega', 'baxcalibur-mega', 'chandelure-mega', 'chesnaught-mega', 'chimecho-mega',
+  'crabominable-mega', 'delphox-mega', 'dragalge-mega', 'drampa-mega', 'eelektross-mega', 'excadrill-mega',
+  'falinks-mega', 'floette-mega', 'garchomp-megaz', 'glimmora-mega', 'golisopod-mega', 'golurk-mega',
+  'greninja-mega', 'hawlucha-mega', 'lucario-megaz', 'malamar-mega', 'meowstic-fmega', 'meowstic-mmega',
+  'pyroar-mega', 'raichu-megax', 'raichu-megay', 'scolipede-mega', 'scovillain-mega', 'scrafty-mega',
+  'staraptor-mega',
+]);
 
 /**
  * Image sources to try in order: Showdown's animated sprite, then its static placeholder

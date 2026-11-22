@@ -17,10 +17,17 @@ function showdownId(species: string): string {
 }
 
 /**
+ * Showdown has no animated sprite for these yet, so we ship our own in public/sprites/: the Pokémon Champions
+ * animations, via PokeStats.gg (resized to 96px).
+ */
+const LOCAL_ANIMATED = new Set(['absol-megaz', 'baxcalibur-mega', 'garchomp-megaz', 'golisopod-mega', 'lucario-megaz']);
+
+/**
  * Image sources to try in order: Showdown's animated sprite, then its static placeholder
  * (used for new Pokemon and Z-A Megas that have no animation yet).
  */
 export function spriteSources(species: string): string[] {
   const id = showdownId(species);
-  return [`${SD}/ani/${id}.gif`, `${SD}/gen5/${id}.png`];
+  const local = LOCAL_ANIMATED.has(id) ? [`${import.meta.env?.BASE_URL ?? "/"}sprites/${id}.webp`] : [];
+  return [...local, `${SD}/ani/${id}.gif`, `${SD}/gen5/${id}.png`];
 }
